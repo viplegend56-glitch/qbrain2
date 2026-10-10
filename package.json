@@ -1,0 +1,13 @@
+{
+  "name": "quantumcats-brain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The brain: runs the shared Quantum Cats simulation, serves state.json to the site, and the admin panel.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^6.0.0"
+  }
+}
