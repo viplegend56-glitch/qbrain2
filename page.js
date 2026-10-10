@@ -40,8 +40,8 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     const w = wallets.ready ? wallets.cats[i] : null;
     const b = balances && balances.cats && balances.cats[name];
     return `<tr><td>${esc(name)}<br><span class="mut">${esc(job)} · ${esc(trait)}</span></td>
-      <td>${c ? '<span class="ok">in the box</span>' : `<span class="mut">at ${usd(engine.UNLOCK_MC[i])}</span> <form class="inline" method="post" action="/admin/release"><input type="hidden" name="name" value="${esc(name)}"><button class="btn ghost" style="margin:0;padding:3px 8px;font-size:11px">release now</button></form>`}</td>
-      <td>${c ? esc(c.doing) : '—'}</td>
+      <td>${c ? `<span class="ok">in the box</span> <form class="inline" method="post" action="/admin/unrelease" onsubmit="return confirm('Take ${esc(name)} out of the box?')"><input type="hidden" name="name" value="${esc(name)}"><button class="btn ghost" style="margin:0;padding:3px 8px;font-size:11px">take out</button></form>` : `<span class="mut">at ${usd(engine.UNLOCK_MC[i])}</span> <form class="inline" method="post" action="/admin/release"><input type="hidden" name="name" value="${esc(name)}"><button class="btn ghost" style="margin:0;padding:3px 8px;font-size:11px">release now</button></form>`}</td>
+      <td>${c ? esc(c.doing) + `<form class="inline" method="post" action="/admin/trait" style="display:block;margin-top:4px"><input type="hidden" name="name" value="${esc(name)}"><select name="trait" onchange="this.form.submit()" style="background:#0B1028;color:var(--text);border:1px solid var(--line2);font:11px 'IBM Plex Mono',monospace;padding:2px 4px">${Object.keys(engine.TRAITS).map(t => `<option value="${t}" ${t === c.trait ? 'selected' : ''}>${t} · ${esc(engine.TRAITS[t].label)}</option>`).join('')}</select></form>` : '—'}</td>
       <td>${c ? sol(c.sol) + '<br><span class="mut">sim · earned ' + sol(c.earned) + '</span>' : '—'}</td>
       <td><code>${w ? esc(w.pub) : '<span class="mut">no wallet</span>'}</code>${w ? `<br><a href="https://solscan.io/account/${esc(w.pub)}" target="_blank" rel="noopener">solscan</a>` : ''}</td>
       <td>${b ? sol(b.sol) + '<br>' + (b.qcat == null ? '<span class="mut">set CA for tokens</span>' : Math.round(b.qcat).toLocaleString() + ' ' + esc(config.TICKER)) : '<span class="mut">—</span>'}</td></tr>`;
@@ -82,7 +82,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       <div><label>Sell cap: max % of stack per cat per day</label><input type="number" step="1" min="0" max="100" name="sellCapPct" value="${esc(config.sellCapPct)}"></div>
       <div><label>Buy size: % of spare SOL per buy</label><input type="number" step="1" min="1" max="100" name="buyPct" value="${esc(config.buyPct)}"></div>
     </div>
-    <div class="row"><div><label>SOL price (USD) — overwritten by the live feed once the CA is set</label><input type="number" step="0.01" name="SOL_USD" value="${esc(config.SOL_USD)}"></div><div><label>The lab opens at (USD market cap)</label><input type="number" step="1000" name="LAB_MC_USD" value="${esc(config.LAB_MC_USD)}"></div></div>
+    <div class="row"><div><label>SOL price (USD)</label><input type="number" step="0.01" name="SOL_USD" value="${esc(config.SOL_USD)}"><label style="display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--text)"><input type="checkbox" name="solUsdManual" ${config.solUsdManual ? 'checked' : ''}> keep this price (ignore the live feed)</label></div><div><label>The lab opens at (USD market cap)</label><input type="number" step="1000" name="LAB_MC_USD" value="${esc(config.LAB_MC_USD)}"></div></div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;color:var(--text)"><input type="checkbox" name="simulateFees" ${config.simulateFees ? 'checked' : ''}> keep simulated fee drops (turn off once real fees are flowing)</label>
     <label>Who gets paid — unchecked cats receive no wages</label>
     <div class="chk">${engine.ROSTER.map(r => `<label><input type="checkbox" name="dist_${esc(r[0])}" ${d[r[0]] !== false ? 'checked' : ''}> ${esc(r[0])}</label>`).join('')}</div>
@@ -93,6 +93,11 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>${wallets.ready ? '' : `<form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost" style="margin:0;padding:5px 10px;font-size:12px" onclick="return confirm('Generate a fresh treasury + ten cat wallets? They are shown once.')">generate wallets</button></form>`}</div><div class="pb">
     ${wallets.ready ? `<p><span class="mut">treasury</span> <code>${esc(wallets.treasury.pub)}</code> <a href="https://solscan.io/account/${esc(wallets.treasury.pub)}" target="_blank" rel="noopener">solscan</a></p>` : '<p class="mut">No wallets loaded. Generate a set, paste the keys into the environment, restart.</p>'}
     <table><tr><th>cat</th><th>status</th><th>doing</th><th>sim SOL</th><th>wallet</th><th>real balance</th></tr>${catRows}</table>
+  </div></div>
+
+  <div class="panel" style="border-color:rgba(255,79,174,.5)"><div class="ph" style="color:var(--magenta)"><span>Danger zone</span></div><div class="pb">
+    <p class="mut" style="margin:0 0 8px">Reset puts the box back to day zero: two cats, fresh wallets in the sim, empty ledger and talk, all releases undone. Token settings, links and economy are kept. Real wallets are not touched. Do this right before launch.</p>
+    <form method="post" action="/admin/reset" class="inline" onsubmit="return confirm('Reset the whole box to day zero? This cannot be undone.')"><input type="text" name="confirm" placeholder="type RESET" style="width:160px;display:inline-block;padding:7px"> <button class="btn warn" style="margin:0">Reset the box</button></form>
   </div></div>
 
   <div class="panel"><div class="ph"><span>Box log</span><small class="mut">latest first</small></div><div class="pb log">${logs.map(l => `<div><span class="t">${esc(l.t)}</span><span class="${esc(l.kind)}">${esc(l.text)}</span></div>`).join('') || '<span class="mut">nothing yet</span>'}</div></div>

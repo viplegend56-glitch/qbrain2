@@ -662,6 +662,18 @@ function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; retu
 function setPaused(p) { paused = !!p; }
 function dropFees(sol) { if (!(sol > 0)) return; stats.treasury += sol; stats.fees += sol; externalFees += sol; if (stats.treasury >= 0.02) stats.low = false; feeFX(sol); log(`Creator fees dropped ${fmtSol(sol)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); }
 function setReleased(names) { for (const n of names) { const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
+function unrelease(name) {
+  const i = cats.findIndex(c => c.name === name); if (i < 0) return false;
+  const c = cats[i]; cats.splice(i, 1);
+  for (const o of cats) { if (o.partner === c.id) { o.partner = null; o.initiator = false; o.state = 'pause'; o.pauseT = 1; } if (o.grudgeOn === c.id) { o.grudge = 0; o.grudgeOn = null; } }
+  log(`${c.name} was taken back out of the box.`, 'info', 'boxes'); return true;
+}
+function setTrait(name, trait) {
+  const c = cats.find(x => x.name === name); if (!c || !TRAITS[trait]) return false;
+  c.trait = trait; c.tr = TRAITS[trait]; log(`${c.name} is now ${c.tr.label}.`, 'info'); return true;
+}
+function setSolUsd(v) { if (v > 0) CONFIG.SOL_USD = v; }
+function setLabMc(v) { if (v > 0) { CONFIG.LAB_MC_USD = v; const st = STAGES.find(s => s.key === 'lab'); if (st) st.mc = v; } }
 function step(dt) {
   if (paused) return;
   T += dt; simMin += dt;
@@ -688,7 +700,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, setMarketCapUsd, setPaused, dropFees, setReleased, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, setMarketCapUsd, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setLabMc, TRAITS, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;

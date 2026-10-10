@@ -28,6 +28,7 @@ const DEFAULTS = {
   distribute: {},         // { catName: true/false } — unchecked cats get no wages
   paused: false,
   simulateFees: true,     // keep the simulated fee drops until real fees flow
+  solUsdManual: false,    // true = keep the SOL price you typed, ignore the live feed
 };
 let config = { ...DEFAULTS };
 try { config = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) }; } catch (_) {}
@@ -35,11 +36,19 @@ const saveConfig = () => fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, nu
 
 // ---------- engine ----------
 const logs = [];
-const engine = createEngine({ ...config, SIMULATE_FEES: config.simulateFees }, { onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); } });
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
+const newEngine = () => createEngine({ ...config, SIMULATE_FEES: config.simulateFees }, { onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); } });
+let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
 engine.setPaused(config.paused);
 for (const r of engine.ROSTER) if (!(r[0] in config.distribute)) config.distribute[r[0]] = true;
+const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
+// Reset: a brand-new box at day zero. Config (CA, links, economy) is kept; cats, ledger, releases and market history are wiped.
+function resetBox() {
+  logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
+  if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
+  saveState(); console.log('box reset');
+}
 
 const TICK = 0.25;
 let last = Date.now();
@@ -55,7 +64,7 @@ async function pollMarket() {
   try {
     const m = await market.fetchToken(config.CA);
     mkt = { ok: true, ...m, at: Date.now(), err: null };
-    if (m.solUsd) config.SOL_USD = m.solUsd;
+    if (m.solUsd && !config.solUsdManual) { config.SOL_USD = m.solUsd; engine.setSolUsd(m.solUsd); }
     engine.setMarketCapUsd(m.mcapUsd);
   } catch (e) { mkt = { ...mkt, ok: false, err: String(e.message || e) }; }
 }
@@ -72,7 +81,7 @@ async function pollBalances() {
 setInterval(pollBalances, 60000); pollBalances();
 
 // ---------- persistence ----------
-setInterval(() => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } }, 30000);
+setInterval(saveState, 30000);
 
 // ---------- http (no framework: Node's built-in server) ----------
 function send(res, status, body, type = 'application/json', extra = {}) {
@@ -112,13 +121,17 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/config' && req.method === 'POST') {
         for (const k of ['CA', 'BUY_URL', 'CHART_URL', 'X_URL', 'TG_URL']) if (k in b) config[k] = String(b[k]).trim();
         for (const k of ['SOL_USD', 'LAB_MC_USD', 'feeShare', 'sellCapPct', 'buyPct']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
-        config.simulateFees = !!b.simulateFees;
+        config.simulateFees = !!b.simulateFees; config.solUsdManual = !!b.solUsdManual;
+        engine.setSolUsd(config.SOL_USD); engine.setLabMc(config.LAB_MC_USD);
         for (const r of engine.ROSTER) config.distribute[r[0]] = !!b['dist_' + r[0]];
         saveConfig(); pollMarket(); return redirect(res, '/admin?msg=saved');
       }
       if (p === '/admin/pause' && req.method === 'POST') { config.paused = !config.paused; engine.setPaused(config.paused); saveConfig(); return redirect(res, '/admin?msg=' + (config.paused ? 'paused' : 'resumed')); }
       if (p === '/admin/fees' && req.method === 'POST') { const n = Number(b.sol); if (n > 0) engine.dropFees(n); return redirect(res, '/admin?msg=fees+dropped'); }
       if (p === '/admin/release' && req.method === 'POST') { if (b.name) engine.setReleased([b.name]); return redirect(res, '/admin?msg=released'); }
+      if (p === '/admin/unrelease' && req.method === 'POST') { const ok = b.name && engine.unrelease(b.name); return redirect(res, '/admin?msg=' + (ok ? 'taken+out' : 'not+in+the+box')); }
+      if (p === '/admin/trait' && req.method === 'POST') { const ok = b.name && engine.setTrait(b.name, b.trait); return redirect(res, '/admin?msg=' + (ok ? 'trait+changed' : 'no+change')); }
+      if (p === '/admin/reset' && req.method === 'POST') { if (b.confirm !== 'RESET') return redirect(res, '/admin?msg=type+RESET+to+confirm'); resetBox(); return redirect(res, '/admin?msg=box+reset+to+day+zero'); }
       if (p === '/admin/wallets/generate' && req.method === 'POST') {
         const ws = wallets.load(); if (ws.ready) return redirect(res, '/admin?msg=wallets+already+set');
         return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html');
