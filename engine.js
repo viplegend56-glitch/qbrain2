@@ -77,6 +77,8 @@ const EXC = { x: M(5.7), y: M(10.77) };                                        /
 const CASINO = { x: M(5.7), y: M(8.27) };                                     // the casino, above the exchange on the left edge
 const SLOTS = [-0.55, 0, 0.55].map(dy => [CASINO.x - 1.0, CASINO.y + dy]);          // three slot machines against the wall, facing the plaza
 const TABLE = { x: CASINO.x + 0.25, y: CASINO.y + 1.4, r: 0.42 };                  // the card table, the dealer behind it on the wall side
+const DOCK = { x: M(8.3), y: M(16.6) }; // the sweeper bots' charging pad, halfway between the yard and the heater
+const DOCK_SLOTS = [[DOCK.x - 0.32, DOCK.y + 0.1], [DOCK.x + 0.32, DOCK.y - 0.1]]; // two bays on the pad
 const CASINO_SPOTS = [...SLOTS.map(q => [CASINO.x - 0.25, q[1]]), [TABLE.x + 0.75, TABLE.y - 0.32], [TABLE.x + 0.75, TABLE.y + 0.32]]; // where a cat stands to play
 const EXC_DESKS = [[EXC.x - 0.85, EXC.y - 0.45], [EXC.x - 0.85, EXC.y + 0.45]];     // two trading desks against the wall
 const EXC_SPOTS = EXC_DESKS.map(q => [EXC.x - 0.05, q[1]]);                          // the stools in front of them
@@ -124,6 +126,7 @@ const OBST = [
   { x: BAZ.x - 0.2, y: 5.0, w: BAZ.w + 0.4, d: BAZ.y - 5.0 },                 // and behind the shop
   ...BINS.map(([bx, by]) => ({ x: bx - 0.22, y: by - 0.22, w: 0.44, d: 0.44 })),
   { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 },    // treasury
+  { x: DOCK.x - 0.6, y: DOCK.y - 0.5, w: 1.2, d: 1.0, dock: true }, // the charging pad: the bots' own, cats go round
   { x: LOFT.x - 0.12, y: 5.0, w: LOFT.w + 0.24, d: LOFT.y + 0.06 - 5.0 }, // the bunks' back wall, and the slot behind it
   { x: LOFT.x - 0.12, y: LOFT.y, w: 0.14, d: LOFT.d + 0.06 },             // the bunks' side wall: in by the open front only
   { x: BAZ.x - 0.1, y: BAZ.y - 0.1, w: BAZ.w + 0.2, d: BAZ.d + 0.2 }, // the shop stalls
@@ -137,6 +140,7 @@ let steerSelf = null; // who is being steered right now, so the circle can let i
 function pushOut(px, py, m) {
   let fx = 0, fy = 0, best = 0, who = -1;
   for (let i = 0; i < OBST.length; i++) { const o = OBST[i];
+    if (o.dock && steerSelf && steerSelf.bot) continue; // the pad is the bots' to roll onto
     const nx = clamp(px, o.x, o.x + o.w), ny = clamp(py, o.y, o.y + o.d); let dx = px - nx, dy = py - ny, dd = Math.hypot(dx, dy);
     if (dd === 0) { // inside: leave by the nearest side
       const l = px - o.x, r = o.x + o.w - px, t = py - o.y, b = o.y + o.d - py, mn = Math.min(l, r, t, b);
@@ -149,6 +153,7 @@ function pushOut(px, py, m) {
     const dx = px - cx, dy = py - cy, dd = Math.hypot(dx, dy) || 0.001;
     if (dd < r + m) { const f = clamp((r + m - dd) / m, 0, 2); fx += dx / dd * f; fy += dy / dd * f; if (f > best) { best = f; who = 1000 + i; } }
   }
+  for (const q of board.tasks) { if (q.x == null || (steerSelf && steerSelf.task === q.id)) continue; const dx = px - q.x, dy = py - q.y, dd = Math.hypot(dx, dy) || 0.001; if (dd < 0.3 + m) { const f = clamp((0.3 + m - dd) / m, 0, 2); fx += dx / dd * f; fy += dy / dd * f; if (f > best) { best = f; who = 3000; } } } // nothing walks through what is lying on the floor, except the cat going for it
   if (steerSelf && steerSelf.bot) { // the sweeper bots also keep out of every place the cats use: the yard, the arena, the stools, the consoles, the queues
     if (!placeSpots) nearPlace(0, 0);
     for (let i = 0; i < placeSpots.length; i++) { const [cx, cy, r] = placeSpots[i]; const dx = px - cx, dy = py - cy, dd = Math.hypot(dx, dy) || 0.001;
@@ -370,7 +375,7 @@ function nearPlace(x, y) {
     [ARENA.x, ARENA.y, ARENA.r + 0.6], ...EXC_SPOTS.map(q => [q[0], q[1], 0.8]), ...CASINO_SPOTS.map(q => [q[0], q[1], 0.8]), [VENT.x + 0.83, VENT.y + 0.65, 1.1], [TRAYS.x - 0.9, TRAYS.y + 1.7, 1.7], [LOFT.x + 1.05, LOFT.y + 0.65, 1.4],
     [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2, 1.9], [FRIDGE.x + 0.9, FRIDGE.y + 1.1, 1.4], [VAULT.x, VAULT.y, 1.0],
     [CRY.x - 3.6, CRY.y - 3.6, 1.4], // the bit of floor the countdown over the beacon hangs in front of on screen, so nothing hides behind the clock
-    [DOCK.x, DOCK.y, 0.9],
+    [DOCK.x, DOCK.y, 1.1],
   ];
   for (const [px, py, r] of placeSpots) if (Math.hypot(x - px, y - py) < r) return true;
   return false;
@@ -381,7 +386,6 @@ const board = { tasks: [], done: [], seq: 0, next: 0, badge: null, badgeCool: 0 
 const FLAG_COOL = 600, FLAG_AFTER = 300, BOARD_MAX = 3; // the badge shows once something has lain untouched for five minutes; a flag hides it for ten; never more than three things out at once
 // deliveries: a drone comes in high over the harbour side, drops down over a clear bit of the ring, leaves the thing and climbs out again
 const deliveries = []; let deliverySeq = 0;
-const DOCK = { x: M(9.3), y: M(16.8) }; // the sweeper bots' charging pad, left of the heater
 function skyPoint() { return Math.random() < 0.5 ? [BLK + rand(2.5, 5), rand(5, BLK)] : [rand(5, BLK), BLK + rand(2.5, 5)]; }
 function sendDrone(kind) {
   if (board.tasks.length + deliveries.filter(d => d.state !== 'out').length >= BOARD_MAX) return null; // three things out is the limit, counting what is on its way
@@ -410,22 +414,21 @@ function stepDeliveries(dt) {
   }
 }
 // sweeper bots: two squat tracked bots that trundle round the ring sweeping, with the odd trip back to the dock to charge
-const bots = []; let botSeq = 0, nextBot = 0;
-function quietRing() { return !meeting.on && cats.filter(c => !asleep(c) && Math.hypot(c.x - CRY.x, c.y - CRY.y) < 6.5).length < 3; }
+const bots = []; let botSeq = 0;
+function makeBot(i) { return { id: 'B' + (++botSeq), bot: true, bay: i, x: DOCK_SLOTS[i][0], y: DOCK_SLOTS[i][1], tx: DOCK_SLOTS[i][0], ty: DOCK_SLOTS[i][1], state: 'docked', born: T, leaveAt: T + rand(20, 90) + i * 60, face: i ? -1 : 1, slide: 0, pauseT: 0, ph: Math.random() * 6, brush: 0 }; }
 function stepBots(dt) {
-  if (!nextBot) nextBot = T + rand(60, 120);
-  if (T >= nextBot) { nextBot = T + rand(30, 70); if (bots.length < 2) { const sp = wanderSpot(); bots.push({ id: 'B' + (++botSeq), bot: true, x: DOCK.x, y: DOCK.y, tx: sp[0], ty: sp[1], state: 'roam', born: T, leaveAt: T + rand(600, 1200), face: 1, slide: 0, pauseT: 0, ph: Math.random() * 6, brush: 0 }); } }
-  for (let i = bots.length - 1; i >= 0; i--) {
-    const b = bots[i];
-    if (b.state === 'roam' && T > b.leaveAt) { b.state = 'home'; b.tx = DOCK.x; b.ty = DOCK.y; b.slide = 0; b.pauseT = 0; }
+  while (bots.length < 2) bots.push(makeBot(bots.length));
+  for (const b of bots) {
+    if (b.state === 'docked') { if (T > b.leaveAt) { const sp = wanderSpot(); b.state = 'roam'; b.tx = sp[0]; b.ty = sp[1]; b.slide = 0; b.leaveAt = T + rand(600, 1200); } continue; }
+    if (b.state === 'roam' && T > b.leaveAt) { b.state = 'home'; b.tx = DOCK_SLOTS[b.bay][0]; b.ty = DOCK_SLOTS[b.bay][1]; b.slide = 0; b.pauseT = 0; }
     if (b.pauseT > 0) { b.pauseT -= dt; b.brush += dt * 7; continue; }
     const dist = Math.hypot(b.tx - b.x, b.ty - b.y);
-    if (dist < 0.1) { if (b.state === 'home') { bots.splice(i, 1); continue; } const sp = wanderSpot(); b.tx = sp[0]; b.ty = sp[1]; b.pauseT = rand(2, 6); b.slide = 0; continue; }
+    if (dist < 0.08) { if (b.state === 'home') { b.state = 'docked'; b.x = b.tx; b.y = b.ty; b.face = b.bay ? -1 : 1; b.leaveAt = T + rand(120, 240); continue; } const sp = wanderSpot(); b.tx = sp[0]; b.ty = sp[1]; b.pauseT = rand(2, 6); b.slide = 0; continue; }
     const [nx, ny, vx, vy] = steerStep(b.x, b.y, b.tx, b.ty, 0.5, dt, b); const sdx = vx - vy; if (Math.abs(sdx) > 0.05) b.face = sdx > 0 ? 1 : -1; b.x = nx; b.y = ny; b.brush += dt * 10;
-    if (!b.stuckP || T - b.stuckP[2] > 3) { // wedged: turn round, then give up and go home (or vanish into the dock)
+    if (!b.stuckP || T - b.stuckP[2] > 3) { // wedged: turn round, then give the trip up
       if (b.stuckP && Math.hypot(b.x - b.stuckP[0], b.y - b.stuckP[1]) < 0.3) { b.slide = -(b.slide || 1); b.stuckN = (b.stuckN || 0) + 1; } else b.stuckN = 0;
       b.stuckP = [b.x, b.y, T];
-      if (b.stuckN >= 3) { if (b.state === 'home') { bots.splice(i, 1); continue; } b.state = 'home'; b.tx = DOCK.x; b.ty = DOCK.y; b.slide = 0; b.stuckN = 0; }
+      if (b.stuckN >= 3) { b.stuckN = 0; if (b.state === 'home') { b.state = 'docked'; b.x = b.tx; b.y = b.ty; b.leaveAt = T + rand(120, 240); } else { b.state = 'home'; b.tx = DOCK_SLOTS[b.bay][0]; b.ty = DOCK_SLOTS[b.bay][1]; b.slide = 0; } }
     }
   }
 }
@@ -1430,7 +1433,7 @@ function restoreFrom(snap) {
   if (snap.days) { days.length = 0; days.push(...snap.days); }
   if (snap.today) dayCur = snap.today;
   if (snap.lessons) { lessons.length = 0; lessons.push(...snap.lessons); }
-  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
+  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).slice(0, BOARD_MAX).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
   if (snap.weather) { wxKey = snap.weather.key; wxNext = snap.weather.next; wxUntil = snap.weather.until; wxDur = snap.weather.dur; Object.assign(wx, snap.weather.wx); }
 }
 };
