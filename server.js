@@ -27,6 +27,7 @@ const DEFAULTS = {
   QI_MINT: process.env.QI_MINT || '',   // $QI: what the lab pays. The treasury wallet holds the supply.
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
+  PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: true, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; under `min` the treasury refills it
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
@@ -66,7 +67,7 @@ const hooks = {
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
-engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery((config.payoutEveryMin || 20) * 60);
+engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery((config.payoutEveryMin || 20) * 60); engine.setPriceMul(config.PRICE_MUL || 1);
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
   logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
@@ -370,10 +371,11 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       if (p === '/admin/config') {
         for (const k of ['CA', 'X_URL', 'QI_MINT']) if (k in b) config[k] = String(b[k]).trim();
-        for (const k of ['sellCapPct', 'buyPct', 'slippageBps', 'QI_SOL', 'aiStudyGapSec', 'LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'payoutEveryMin']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        for (const k of ['sellCapPct', 'buyPct', 'slippageBps', 'QI_SOL', 'aiStudyGapSec', 'LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'payoutEveryMin', 'PRICE_MUL']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        config.PRICE_MUL = Math.max(0.1, Math.min(20, config.PRICE_MUL || 1));
         if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.payoutEveryMin = Math.max(5, config.payoutEveryMin || 20);
         if ('gasFloor' in b || 'gasMin' in b || 'gasForm' in b) { const g = config.gas; g.auto = !!b.gasAuto; if (b.gasFloor !== '' && b.gasFloor != null) g.floor = Math.max(0.001, Number(b.gasFloor)); if (b.gasMin !== '' && b.gasMin != null) g.min = Math.max(0.0005, Math.min(g.floor, Number(b.gasMin))); }
-        engine.setSimulateFees(simulateFees()); engine.setQiConfig(0, config.QI_SOL); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery(config.payoutEveryMin * 60);
+        engine.setSimulateFees(simulateFees()); engine.setQiConfig(0, config.QI_SOL); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery(config.payoutEveryMin * 60); engine.setPriceMul(config.PRICE_MUL);
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved');
       }
       if (p === '/admin/auto') {

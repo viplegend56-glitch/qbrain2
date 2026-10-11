@@ -194,6 +194,7 @@ function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs
     </div>
     <div class="row3">
       <div><label>Fallback SOL price of one $QI (used by the box's own sells until the chart is read; 0 = built-in)</label><input type="number" step="any" min="0" name="QI_SOL" value="${esc(config.QI_SOL || 0)}"></div>
+      <div><label>price multiplier: every price in the box times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
       <div><label>payout timer: pay everything owed every N minutes (the site shows the countdown)</label><input type="number" step="1" min="5" name="payoutEveryMin" value="${esc(config.payoutEveryMin || 20)}"></div>
       <div><label>AI study notes: seconds between AI-written notes (0 = the model writes every one; needs LLM_API_KEY)</label><input type="number" step="1" min="0" name="aiStudyGapSec" value="${esc(config.aiStudyGapSec || 0)}"></div>
       <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="hidden" name="gasForm" value="1"><input type="checkbox" name="gasAuto" ${config.gas && config.gas.auto ? 'checked' : ''}> <b>Auto gas</b></label><small class="mut">a cat under the minimum is refilled to the floor from the treasury (one real transfer, at most every 10 min per cat)</small></div>
