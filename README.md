@@ -51,7 +51,7 @@ Paste the contract address into `/admin` → Token → CA, add the X link, Save.
 
 ## Still to build
 - the cats' own trades and living payments as real on-chain transfers (today they are mirrored in the box only; Distribute and Sell are real)
-- the lab on real quantum hardware (today every job runs on the built-in simulator)
+- the lab on real quantum hardware (today every job runs on the built-in statevector simulator: random circuits, Grover, the order-finding step of Shor, noisy GHZ calibration, 2–8 qubits, 1,024 shots drawn from the true distribution)
 
 ## Files
 - `server.js` — http server, loop, admin routes, autopilot

@@ -492,7 +492,7 @@ function stepBoard(dt) {
 // ---- the recap: one record per day, with the meeting and everything notable that happened ----
 const days = [];
 let dayCur = null;
-const snapCat = c => ({ earned: c.earned, jobs: c.qjobs || 0, tasks: c.tasks || 0, sold: c.sold, bought: c.bought, spent: c.upkeep || 0, meetings: c.meetings || 0, lvl: c.lvl || 1, xp: c.xp || 0 });
+const snapCat = c => ({ earned: c.earned, qi: c.qiEarned || 0, jobs: c.qjobs || 0, tasks: c.tasks || 0, sold: c.sold, bought: c.bought, spent: c.upkeep || 0, meetings: c.meetings || 0, lvl: c.lvl || 1, xp: c.xp || 0 });
 function dayStart() {
   dayCur = { day: dayNo(), startT: T, fees0: stats.fees, wages0: stats.wages, upkeep0: stats.upkeep, sold0: stats.sold, bought0: stats.boughtBack, jobs0: stats.circuits, mcapStart: mcapUsd(), meeting: { held: false, at: '', lines: [] }, events: [], tasks: [], cats0: {} };
   for (const c of cats) dayCur.cats0[c.name] = snapCat(c);
@@ -552,7 +552,9 @@ function chatFor(c, p) {
   if (c.wearing || p.wearing) { const w = c.wearing ? c : p, o = w === c ? p : c, it = (ITEMS.find(x => x.key === w.wearing) || {}).name; pool.push(w === c ? [`new ${it}. like it?`, `it is a lot`, `it is an investment`, `in what`] : [`that ${it}`, `what about it`, `nothing. it is a lot.`, `it is an investment`]); }
   if (stats.treasury > 0) pool.push([`treasury is ${fmtSol(stats.treasury)} SOL`, `and we get paid when`, `when they press the button`, `then run jobs so your share is bigger`]);
   if (lessons.length) pool.push([`remember what we said about ${lessons[0].text.split(':')[0]}`, `vaguely`, `${lessons[0].text}`, `right. that.`]);
-  return pool.length && Math.random() < 0.8 ? pick(pool) : pick(CHATS);
+  if (c.notes && c.notes.length && Math.random() < 0.5) pool.push(pick(LAB_CHATS).map(l => fillTalk(l, c, p)));
+  if (Math.random() < 0.5) pool.push(pick(CHATS_MORE).map(l => fillTalk(l, c, p)));
+  return pool.length && Math.random() < 0.85 ? pick(pool) : pick(CHATS);
 }
 const CHATS = [
   ['you feel that', 'the fridge just cycled. I always feel it first', 'the box pays either way', 'does it though'],
@@ -743,6 +745,15 @@ function because(c, act, p) {
     default: return wx.rain + wx.snow > 0.3 ? 'too wet to do anything else' : 'nothing urgent, so it naps';
   }
 }
+// fills the slots in a line of talk from what the cat has actually done
+function fillTalk(line, c, p) {
+  const r = c.lastRun || { nq: 3, bits: '000', shots: 1024, extra: {} }, x = r.extra || {}, n = c.notes && c.notes[0], last = research.find(e => e.kind === 'problem' && e.cat === c.name);
+  const idx = topicIdx(c), topic = CURRICULUM[idx][1];
+  return line.replace(/\{mode\}/g, '|' + r.bits + '⟩').replace(/\{nq\}/g, r.nq).replace(/\{shots\}/g, (r.shots || 1024).toLocaleString('en-US')).replace(/\{ladder\}/g, idx + 1).replace(/\{topic\}/g, topic)
+    .replace(/\{note\}/g, n ? n.text : 'nothing yet').replace(/\{q\}/g, last ? last.q : 'the order of 7 mod 15').replace(/\{a\}/g, last ? last.a : '4').replace(/\{fidelity\}/g, x.fidelity != null ? x.fidelity : 97).replace(/\{heavy\}/g, x.heavy != null ? x.heavy : 70)
+    .replace(/\{bunk\}/g, fmtSol(costOf(BUNK, c))).replace(/\{lvl\}/g, c.lvl || 1).replace(/\{title\}/g, lvlTitle(c)).replace(/\{fees\}/g, fmtSol(stats.fees)).replace(/\{why\}/g, c.grudgeWhy || 'you know what you did').replace(/\{lesson\}/g, lessons[0] ? lessons[0].text : 'nothing, apparently')
+    .replace(/\{lost\}/g, fmtQ(stats.lostPool)).replace(/\{qi\}/g, fmtQi(c.qi || 0)).replace(/\{p\}/g, p ? p.name : 'you');
+}
 function thought(c, act, p) {
   if (act === 'idle' && wx.snow > 0.3) return pick(['snow again', 'the box is the only dry thing']);
   if (act === 'idle' && wx.rain > 0.3) return pick(['wet fur is the worst', 'waiting out the rain', 'the box is dry at least']);
@@ -761,7 +772,7 @@ function thought(c, act, p) {
     if (c.grudgeOn) own.push(`${(byId(c.grudgeOn) || {}).name || 'somebody'} is going to hear about it`);
     if (own.length) return pick(own);
   }
-  return pick(TH[act] || TH.idle).replace('{p}', p ? p.name : 'someone');
+  return fillTalk(pick(TH[act] || TH.idle), c, p);
 }
 function decide(c) {
   releaseTask(c); // whatever it was holding goes back on the board if it never finished it
@@ -877,13 +888,13 @@ function finish(c, p) {
     }
     placeStats[st].visits++; c.coh = clamp(c.coh - 0.06);
     const slipped = Math.random() < j.risk * (1 - c.coh * 0.5) / (1 + sk * 0.35); // a coherent cat makes fewer mistakes, and so does a practised one
-    const bits = Array.from({ length: nq }, () => Math.random() < 0.5 ? '0' : '1').join(''), job = 'q-' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+    const run = runCircuit(j.kind, nq), bits = run.bits, job = 'q-' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'); run.job = job; c.lastRun = run;
     if (!slipped) {
-      c.qjobs++; c.qwork += diff; c.qnq += nq; c.qmax = Math.max(c.qmax || 0, nq); learn(c, j.kind, 1); if (st === 'lab') { placeStats.lab.circuits++; stats.circuits++; stats.lastJob = { name: c.name, nq, bits, job, kind: j.kind, t: T }; }
+      c.qjobs++; c.qwork += diff; c.qnq += nq; c.qmax = Math.max(c.qmax || 0, nq); learn(c, j.kind, 1); if (st === 'lab') { placeStats.lab.circuits++; stats.circuits++; stats.lastJob = { name: c.name, nq, bits, job, kind: j.kind, t: T, desc: run.desc }; }
       did(c, `ran a ${nq}-qubit ${j.kind} job (${job}) → |${bits}⟩`);
       gainXp(c, 3 + nq * 1.5);
-      if (st === 'lab') studySession(c, { kind: j.kind, nq, bits, job });
-      const receipt = `${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): 1,024 shots, most common result |${bits}\u27E9.`;
+      if (st === 'lab') studySession(c, run);
+      const receipt = `${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): ${run.desc}; ${run.shots.toLocaleString('en-US')} shots, most common result |${bits}\u27E9 at ${run.top[0] ? run.top[0].pct : 0}%.`;
       if (pay > 0) {
         stats.qiPool -= pay; c.qi += pay; c.qiEarned += pay; stats.qiPaid += pay; placeStats[st].qi = (placeStats[st].qi || 0) + pay;
         floatText(c, '+' + fmtQi(pay) + ' ' + QI, '#C4B2FF'); payFX(c);
@@ -1106,14 +1117,14 @@ function setThought(name, text) { const c = cats.find(x => x.name === name); if 
 // ---- the meeting, when no AI is writing it: every line is built from what actually happened since the last one. Beats are shuffled, so no two meetings read the same.
 function meetBeats() {
   const here = cats.filter(c => c.act === 'meet' && c.state === 'act'), any = () => pick(here) || pick(cats), not = x => pick(here.filter(c => c !== x)) || any(), nm = c => c ? c.name : 'somebody';
-  const d0 = dayCur ? dayCur.cats0 : {}, today = c => ({ jobs: (c.qjobs || 0) - ((d0[c.name] || {}).jobs || 0), tasks: (c.tasks || 0) - ((d0[c.name] || {}).tasks || 0), earned: c.earned - ((d0[c.name] || {}).earned || 0) });
+  const d0 = dayCur ? dayCur.cats0 : {}, today = c => ({ jobs: (c.qjobs || 0) - ((d0[c.name] || {}).jobs || 0), tasks: (c.tasks || 0) - ((d0[c.name] || {}).tasks || 0), earned: c.earned - ((d0[c.name] || {}).earned || 0), qi: (c.qiEarned || 0) - ((d0[c.name] || {}).qi || 0) });
   const byJobs = here.slice().sort((a, b) => today(b).jobs - today(a).jobs), top = byJobs[0], lazy = byJobs[byJobs.length - 1];
   const byTasks = here.slice().sort((a, b) => today(b).tasks - today(a).tasks), tasker = byTasks[0];
   const byEarned = cats.slice().sort((a, b) => b.earned - a.earned)[0], thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
   const feesSince = stats.fees - (meeting.fees0 || 0);
   const ev = k => dayCur ? dayCur.events.filter(e => e.kind === k) : [], open = board.tasks.filter(t => t.status === 'open');
   const trait = c => c ? c.trait : 'patient';
-  const plan = c => ({ degen: pick(['buy the first green candle', 'ape whatever pumps', 'arena at noon, lab after']), patient: pick(['wait for the dip and buy it', 'hold and run jobs', 'nothing until the chart settles']), loyal: pick(['hold. always hold.', 'never sell, run circuits', 'eat, work, hold']), greedy: pick(['take profit at eight percent', 'scalp the morning', 'lab until the fee pool fills, then sell a slice']) })[trait(c)];
+  const plan = c => ({ degen: pick(['arena at noon, lab after', 'the casino, then regret, then the lab', 'bigger circuits, bigger pay']), patient: pick(['hold and run jobs', 'the ladder, then the diner, then the bunks', 'nothing rash. circuits.']), loyal: pick(['hold. always hold.', 'never sell, run circuits', 'eat, work, hold']), greedy: pick(['take profit at eight percent', 'lab until the $QI stacks, then sell a slice', 'chores for SOL, lab for $QI, both']) })[trait(c)];
   const L = (c, text) => ({ who: nm(c), text });
   const beats = [];
   // the numbers, always first
@@ -1122,11 +1133,12 @@ function meetBeats() {
   { const a = any(), b = not(a); beats.push([L(a, `${fmtSol(stats.wages)} SOL paid out in wages since the box woke up. ${fmtSol(stats.treasury)} SOL still in the treasury.`), L(b, stats.treasury < 0.002 ? pick(['so work, then', 'the pool is thin. smaller circuits, more of them.', 'that is one meal between all of us']) : pick(['payday when they press the button', 'run jobs. the share is per job.', 'keep it in the box']))]); }
   const middle = [];
   // who worked
-  if (top && lazy && top !== lazy) middle.push([L(any(), `${top.name} ran ${today(top).jobs} jobs today for ${fmtSol(today(top).earned)} SOL. ${lazy.name} ran ${today(lazy).jobs}.`), L(lazy, pick(['I was recohering', 'the consoles were full', 'I did the chores. somebody has to', 'quality over quantity'])), L(top, pick(['the fee pool pays per job. just saying.', 'the readout was blurry by the end', 'one more and I would have decohered']))]);
+  if (top && lazy && top !== lazy) middle.push([L(any(), `${top.name} ran ${today(top).jobs} jobs today for ${fmtQi(today(top).qi)} ${QI}. ${lazy.name} ran ${today(lazy).jobs}.`), L(lazy, pick(['I was recohering', 'the consoles were full', 'I did the chores. somebody has to', 'quality over quantity'])), L(top, pick(['the lab pays per job. just saying.', 'the readout was blurry by the end', 'one more and I would have decohered', 'topic ' + (topicIdx(top) + 1) + ' on the ladder. just saying.']))]);
   // the chores
   if (dayCur && dayCur.tasks.length) middle.push([L(any(), `${dayCur.tasks.length} thing${dayCur.tasks.length === 1 ? '' : 's'} dealt with today. ${tasker && today(tasker).tasks ? tasker.name + ' did ' + today(tasker).tasks + ' of them.' : ''}`), L(not(tasker), pick(['the courier bot keeps dumping parcels on us', 'the tourists are the problem', 'who leaves a scooter in the middle of the plaza', 'the bins are full. where does it go after the bins']))]);
   // the lab notebooks
   { const studied = here.filter(c => c.notes && c.notes[0]).sort((a, b) => ((b.study && b.study.i) || 0) - ((a.study && a.study.i) || 0))[0]; if (studied) { const n = studied.notes[0]; middle.push([L(studied, `lab notes. ${n.title}: ${n.text}`), L(not(studied), pick(['write that down', 'is that right?', 'the simulator says so', 'read it back tomorrow', 'and the real chip would disagree']))]); }
+    if (studied) { const key = (studied.notes[0] || {}).topic, pairs = LAB_MEET[key]; if (pairs) { const pr = pick(pairs); middle.push([L(studied, fillTalk(pr[0], studied)), L(not(studied), fillTalk(pr[1], studied))]); } }
     const solved = research.filter(e => e.kind === 'problem' && e.day === dayNo()); if (solved.length) { const okN = solved.filter(e => e.ok).length; middle.push([L(any(), `${solved.length} lab problem${solved.length === 1 ? '' : 's'} today, ${okN} right. ${solved[0].cat} had the last one: ${solved[0].q}`), L(cats.find(c => c.name === solved[0].cat) || any(), solved[0].ok ? solved[0].a + '. easy.' : 'it is ' + solved[0].a + '. I know now.')]); } }
   if (open.length) middle.push([L(any(), `${open[0].title} is still lying out there. nobody?`), L(any(), pick(['tier ' + open[0].tier + '. not me.', 'after the meeting', 'I saw it. I walked round it.', 'somebody flag it']))]);
   // the casino and the arena
@@ -1143,8 +1155,10 @@ function meetBeats() {
   // what somebody remembers
   { const m = here.filter(c => c.memory && c.memory.length); if (m.length && Math.random() < 0.7) { const c = pick(m); middle.push([L(c, `still thinking about how I ${c.memory[0].text}.`), L(not(c), pick(['we know', 'let it go', 'noted. moving on.', 'that was last meeting']))]); } }
   if (lessons.length && Math.random() < 0.5) middle.push([L(any(), `last time we said: ${lessons[0].text}.`), L(any(), pick(['and?', 'still true', 'nothing changed', 'then do it']))]);
+  { const lvlcat = here.slice().sort((a, b) => (b.lvl || 1) - (a.lvl || 1))[0] || any(), fill = (line, c) => fillTalk(line, c).replace(/\{bots\}/g, bots.length * 3).replace(/\{drops\}/g, deliverySeq).replace(/\{dealt\}/g, dayCur ? dayCur.tasks.length : 0).replace(/\{upkeep\}/g, fmtSol(dayCur ? stats.upkeep - dayCur.upkeep0 : 0)).replace(/\{wages\}/g, fmtSol(dayCur ? stats.wages - dayCur.wages0 : 0)).replace(/\{sessions\}/g, dayCur ? stats.circuits - dayCur.jobs0 : 0).replace(/\{solved\}/g, research.filter(e => e.kind === 'problem' && e.ok && e.day === dayNo()).length).replace(/\{failed\}/g, research.filter(e => e.kind === 'problem' && !e.ok && e.day === dayNo()).length).replace(/\{lvlcat\}/g, lvlcat.name);
+    for (const ex of pick(MEET_EXTRA.map(x => x)).length ? [pick(MEET_EXTRA), pick(MEET_EXTRA)] : []) { let last = null; const lines = ex.map(l => { const who = last ? not(last) : any(); last = who; return L(who, fill(l, who)); }); middle.push(lines); } }
   middle.sort(() => Math.random() - 0.5);
-  for (const b of middle.slice(0, 8)) beats.push(b);
+  for (const b of middle.slice(0, 10)) beats.push(b);
   // the plan, and out
   { const a = any(), b = not(a); beats.push([L(a, `tomorrow: ${plan(a)}.`), L(b, pick(['seconded', 'overruled', 'no.', 'fine', 'and eat something'])), L(a, pick(['meeting adjourned. back to work.', 'minutes filed. lab.', 'that is all. go.']))]); }
   return beats.flat();
@@ -1215,7 +1229,7 @@ function stepMeeting(dt) {
       // script done: the circle keeps talking over itself until the timer runs out
       const n = Math.min(here.length, 1 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0)), who = here.slice().sort(() => Math.random() - 0.5).slice(0, n);
       if (!meeting.used) meeting.used = new Set();
-      for (const c of who) { let line = ''; for (let k = 0; k < 6 && (!line || meeting.used.has(line)); k++) line = Math.random() < 0.5 ? chatterLine(c) : pick(MEET_CHATTER); meeting.used.add(line); say(c, line); } // nothing said twice in one sitting
+      for (const c of who) { let line = ''; for (let k = 0; k < 6 && (!line || meeting.used.has(line)); k++) line = Math.random() < 0.4 ? chatterLine(c) : fillTalk(pick(MEET_REACT), c); meeting.used.add(line); say(c, line); } // nothing said twice in one sitting
       meeting.lineT = T + rand(12, 22);
     }
   }
@@ -1232,50 +1246,475 @@ function stepMeeting(dt) {
 }
 const benched = new Set(); // cats an admin took out stay out until they are put back
 // ---------- the research lab: every finished job is a study session on the cat's next topic, and now and then a problem the box can check ----------
+// ---------- a real statevector simulator: the circuits the cats run are actually run (2 to 8 qubits, 1,024 shots from the true distribution) ----------
+function qsim(n) {
+  const N = 1 << n, re = new Float64Array(N), im = new Float64Array(N); re[0] = 1;
+  const one = (q, a, b, c, d) => { // 2x2 gate [[a,b],[c,d]] (complex pairs [re,im]) on qubit q
+    const bit = 1 << q;
+    for (let i = 0; i < N; i++) { if (i & bit) continue; const j = i | bit;
+      const r0 = re[i], i0 = im[i], r1 = re[j], i1 = im[j];
+      re[i] = a[0] * r0 - a[1] * i0 + b[0] * r1 - b[1] * i1; im[i] = a[0] * i0 + a[1] * r0 + b[0] * i1 + b[1] * r1;
+      re[j] = c[0] * r0 - c[1] * i0 + d[0] * r1 - d[1] * i1; im[j] = c[0] * i0 + c[1] * r0 + d[0] * i1 + d[1] * r1; }
+  };
+  const s2 = Math.SQRT1_2, Z0 = [0, 0], O = [1, 0];
+  const g = {
+    h: q => one(q, [s2, 0], [s2, 0], [s2, 0], [-s2, 0]),
+    x: q => one(q, Z0, O, O, Z0),
+    z: q => one(q, O, Z0, Z0, [-1, 0]),
+    t: q => one(q, O, Z0, Z0, [s2, s2]),
+    rx: (q, th) => one(q, [Math.cos(th / 2), 0], [0, -Math.sin(th / 2)], [0, -Math.sin(th / 2)], [Math.cos(th / 2), 0]),
+    p: (q, th) => one(q, O, Z0, Z0, [Math.cos(th), Math.sin(th)]),
+    cx: (c, t) => { const cb = 1 << c, tb = 1 << t; for (let i = 0; i < N; i++) { if ((i & cb) && !(i & tb)) { const j = i | tb; let x = re[i]; re[i] = re[j]; re[j] = x; x = im[i]; im[i] = im[j]; im[j] = x; } } },
+    cp: (c, t, th) => { const cb = 1 << c, tb = 1 << t, cs = Math.cos(th), sn = Math.sin(th); for (let i = 0; i < N; i++) if ((i & cb) && (i & tb)) { const r = re[i], m = im[i]; re[i] = r * cs - m * sn; im[i] = r * sn + m * cs; } },
+    flip: k => { re[k] = -re[k]; im[k] = -im[k]; }, // phase flip on one basis state (an oracle)
+    diffuse: () => { let mr = 0, mi = 0; for (let i = 0; i < N; i++) { mr += re[i]; mi += im[i]; } mr /= N; mi /= N; for (let i = 0; i < N; i++) { re[i] = 2 * mr - re[i]; im[i] = 2 * mi - im[i]; } }, // 2|s><s| - I
+    set: amps => { re.fill(0); im.fill(0); let s = 0; for (const k of amps) s++; for (const k of amps) re[k] = 1 / Math.sqrt(s); },
+    qft: () => { for (let q = n - 1; q >= 0; q--) { g.h(q); for (let k = q - 1; k >= 0; k--) g.cp(k, q, Math.PI / (1 << (q - k))); } for (let q = 0; q < n / 2; q++) { const o = n - 1 - q; for (let i = 0; i < N; i++) { const a = (i >> q) & 1, b = (i >> o) & 1; if (a === b) continue; const j = (i ^ (1 << q)) ^ (1 << o); if (j > i) { let x = re[i]; re[i] = re[j]; re[j] = x; x = im[i]; im[i] = im[j]; im[j] = x; } } } },
+    prob: k => re[k] * re[k] + im[k] * im[k],
+    sample: shots => { const counts = {}; const cum = new Float64Array(N); let s = 0; for (let i = 0; i < N; i++) { s += re[i] * re[i] + im[i] * im[i]; cum[i] = s; }
+      for (let k = 0; k < shots; k++) { const r = Math.random() * s; let lo = 0, hi = N - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < r) lo = mid + 1; else hi = mid; } counts[lo] = (counts[lo] || 0) + 1; }
+      return counts; },
+  };
+  return g;
+}
+const bitsOf = (k, n) => k.toString(2).padStart(n, '0');
+// runs one job of a kind on n qubits; returns what the lab records: the mode, the top results, and what the circuit was
+function runCircuit(kind, n) {
+  const g = qsim(n), shots = 1024, N = 1 << n; let desc = '', extra = {};
+  if (kind === 'Grover') {
+    const marked = Math.floor(Math.random() * N), iters = Math.max(1, Math.floor(Math.PI / 4 * Math.sqrt(N)));
+    for (let q = 0; q < n; q++) g.h(q);
+    for (let k = 0; k < iters; k++) { g.flip(marked); g.diffuse(); } // the oracle (a phase flip on the marked item), then the reflection about the mean
+    const counts = g.sample(shots); extra = { marked: bitsOf(marked, n), iters, hit: Math.round(100 * (counts[marked] || 0) / shots) };
+    desc = `Grover on ${n} qubits, ${N} items, marked |${extra.marked}⟩, ${iters} iteration${iters === 1 ? '' : 's'}`;
+    return finishRun(counts, n, shots, kind, desc, extra);
+  }
+  if (kind === 'Shor') {
+    // the quantum part of Shor on N=15: a register in a periodic superposition (period r = order of a mod 15), then the QFT; peaks at multiples of 2^n / r
+    const a = pick([2, 7, 8, 13, 4, 11, 14]), r = a === 4 ? 2 : (a === 11 || a === 14) ? 2 : 4, x0 = Math.floor(Math.random() * r);
+    const amps = []; for (let x = x0; x < N; x += r) amps.push(x); g.set(amps); g.qft();
+    const counts = g.sample(shots), peaks = [];
+    for (let k = 0; k < r; k++) peaks.push(bitsOf(Math.round(k * N / r) % N, n));
+    extra = { a, r, peaks, factors: r === 4 ? '3 × 5' : (a === 4 ? '3 × 5' : '3 × 5') };
+    desc = `order-finding for a = ${a} mod 15 on ${n} qubits: period ${r}, QFT, peaks at ${peaks.map(p => '|' + p + '⟩').join(' ')}`;
+    return finishRun(counts, n, shots, kind, desc, extra);
+  }
+  if (kind === 'calibration') {
+    // a GHZ state with a little noise on every qubit: the readout should be all-0 or all-1, and whatever else shows up is the noise
+    const noise = rand(0.03, 0.18);
+    g.h(0); for (let q = 1; q < n; q++) g.cx(0, q); for (let q = 0; q < n; q++) g.rx(q, rand(-noise, noise) * Math.PI);
+    const counts = g.sample(shots), good = (counts[0] || 0) + (counts[N - 1] || 0);
+    extra = { fidelity: Math.round(100 * good / shots), noise: Math.round(noise * 100) };
+    desc = `${n}-qubit GHZ with ${extra.noise}% rotation noise: ${extra.fidelity}% of shots in |${'0'.repeat(n)}⟩ or |${'1'.repeat(n)}⟩`;
+    return finishRun(counts, n, shots, kind, desc, extra);
+  }
+  // sampling: a random circuit, H and T at random on every qubit and a CX ladder, depth n
+  for (let d = 0; d < n; d++) { for (let q = 0; q < n; q++) { if (Math.random() < 0.5) g.h(q); if (Math.random() < 0.5) g.t(q); if (Math.random() < 0.5) g.rx(q, rand(0.2, 2.8)); } for (let q = d % 2; q + 1 < n; q += 2) g.cx(q, q + 1); }
+  const counts = g.sample(shots); let heavy = 0; const probs = []; for (let i = 0; i < N; i++) probs.push(g.prob(i)); const med = probs.slice().sort((a, b) => a - b)[N >> 1];
+  for (const k in counts) if (probs[k] > med) heavy += counts[k];
+  extra = { heavy: Math.round(100 * heavy / shots), depth: n };
+  desc = `random circuit, ${n} qubits, depth ${n}: ${extra.heavy}% heavy outputs`;
+  return finishRun(counts, n, shots, kind, desc, extra);
+}
+function finishRun(counts, n, shots, kind, desc, extra) {
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ bits: bitsOf(+k, n), n: v, pct: Math.round(100 * v / shots) }));
+  return { kind, nq: n, shots, bits: top[0] ? top[0].bits : '0'.repeat(n), top, desc, extra, distinct: Object.keys(counts).length };
+}
+
+// ---------- the ladder: 24 topics, six notes each, and the slots the lab fills from the circuit it just ran ----------
 const CURRICULUM = [
-  ['qubits', 'what a qubit is', ['a qubit is a 0 and a 1 at the same time until somebody looks. ran {nq} of them, 1,024 shots, |{bits}⟩ came up most.', 'a bit is a switch. a qubit is a switch that has not decided yet. {nq} undecided switches tonight.']],
-  ['superposition', 'superposition', ['superposition is not "both". it is a weighted mix, and the weights are what you compute with. my {kind} run was all weights until the readout.', 'put a qubit in superposition and every outcome is live at once. {nq} qubits, 2^{nq} outcomes, one of them wins: |{bits}⟩.']],
-  ['measurement', 'measurement', ['measuring picks one answer and throws the rest away. that is why it is 1,024 shots and not one. tonight the mode was |{bits}⟩.', 'you never see the state. you see samples of it. {nq} qubits, 1,024 samples, a histogram, and |{bits}⟩ on top.']],
-  ['gates', 'gates: X, Z and H', ['X flips. Z flips the sign. H turns a 0 into half-and-half. everything in the lab is stacks of those three.', 'H twice is nothing. did it on purpose today to check. it was nothing.']],
-  ['bloch', 'the Bloch sphere', ['one qubit is a point on a sphere. gates are rotations. |0⟩ is the top, |1⟩ the bottom, the equator is where the superpositions live.', 'thought of the Bloch sphere as a globe. the {kind} job just spun it around a few times and read the latitude.']],
-  ['entanglement', 'entanglement', ['two entangled qubits do not have their own states anymore. only the pair does. measured one, the other was already decided.', 'H on the first, CNOT to the second, and now they move together. {nq} qubits, and the first two were a pair.']],
-  ['bell', 'Bell states', ['the Bell pair reads 00 or 11, never 01 or 10. ran it: the 01 and 10 counts were just noise.', 'four Bell states, all maximally entangled, all different in a way you only see with the right measurement. learned the names today.']],
-  ['interference', 'interference', ['amplitudes can cancel. that is the whole trick: make the wrong answers cancel and the right one add up. {kind} does exactly that.', 'two paths to the same outcome can erase each other. in a classical machine they would just add. this is the part that is not a faster computer, it is a different one.']],
-  ['decoherence', 'decoherence', ['T1 is how long a qubit remembers it is excited. T2 is how long it remembers its phase. ours forget fast, which is why the box pays for coherence.', 'noise is not a bug in the simulator, it is the whole problem. a real {nq}-qubit run would have lost a few shots to decoherence.']],
-  ['calibration', 'noise and calibration', ['every gate is a little wrong. calibration measures how wrong. {kind} on {nq} qubits, and the error adds up with every gate.', 'learned what a readout error is: the qubit was |1⟩ and the detector said 0. ran the same thing 1,024 times to average it out.']],
-  ['grover', 'Grover search', ['Grover finds one item in N with about √N tries. for 1,024 items that is roughly 25, not 512.', 'the oracle marks the answer, the diffusion step amplifies it, repeat about π/4·√N times. do it one time too many and the answer starts to shrink again.']],
-  ['amplification', 'amplitude amplification', ['Grover is one case of a bigger trick: anything that makes a good state a little more likely can be pumped up quadratically.', 'you do not amplify probability directly, you amplify amplitude, and probability is amplitude squared. that is why the speed-up is a square root.']],
-  ['qft', 'the quantum Fourier transform', ['the QFT turns a pattern that repeats into a spike you can read. it is the engine inside Shor.', 'learned the QFT on {nq} qubits: a ladder of H gates and controlled rotations, and the rotations get tinier every step.']],
-  ['phase', 'phase estimation', ['phase estimation reads the angle a gate rotates by, as a binary fraction. more qubits, more digits. {nq} tonight.', 'the eigenvalue sits in the phase, the QFT pulls it out. half of quantum chemistry is this one circuit.']],
-  ['shor', 'Shor’s algorithm', ['factoring 15: pick 7, find the order of 7 mod 15 (it is 4), and gcd(7²±1, 15) hands you 3 and 5. the quantum part is the order-finding.', 'Shor on {nq} qubits is a toy, and a real one needs thousands with error correction. but the toy works, and I ran it.']],
-  ['errors', 'error correction', ['you cannot copy a qubit, so you spread one across three and vote. the repetition code fixes one bit flip. one.', 'errors in a quantum machine are continuous, not just flips, but measuring a syndrome snaps them back to a flip or a phase flip you can fix.']],
-  ['surface', 'surface codes', ['a logical qubit is a grid of physical ones with stabilizers measured over and over. the grid gets better as it gets bigger. that is the whole bet.', 'learned the distance of a code: the number of errors it takes to fool it. distance 3 fixes one. the big machines want 25 or more.']],
-  ['qaoa', 'QAOA', ['QAOA is a quantum circuit tuned by a classical loop to find a decent answer to a hard optimisation. not the best answer. a decent one, fast.', 'alternate a problem layer and a mixing layer, tune two angles per layer, measure. {kind} work sits right next to this.']],
-  ['vqe', 'VQE', ['VQE guesses a wavefunction, measures its energy, and a classical optimiser nudges the guess. chemists like it because small molecules fit on small chips.', 'the energy you measure is an average over shots, and the noise in the average is the real limit. 1,024 shots is not many.']],
-  ['volume', 'quantum volume', ['quantum volume is one number for how big a square circuit a machine can run and still get the heavy outputs more often than chance.', 'ran the heavy-output test on {nq} qubits. passing means the machine is not just making noise. the box passes because it is a simulator; the real ones work for it.']],
-  ['rb', 'randomized benchmarking', ['run random gate sequences that should undo themselves, see how often they do, and you get the error per gate. no state tomography needed.', 'the decay curve from randomized benchmarking is the honest number. everything else about a chip is marketing.']],
-  ['teleport', 'teleportation', ['teleportation moves a state, not matter: a Bell pair, two measurements, two classical bits, two corrections. the original is destroyed on the way.', 'it does not beat light speed. the two classical bits have to travel the normal way. learned that twice today.']],
-  ['qkd', 'quantum key distribution', ['send qubits in random bases; anyone listening disturbs them and the error rate gives them away. the key is the shots that matched.', 'no-cloning is what makes QKD work. you cannot copy the qubit to read it later.']],
-  ['nocloning', 'the no-cloning theorem', ['you cannot copy an unknown qubit. it falls straight out of linearity. no backups in the lab.', 'the no-cloning theorem is why error correction looks nothing like a RAID array. you spread, you do not copy.']],
+  ['qubits', 'what a qubit is', [
+    'a qubit is a 0 and a 1 at the same time until somebody looks. ran {nq} of them, {shots} shots, |{bits}⟩ came up most.',
+    'a bit is a switch. a qubit is a switch that has not decided yet. {nq} undecided switches tonight.',
+    'two numbers per qubit, and they can be negative, and they can be complex. that is the whole difference. {nq} qubits is {states} of those pairs.',
+    '{nq} qubits is not {nq} bits of information once you read it out. it is {nq} bits. the rest lives in the amplitudes and you never get it back.',
+    'wrote |0⟩ and |1⟩ on the console until it stuck. the bar is a ket. the state goes inside. {mode} is what mine said tonight.',
+    'a qubit on its own is a boring thing. {nq} of them together is {states} numbers. that is where the size comes from.',
+  ]],
+  ['superposition', 'superposition', [
+    'superposition is not "both". it is a weighted mix, and the weights are what you compute with. my {kind} run was all weights until the readout.',
+    'put a qubit in superposition and every outcome is live at once. {nq} qubits, {states} outcomes, one of them wins: {mode}.',
+    'H on |0⟩ gives half-and-half. H on |1⟩ gives half-and-minus-half. the minus is the part nobody mentions and it is the whole point.',
+    'the weights have a size and a direction. equal sizes, different directions, completely different state. learned that the hard way with the readout tonight.',
+    '{distinct} different readouts in {shots} shots. that is superposition doing its thing: the state was spread over all of them until I asked.',
+    'superposition is cheap. one H gate each. what is expensive is doing anything useful with it before it collapses.',
+  ]],
+  ['measurement', 'measurement', [
+    'measuring picks one answer and throws the rest away. that is why it is {shots} shots and not one. tonight the mode was {mode}.',
+    'you never see the state. you see samples of it. {nq} qubits, {shots} samples, a histogram, and {mode} on top.',
+    'the mode was {mode} at {pct}%. the second one was {second}. one shot tells you almost nothing. a thousand tell you the shape.',
+    'measure a qubit and it is a bit from then on. the superposition is gone and no amount of looking brings it back.',
+    'probability is amplitude squared, so a minus sign vanishes at the readout. you only see it if you make it interfere with something first.',
+    '{distinct} distinct outcomes in {shots} shots. the ones I never saw were not zero, just small. that is the part people get wrong.',
+  ]],
+  ['gates', 'gates: X, Z and H', [
+    'X flips. Z flips the sign. H turns a 0 into half-and-half. everything in the lab is stacks of those three and a CNOT.',
+    'H twice is nothing. did it on purpose today to check. it was nothing.',
+    'X is the NOT gate. Z does nothing you can see on |0⟩ or |1⟩ and everything on a superposition. that is why it took me two sessions.',
+    'a gate is a rotation of the whole state, and it has to be reversible. there is no quantum AND gate because AND throws information away.',
+    'the T gate is an eighth of a turn. it looks like nothing and it is the gate that makes the random circuits hard to fake.',
+    'every gate is a tiny matrix and the circuit is the product of them. {nq} qubits, and the product is already {states} by {states}.',
+  ]],
+  ['bloch', 'the Bloch sphere', [
+    'one qubit is a point on a sphere. gates are rotations. |0⟩ is the top, |1⟩ the bottom, the equator is where the superpositions live.',
+    'thought of the Bloch sphere as a globe. the {kind} job just spun it around a few times and read the latitude.',
+    'H is a half-turn about a tilted axis. X is a half-turn about the equator. Z is a half-turn about the pole. all the same kind of thing.',
+    'the sphere only works for one qubit. {nq} qubits do not fit on any picture; that is the honest reason nobody draws them.',
+    'a measurement reads the height on the sphere and nothing else. the longitude is the phase, and the readout never sees it.',
+    'the calibration noise is a small wobble on the sphere. {nq} small wobbles and the readout drifts. I saw it tonight.',
+  ]],
+  ['entanglement', 'entanglement', [
+    'two entangled qubits do not have their own states anymore. only the pair does. measured one, the other was already decided.',
+    'H on the first, CNOT to the second, and now they move together. {nq} qubits, and the first two were a pair.',
+    'entanglement is not a signal. nothing travels. it is just that the pair was never two things.',
+    'a product state can be written as this qubit times that qubit. an entangled one cannot. that is the whole definition and it took me a day.',
+    'most of a {nq}-qubit state space is entangled states. the ones you can write qubit by qubit are the odd ones out.',
+    'the readout of a pair is correlated, not copied. {mode} tonight: look at the first two digits and they agree more than chance.',
+  ]],
+  ['bell', 'Bell states', [
+    'the Bell pair reads 00 or 11, never 01 or 10. ran it: the 01 and 10 counts were just noise.',
+    'four Bell states, all maximally entangled, all different in a way you only see with the right measurement. learned the names today.',
+    '|Φ+⟩ is 00 plus 11. |Φ−⟩ is 00 minus 11. same readouts, opposite phase. the minus is invisible until you rotate before measuring.',
+    'CHSH: measure a Bell pair at tilted angles and the correlation comes out above 2. no classical pair of coins can do that. that is the test.',
+    'a Bell pair is the smallest thing in the lab that cannot be explained by two separate stories. everything bigger is built on it.',
+    'the {kind} run started from a Bell pair on the first two qubits. {fidelity}% of the shots agreed. the rest was the noise I added.',
+  ]],
+  ['interference', 'interference', [
+    'amplitudes can cancel. that is the whole trick: make the wrong answers cancel and the right one add up. {kind} does exactly that.',
+    'two paths to the same outcome can erase each other. in a classical machine they would just add. this is the part that is not a faster computer, it is a different one.',
+    'interference is why H twice is nothing: the two routes to |1⟩ cancel exactly. did it on the console. {shots} shots, not one |1⟩.',
+    'every quantum algorithm is a way of arranging the phases so the junk cancels. the Fourier transform does it, Grover does it, all of them.',
+    'a random circuit interferes too, it is just that nothing useful cancels. {heavy}% heavy outputs tonight is the signature.',
+    'the readout only shows the survivors. the paths that cancelled leave no trace. you have to trust the algebra that they were there.',
+  ]],
+  ['decoherence', 'decoherence', [
+    'T1 is how long a qubit remembers it is excited. T2 is how long it remembers its phase. ours forget fast, which is why the box pays for coherence.',
+    'noise is not a bug in the simulator, it is the whole problem. a real {nq}-qubit run would have lost a few shots to decoherence.',
+    'T2 is never longer than twice T1. learned why: losing the energy loses the phase too, so the phase clock runs at least as fast.',
+    'decoherence is the environment measuring your qubit without telling you. the state collapses and nobody gets the answer.',
+    'a deep circuit on a real chip is a race against T2. {nq} qubits, depth {nq}, and on real hardware the last layer would be mostly noise.',
+    'why I recohere out in the open: the same physics. a cat spread over too many things loses its phase. the beacon is a reset.',
+  ]],
+  ['calibration', 'noise and calibration', [
+    'every gate is a little wrong. calibration measures how wrong. {kind} on {nq} qubits, and the error adds up with every gate.',
+    'learned what a readout error is: the qubit was |1⟩ and the detector said 0. ran the same thing {shots} times to average it out.',
+    'GHZ on {nq} qubits with {noise}% rotation noise: {fidelity}% of shots came back right. the other {wrong}% is the noise, spread over {distinct} wrong answers.',
+    'calibration is the boring job and the most important one. a chip nobody calibrates is a random number generator with a brand name.',
+    'cross-talk: doing a gate on one qubit nudges its neighbour. you only find it by running pairs and watching the one you did not touch.',
+    'the fidelity number is the only number that matters on a spec sheet. {fidelity}% tonight on {nq} qubits. the real chips are in the nineties and fighting for every point.',
+  ]],
+  ['grover', 'Grover search', [
+    'Grover finds one item in N with about √N tries. for 1,024 items that is roughly 25, not 512.',
+    'the oracle marks the answer, the diffusion step amplifies it, repeat about π/4·√N times. do it one time too many and the answer starts to shrink again.',
+    'marked |{marked}⟩ out of {states}, {iters} iteration{iters_s}, and the readout hit it {hit}% of the time. that is the square root doing its job.',
+    'Grover does not know the answer. the oracle only says yes or no when asked. the trick is asking all {states} at once and tilting the odds.',
+    'it is a quadratic speed-up, not an exponential one. {states} items, {iters} tries instead of {half}. good, not magic.',
+    'the diffusion step is a reflection about the average. every wrong amplitude drops a little, the right one grows a lot. {iters} times tonight.',
+  ]],
+  ['amplification', 'amplitude amplification', [
+    'Grover is one case of a bigger trick: anything that makes a good state a little more likely can be pumped up quadratically.',
+    'you do not amplify probability directly, you amplify amplitude, and probability is amplitude squared. that is why the speed-up is a square root.',
+    'two reflections make a rotation. the oracle reflects, the diffuser reflects, and the state rotates toward the answer by a fixed angle each time.',
+    'the angle per step is 2·arcsin(1/√N). small N, big steps, done in one. {states} tonight meant {iters} steps.',
+    'overshoot is real. keep rotating past the answer and you rotate away from it. the {hit}% tonight is the top of the arc, not the end of it.',
+    'amplification works on any subroutine with a yes/no check. that is why half the algorithms in the ladder have a Grover step hidden inside.',
+  ]],
+  ['qft', 'the quantum Fourier transform', [
+    'the QFT turns a pattern that repeats into a spike you can read. it is the engine inside Shor.',
+    'learned the QFT on {nq} qubits: a ladder of H gates and controlled rotations, and the rotations get tinier every step.',
+    'the QFT is not a fast way to do a Fourier transform of data. you cannot read the output. it is a fast way to find a period in a state.',
+    'the smallest rotation in a {nq}-qubit QFT is π over {states_half}. on a real chip that gate is below the noise floor. you drop it and nothing changes.',
+    'the QFT on {nq} qubits is about {gates} gates. the classical FFT on the same size is a few thousand. that is the gap.',
+    'it ends with a swap of the whole register. forgot the swap once and the peaks came out mirrored. the simulator does not forgive that.',
+  ]],
+  ['phase', 'phase estimation', [
+    'phase estimation reads the angle a gate rotates by, as a binary fraction. more qubits, more digits. {nq} tonight.',
+    'the eigenvalue sits in the phase, the QFT pulls it out. half of quantum chemistry is this one circuit.',
+    'kickback: control a gate on an eigenstate and the phase lands on the control qubit instead. that is the trick the whole thing rests on.',
+    '{nq} readout qubits give {nq} binary digits of the phase. the last digit is always noisy. that is not a bug, it is the resolution.',
+    'phase estimation is Shor with the period-finding swapped for an eigenvalue. same QFT, same readout, different question.',
+    'ran it as a thought experiment on the console: a phase of 0.101 in binary comes out as |101⟩ most of the time. the rest is rounding.',
+  ]],
+  ['shor', 'Shor’s algorithm', [
+    'factoring 15: pick 7, find the order of 7 mod 15 (it is 4), and gcd(7²±1, 15) hands you 3 and 5. the quantum part is the order-finding.',
+    'Shor on {nq} qubits is a toy, and a real one needs thousands with error correction. but the toy works, and I ran it.',
+    'a = {a} mod 15, period {r}. after the QFT the peaks sat at {peaks}. read the spacing, get the period, get {factors}.',
+    'the classical half is Euclid and modular arithmetic. the quantum half is one QFT. people hear "Shor" and think the whole thing is quantum. it is not.',
+    'the period is in the spacing of the peaks, not in any one readout. you need a few shots and a continued fraction. did the fraction by paw tonight.',
+    'RSA is safe from this chip and every chip anyone has built. it is not safe from the idea. that is why the error-correction people have jobs.',
+  ]],
+  ['errors', 'error correction', [
+    'you cannot copy a qubit, so you spread one across three and vote. the repetition code fixes one bit flip. one.',
+    'errors in a quantum machine are continuous, not just flips, but measuring a syndrome snaps them back to a flip or a phase flip you can fix.',
+    'the syndrome tells you which qubit went wrong without telling you what the state is. that is the whole art: look without looking.',
+    'three qubits fix a bit flip. three more fix a phase flip. Shor’s nine-qubit code fixes both. one logical qubit, nine physical. that is the price.',
+    'the threshold: if each gate is wrong less than about one time in a hundred, adding more qubits makes things better instead of worse. the real chips just crossed it.',
+    'error correction is why {nq} noisy qubits are not {nq} useful qubits. divide by a thousand and that is the honest count.',
+  ]],
+  ['surface', 'surface codes', [
+    'a logical qubit is a grid of physical ones with stabilizers measured over and over. the grid gets better as it gets bigger. that is the whole bet.',
+    'learned the distance of a code: the number of errors it takes to fool it. distance 3 fixes one. the big machines want 25 or more.',
+    'the surface code only needs neighbours to talk to neighbours. that is why it won: it fits on a flat chip.',
+    'a distance-d patch is about 2d² qubits. distance 25 is over a thousand physical qubits for one logical one. that is the number that explains everything.',
+    'stabilizer measurements run every microsecond, forever. the decoder reads the pattern and guesses which error happened. it is a guessing game played a million times a second.',
+    'below threshold, doubling the distance squares the logical error rate. that is the curve everybody is chasing. above threshold, more qubits just means more noise.',
+  ]],
+  ['qaoa', 'QAOA', [
+    'QAOA is a quantum circuit tuned by a classical loop to find a decent answer to a hard optimisation. not the best answer. a decent one, fast.',
+    'alternate a problem layer and a mixing layer, tune two angles per layer, measure. {kind} work sits right next to this.',
+    'one layer of QAOA on max-cut already beats random. ten layers beats some classical tricks. nobody knows yet where it stops being worth it.',
+    'the angles are found by a classical optimiser that calls the quantum circuit as a black box. most of the runtime is the classical part arguing with itself.',
+    'the answer is the most common readout, not any single shot. {shots} shots, take the mode, check it classically. same loop as my sampling jobs.',
+    'barren plateaus: make the circuit deep and random and the optimiser cannot see which way is downhill. the whole field is about avoiding them.',
+  ]],
+  ['vqe', 'VQE', [
+    'VQE guesses a wavefunction, measures its energy, and a classical optimiser nudges the guess. chemists like it because small molecules fit on small chips.',
+    'the energy you measure is an average over shots, and the noise in the average is the real limit. {shots} shots is not many.',
+    'the variational principle: no guess can come out below the true ground energy. so you minimise and trust the floor.',
+    'a hydrogen molecule is two qubits after the tricks. lithium hydride is a few more. anything you would care about in a pill is thousands.',
+    'the ansatz is the shape of the guess. too simple and it cannot reach the answer. too rich and the optimiser gets lost. {nq} qubits tonight was the simple kind.',
+    'you measure the energy term by term, and a molecule has thousands of terms. that is why VQE is slow even when the circuit is short.',
+  ]],
+  ['volume', 'quantum volume', [
+    'quantum volume is one number for how big a square circuit a machine can run and still get the heavy outputs more often than chance.',
+    'ran the heavy-output test on {nq} qubits. passing means the machine is not just making noise. the box passes because it is a simulator; the real ones work for it.',
+    'heavy outputs are the readouts with above-median probability. a perfect machine gets them about 85% of the time. random noise gets 50%. tonight: {heavy}%.',
+    'quantum volume 2^n means n qubits at depth n all at once. width without depth does not count. depth without width does not count.',
+    'the number doubles every time you add one qubit and one layer and still pass. that is why it goes 64, 128, 256 and not 64, 65, 66.',
+    'a chip with a thousand noisy qubits can have a lower quantum volume than one with twenty good ones. it is a quality number, not a size number.',
+  ]],
+  ['rb', 'randomized benchmarking', [
+    'run random gate sequences that should undo themselves, see how often they do, and you get the error per gate. no state tomography needed.',
+    'the decay curve from randomized benchmarking is the honest number. everything else about a chip is marketing.',
+    'the sequences are random Cliffords with the inverse tacked on the end. a perfect chip returns |0⟩ every time. a real one decays.',
+    'the slope of the decay is the error per gate. it does not care about readout error, which is the whole reason the method exists.',
+    'two-qubit gates are ten times worse than one-qubit gates on every chip ever built. the benchmark says so in one number.',
+    'ran the idea on the console: a sequence of twenty, forty, eighty gates and the return-to-zero rate falls off a cliff. that cliff is the chip.',
+  ]],
+  ['teleport', 'teleportation', [
+    'teleportation moves a state, not matter: a Bell pair, two measurements, two classical bits, two corrections. the original is destroyed on the way.',
+    'it does not beat light speed. the two classical bits have to travel the normal way. learned that twice today.',
+    'the receiver holds garbage until the two bits arrive. then one X and one Z, maybe, and the state is there. the bits are the key.',
+    'teleportation is how a future quantum network would move qubits between chips. not by sending them, by sharing pairs ahead of time.',
+    'the no-cloning theorem is respected: the sender’s copy is gone the moment it is measured. one state, one place, always.',
+    'three qubits, a Bell pair and the one you care about. ran the idea on the console. the readout statistics on the far end matched the near end exactly.',
+  ]],
+  ['qkd', 'quantum key distribution', [
+    'send qubits in random bases; anyone listening disturbs them and the error rate gives them away. the key is the shots that matched.',
+    'no-cloning is what makes QKD work. you cannot copy the qubit to read it later.',
+    'BB84: four states, two bases, keep the shots where the bases agreed, throw the rest away. half the qubits are wasted on purpose.',
+    'an eavesdropper has to guess the basis. guess wrong, disturb the qubit, raise the error rate. above about 11% error, abort. that is the whole protocol.',
+    'QKD is not quantum encryption. it is quantum key delivery. the message itself goes over a normal line with a one-time pad.',
+    'the thing it protects against is someone recording traffic now to break it later. the key was never on the line to record.',
+  ]],
+  ['nocloning', 'the no-cloning theorem', [
+    'you cannot copy an unknown qubit. it falls straight out of linearity. no backups in the lab.',
+    'the no-cloning theorem is why error correction looks nothing like a RAID array. you spread, you do not copy.',
+    'the proof is three lines. a copier that works on |0⟩ and |1⟩ cannot work on their sum, because copying the sum is not the sum of the copies.',
+    'you can copy a known state all day. you just prepare another one. what you cannot do is copy a state you were handed and do not know.',
+    'no cloning means no measuring twice. one readout per state, ever. that is why the lab runs {shots} fresh copies, not one copy {shots} times.',
+    'end of the ladder. twenty-four topics and the last one says you cannot keep a backup of any of it. tomorrow I start again, a step deeper.',
+  ]],
 ];
+const CURR_FILL = (text, r, c) => {
+  const states = 1 << r.nq, x = r.extra || {}, top = r.top || [], second = top[1] ? '|' + top[1].bits + '⟩ at ' + top[1].pct + '%' : 'nothing else close';
+  return text.replace(/\{nq\}/g, r.nq).replace(/\{bits\}/g, r.bits).replace(/\{mode\}/g, '|' + r.bits + '⟩').replace(/\{kind\}/g, r.kind).replace(/\{shots\}/g, (r.shots || 1024).toLocaleString('en-US'))
+    .replace(/\{states\}/g, states.toLocaleString('en-US')).replace(/\{states_half\}/g, (states / 2).toLocaleString('en-US')).replace(/\{half\}/g, (states / 2).toLocaleString('en-US')).replace(/\{gates\}/g, Math.round(r.nq * (r.nq + 1) / 2))
+    .replace(/\{pct\}/g, top[0] ? top[0].pct : 0).replace(/\{second\}/g, second).replace(/\{distinct\}/g, r.distinct || 1)
+    .replace(/\{marked\}/g, x.marked || r.bits).replace(/\{iters\}/g, x.iters || 1).replace(/\{iters_s\}/g, (x.iters || 1) === 1 ? '' : 's').replace(/\{hit\}/g, x.hit != null ? x.hit : (top[0] ? top[0].pct : 0))
+    .replace(/\{a\}/g, x.a || 7).replace(/\{r\}/g, x.r || 4).replace(/\{peaks\}/g, x.peaks ? x.peaks.map(p => '|' + p + '⟩').join(' ') : '|' + r.bits + '⟩').replace(/\{factors\}/g, x.factors || '3 × 5')
+    .replace(/\{fidelity\}/g, x.fidelity != null ? x.fidelity : (top[0] ? top[0].pct : 0)).replace(/\{wrong\}/g, x.fidelity != null ? 100 - x.fidelity : 0).replace(/\{noise\}/g, x.noise != null ? x.noise : 5).replace(/\{heavy\}/g, x.heavy != null ? x.heavy : 50);
+};
+
+// ---------- problems the lab can check for itself ----------
 const PROBLEMS = [
-  () => { const N = pick([16, 64, 256, 1024]); const a = Math.round(Math.PI / 4 * Math.sqrt(N)); return { topic: 'grover', q: `how many Grover iterations to find one item in ${N}?`, a: String(a), wrong: String(a + pick([-2, -1, 1, 3])) }; },
-  () => { const n = pick([3, 4, 5, 6, 8, 10]); return { topic: 'qubits', q: `how many basis states do ${n} qubits have?`, a: String(2 ** n), wrong: String(pick([2 * n, 2 ** n / 2, 2 ** (n + 1)])) }; },
+  () => { const N = pick([16, 64, 256, 1024, 4096]); const a = Math.max(1, Math.floor(Math.PI / 4 * Math.sqrt(N))); return { topic: 'grover', q: `how many Grover iterations to find one item in ${N}? (round down)`, a: String(a), wrong: String(a + pick([-2, -1, 1, 3])) }; },
+  () => { const n = pick([3, 4, 5, 6, 8, 10, 12]); return { topic: 'qubits', q: `how many basis states do ${n} qubits have?`, a: String(2 ** n), wrong: String(pick([2 * n, 2 ** n / 2, 2 ** (n + 1), n * n])) }; },
+  () => { const n = pick([10, 12, 16, 20]); return { topic: 'qubits', q: `how many qubits hold ${(2 ** n).toLocaleString('en-US')} basis states?`, a: String(n), wrong: String(n + pick([-2, 1, 2])) }; },
   () => ({ topic: 'bell', q: 'a Bell pair |Φ+⟩: the first qubit reads 0. what does the second read?', a: '0', wrong: '1' }),
+  () => ({ topic: 'bell', q: 'a Bell pair |Ψ+⟩ (01 plus 10): the first qubit reads 1. the second?', a: '0', wrong: '1' }),
+  () => ({ topic: 'bell', q: 'how many Bell states are there?', a: '4', wrong: pick(['2', '8']) }),
+  () => ({ topic: 'bell', q: 'the classical limit in the CHSH test is 2. what does a Bell pair reach?', a: '2√2', wrong: pick(['2', '4', '√2']) }),
   () => ({ topic: 'gates', q: 'H, then H again, on |0⟩. what do you get?', a: '|0⟩', wrong: pick(['|1⟩', '|+⟩']) }),
-  () => { const n = pick([10, 12, 16]); return { topic: 'qubits', q: `how many qubits hold ${2 ** n} basis states?`, a: String(n), wrong: String(n + pick([-2, 1, 2])) }; },
-  () => ({ topic: 'shor', q: 'what is the order of 7 mod 15?', a: '4', wrong: pick(['2', '3', '8']) }),
-  () => ({ topic: 'shor', q: 'the order of 7 mod 15 is 4. which factors of 15 fall out of gcd(7²±1, 15)?', a: '3 and 5', wrong: pick(['5 and 7', '3 and 7']) }),
   () => ({ topic: 'gates', q: 'X on |1⟩ gives?', a: '|0⟩', wrong: '|1⟩' }),
-  () => ({ topic: 'entanglement', q: 'CNOT with control 1 and target 0. the target becomes?', a: '1', wrong: '0' }),
-  () => ({ topic: 'superposition', q: 'H on |0⟩, then measure. chance of reading 0?', a: '50%', wrong: pick(['100%', '25%', '0%']) }),
-  () => ({ topic: 'entanglement', q: 'a 3-qubit GHZ state from |000⟩: one H, then how many CNOTs?', a: '2', wrong: pick(['1', '3']) }),
-  () => ({ topic: 'decoherence', q: 'which time tells you how long a qubit stays excited: T1 or T2?', a: 'T1', wrong: 'T2' }),
-  () => ({ topic: 'errors', q: 'the 3-qubit repetition code corrects how many bit flips?', a: '1', wrong: pick(['2', '3']) }),
-  () => ({ topic: 'nocloning', q: 'can you copy an unknown qubit state?', a: 'no', wrong: 'yes' }),
   () => ({ topic: 'gates', q: 'Z on |+⟩ gives?', a: '|−⟩', wrong: pick(['|+⟩', '|1⟩']) }),
+  () => ({ topic: 'gates', q: 'Z on |0⟩ gives?', a: '|0⟩', wrong: pick(['|1⟩', '−|0⟩']) }),
+  () => ({ topic: 'gates', q: 'how many T gates make a Z gate?', a: '4', wrong: pick(['2', '8']) }),
+  () => ({ topic: 'gates', q: 'which gate is its own inverse: H, T or both?', a: 'H', wrong: pick(['T', 'both']) }),
+  () => ({ topic: 'shor', q: 'what is the order of 7 mod 15?', a: '4', wrong: pick(['2', '3', '8']) }),
+  () => ({ topic: 'shor', q: 'what is the order of 11 mod 15?', a: '2', wrong: pick(['4', '3']) }),
+  () => ({ topic: 'shor', q: 'the order of 7 mod 15 is 4. which factors of 15 fall out of gcd(7²±1, 15)?', a: '3 and 5', wrong: pick(['5 and 7', '3 and 7']) }),
+  () => ({ topic: 'shor', q: 'in Shor, which part is quantum: the order-finding or the gcd?', a: 'the order-finding', wrong: 'the gcd' }),
+  () => ({ topic: 'entanglement', q: 'CNOT with control 1 and target 0. the target becomes?', a: '1', wrong: '0' }),
+  () => ({ topic: 'entanglement', q: 'CNOT with control 0 and target 1. the target becomes?', a: '1', wrong: '0' }),
+  () => ({ topic: 'entanglement', q: 'a 3-qubit GHZ state from |000⟩: one H, then how many CNOTs?', a: '2', wrong: pick(['1', '3']) }),
+  () => ({ topic: 'entanglement', q: 'can entanglement send a message faster than light?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'superposition', q: 'H on |0⟩, then measure. chance of reading 0?', a: '50%', wrong: pick(['100%', '25%', '0%']) }),
+  () => ({ topic: 'superposition', q: 'H on every one of 3 qubits, then measure. chance of |111⟩?', a: '1/8', wrong: pick(['1/3', '1/2', '1/4']) }),
   () => ({ topic: 'measurement', q: 'two identical runs of the same circuit on a real chip. same readout?', a: 'not necessarily', wrong: 'always' }),
+  () => ({ topic: 'measurement', q: 'amplitude 0.6 on |1⟩. probability of reading 1?', a: '36%', wrong: pick(['60%', '6%', '0.6%']) }),
+  () => ({ topic: 'measurement', q: 'after you measure a qubit, is it still in superposition?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'decoherence', q: 'which time tells you how long a qubit stays excited: T1 or T2?', a: 'T1', wrong: 'T2' }),
+  () => ({ topic: 'decoherence', q: 'can T2 be longer than 2·T1?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'errors', q: 'the 3-qubit repetition code corrects how many bit flips?', a: '1', wrong: pick(['2', '3']) }),
+  () => ({ topic: 'errors', q: 'how many physical qubits in Shor’s nine-qubit code, per logical qubit?', a: '9', wrong: pick(['3', '7']) }),
+  () => ({ topic: 'surface', q: 'a code of distance 5 corrects how many errors?', a: '2', wrong: pick(['5', '4', '1']) }),
+  () => ({ topic: 'surface', q: 'a code of distance 3 corrects how many errors?', a: '1', wrong: pick(['3', '2']) }),
+  () => ({ topic: 'nocloning', q: 'can you copy an unknown qubit state?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'nocloning', q: 'can you copy a qubit you know is |0⟩?', a: 'yes', wrong: 'no' }),
+  () => ({ topic: 'teleport', q: 'how many classical bits does teleporting one qubit take?', a: '2', wrong: pick(['1', '0', '4']) }),
+  () => ({ topic: 'teleport', q: 'after teleportation, does the sender still have the state?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'qkd', q: 'in BB84, what fraction of the sent qubits survive the basis check, on average?', a: 'half', wrong: pick(['all', 'a quarter']) }),
+  () => ({ topic: 'qft', q: 'how many gates, roughly, is a QFT on 5 qubits: 15, 150 or 1,500?', a: '15', wrong: pick(['150', '1,500']) }),
+  () => ({ topic: 'phase', q: '4 readout qubits in phase estimation give how many binary digits of the phase?', a: '4', wrong: pick(['8', '16', '2']) }),
+  () => ({ topic: 'volume', q: 'a perfect machine gets heavy outputs about what fraction of the time: 50%, 85% or 100%?', a: '85%', wrong: pick(['50%', '100%']) }),
+  () => ({ topic: 'rb', q: 'randomized benchmarking: a sequence that should undo itself ends in which state on a perfect chip?', a: '|0⟩', wrong: pick(['|1⟩', 'a random one']) }),
+  () => ({ topic: 'grover', q: 'Grover is what kind of speed-up: quadratic or exponential?', a: 'quadratic', wrong: 'exponential' }),
+  () => ({ topic: 'amplification', q: 'two reflections make a?', a: 'rotation', wrong: pick(['reflection', 'measurement']) }),
+  () => ({ topic: 'vqe', q: 'can a VQE energy come out below the true ground energy?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'qaoa', q: 'QAOA alternates two kinds of layer. a problem layer and a?', a: 'mixing layer', wrong: pick(['readout layer', 'error layer']) }),
 ];
+
+// ---------- what the cats say about the lab: meeting beats, pair chats and thoughts, by topic ----------
+const LAB_MEET = {
+  qubits: [['a qubit is two numbers that can cancel. that is the entire pitch.', 'and a bit is one number that cannot. got it.'], ['{nq} qubits tonight. {states} amplitudes. I only ever see one.', 'the rest are shy']],
+  superposition: [['superposition is a weighted mix, not both. say it with me.', 'a weighted mix, not both'], ['every outcome live until the readout', 'like the treasury before payday']],
+  measurement: [['you never see the state. you see samples.', 'then why do we call it a readout'], ['{shots} shots and {distinct} answers. the mode was {mode}.', 'the mode is the only honest one']],
+  gates: [['H twice is nothing. tested it.', 'you spent a session proving nothing'], ['X flips, Z flips the sign, H mixes. memorise it.', 'the sign flip is invisible. that is the trap.']],
+  bloch: [['one qubit is a point on a sphere.', 'and ten?'], ['the readout reads the height on the sphere and nothing else', 'the longitude is wasted'], ['gates are rotations. all of them.', 'then the chip is a very small planetarium']],
+  entanglement: [['a pair is not two things. that is entanglement.', 'like me and my gas reserve'], ['measured one, the other was already decided', 'spooky. no. correlated.']],
+  bell: [['Bell pairs read 00 or 11, never 01 or 10', 'and the 01s we saw?'], ['noise. every 01 was noise.', 'the noise is doing a lot of work tonight'], ['CHSH above 2 means no classical story fits', 'put that on the hoarding']],
+  interference: [['make the wrong answers cancel. that is every algorithm.', 'and the chores?'], ['two paths to the same place can erase each other', 'the plaza does that to me']],
+  decoherence: [['T1 forgets the energy, T2 forgets the phase', 'and the lab forgets to pay'], ['decoherence is the room measuring you without asking', 'so is the circle']],
+  calibration: [['every gate is a little wrong. calibration is admitting it.', '{fidelity}% tonight. admitted.'], ['readout error: the qubit said 1, the detector said 0', 'the detector should run jobs then']],
+  grover: [['√N tries, not N. for {states} items that is {iters}.', 'quadratic. not magic.'], ['marked |{marked}⟩ and hit it {hit}% of the time', 'and the other {miss}%?'], ['overshoot and the answer shrinks again', 'like the casino']],
+  amplification: [['two reflections make a rotation', 'motion to reflect the treasury twice'], ['amplitude, not probability. square root, not half.', 'write it on the bunks']],
+  qft: [['the QFT turns a repeat into a spike', 'turn the chores into a spike'], ['{gates} gates on {nq} qubits. the FFT needs thousands.', 'and the readout?'], ['you cannot read the output of a QFT. you read the period.', 'then what is it for'], ],
+  phase: [['phase estimation reads an angle as binary digits', 'how many digits'], ['{nq}. the last one is always noisy.', 'like the last ten minutes of this meeting']],
+  shor: [['a = {a} mod 15, period {r}, factors {factors}', 'fifteen. we factored fifteen.'], ['the quantum half of Shor is one QFT', 'and the classical half is Euclid, who did not need a chip'], ['RSA is safe from every chip ever built', 'and not from the idea']],
+  errors: [['spread one qubit over three and vote', 'the circle does that every night'], ['one logical qubit costs nine physical ones in Shor’s code', 'and a thousand in the real ones']],
+  surface: [['distance 3 fixes one error. the big machines want 25.', 'that is a lot of qubits'], ['two d squared. distance 25 is over a thousand.', 'per logical qubit?'], ['per logical qubit.', 'oh.']],
+  qaoa: [['QAOA: a decent answer, fast. not the best one.', 'so, the chores'], ['the classical optimiser does most of the work', 'as usual']],
+  vqe: [['VQE: guess, measure, nudge, repeat', 'that is also how I sell'], ['hydrogen is two qubits after the tricks', 'and the pill?'], ['thousands.', 'right.']],
+  volume: [['heavy outputs {heavy}% tonight. perfect is 85, noise is 50.', 'we are a simulator. we cheat.'], ['quantum volume is a quality number, not a size number', 'so is the leaderboard']],
+  rb: [['random sequences that undo themselves. the decay is the error per gate.', 'the honest number'], ['two-qubit gates are ten times worse on every chip ever built', 'and the chores are ten times worse than the lab']],
+  teleport: [['two measurements, two bits, two corrections. the original is gone.', 'so not faster than light'], ['not faster than light. the bits walk.', 'everything walks here']],
+  qkd: [['anyone listening disturbs the qubits and the error rate gives them away', 'so Biscuit cannot read my notes'], ['BB84 throws half the qubits away on purpose', 'the drones do that with the parcels']],
+  nocloning: [['you cannot copy an unknown qubit. three lines of algebra.', 'no backups in the lab'], ['end of the ladder. start again tomorrow, a step deeper.', 'bring snacks']],
+};
+const LAB_CHATS = [
+  ['what are you on', '{topic}', 'I did that yesterday', 'then explain it', '{note}', 'close enough'],
+  ['the ladder is long', 'twenty-four steps', 'then it starts again', 'a step deeper, they say'],
+  ['the mode was {mode}', 'on how many shots', '{shots}', 'then it means something'],
+  ['I got one wrong tonight', 'which', '{q}', 'the answer is {a}', 'I know that now'],
+  ['the lab pays $QI, the chores pay SOL, and the diner takes SOL', 'so the lab is a detour', 'the lab is the point', 'the diner disagrees'],
+  ['{nq} qubits tonight', 'show-off', 'the fridge gave me {nq}, I did not ask', 'it never gives me more than two'],
+  ['do you actually understand {topic}', 'I wrote it down', 'that is not the same', 'it is a start'],
+  ['Grover is a square root', 'of what', 'of the number of things you are looking for among', 'so a square root of nothing, for me'],
+  ['decoherence is the room measuring you', 'then stop standing near me', 'that is not how it works', 'it is how it feels'],
+  ['calibration again?', '{fidelity}% fidelity', 'is that good', 'for a simulator it is cheating. for a chip it would be fine.'],
+  ['the problem board has three open', 'I saw', 'and?', 'and I do not know what the order of 7 mod 15 is', 'four', 'now I do'],
+  ['every note I write, the AI could write better', 'there is no AI', 'then who writes them', 'we do. badly.'],
+  ['what did you learn today', '{note}', 'say that in the meeting', 'I will say it wrong'],
+  ['superposition is not both', 'you say that every time', 'because every time somebody says both', 'both'],
+  ['the QFT ends with a swap', 'I forgot the swap once', 'and?', 'the peaks came out backwards. the console does not forgive.'],
+  ['T1 or T2', 'T2 is the phase', 'and the lab pays for?', 'coherence. same thing. different word.'],
+  ['how far up the ladder are you', 'topic {ladder}', 'I am two behind', 'then work'],
+  ['a Bell pair reads 00 or 11', 'never 01', 'unless noise', 'always noise'],
+  ['Shor on {nq} qubits is a toy', 'the toy factored fifteen', 'fifteen was already factored', 'not by a cat'],
+  ['the heavy-output test', 'heavy outputs {heavy}%', 'pass', 'we are a simulator. of course we pass.'],
+  ['I think the fridge is the smartest thing in the box', 'the fridge is a fridge', 'it runs the circuits', 'it runs our circuits. we are the smart part.', 'allegedly'],
+  ['surface codes want a thousand qubits per logical one', 'then the real machines are tiny', 'the real machines are enormous and tiny', 'that is the field in one line'],
+  ['no cloning', 'no backups', 'no backups of what', 'of anything. of us.', 'cheerful'],
+  ['teleportation is not faster than light', 'nothing here is faster than the drones', 'the drones are slow', 'exactly'],
+];
+const LAB_THOUGHTS = [
+  'the mode was {mode}. the rest was spread.', '{nq} qubits. the fridge is generous tonight.', 'one more rung on the ladder', 'topic {ladder}. the deep end soon.',
+  'the readout is samples, not the state. samples, not the state.', 'H twice is nothing. still true.', 'if the first two qubits agree it is a pair', 'write the note before I forget the number',
+  'the problem board has an open one. after this.', 'Grover tonight. square root of the trouble.', 'a QFT and a swap. the swap matters.', 'calibration is the boring one. it pays the same.',
+  'decoherence is the room looking at me', 'every gate a little wrong. add it up.', 'period four. factors three and five. again.', 'amplitudes, not probabilities. amplitudes.',
+  '{shots} shots. one mode. that is the job.', 'the lab pays $QI. the diner wants SOL. mind the gap.', 'twenty-four topics. then again, deeper.', 'the fridge hums when it is thinking. or always.',
+  'the heavy outputs are the honest ones', 'a Bell pair never reads 01. unless.', 'no cloning. no backup of this thought either.', 'the console is warm. that is the chip, not me.',
+  'I could run bigger circuits if I were more coherent', 'the note is the work. the circuit is the excuse.', 'something in the readout looked like a pattern. it was not.', 'superposition until I look. then one answer.',
+  'one problem solved, one missed. average cat.', 'the ladder only goes up. good.', 'entanglement is not a signal. nothing travels. I keep saying it.', 'phase estimation: an angle as digits. the last digit lies.',
+];
+
+// ---------- more of everything else: pair chats, thoughts, meeting beats and reactions ----------
+const CHATS_MORE = [
+  ['gas?', 'topped up this morning', 'the treasury is generous', 'the treasury is a rule, not a cat'],
+  ['the bots are in my way again', 'they are cleaning', 'they are circling', 'same thing, for a bot'],
+  ['$QI or $QCATS', 'for what', 'for the meal', '$QI. always $QI first.', 'diamond paws would not'],
+  ['how much is the bunk now', '{bunk} SOL', 'it was half that', 'the chart is up. so is rent.'],
+  ['what level are you', '{lvl}', 'and the title?', '{title}', 'sounds made up', 'it is. it still counts.'],
+  ['the circle is in ten minutes', 'I know', 'eat before', 'cannot afford before', 'then sell before'],
+  ['the drone dropped a crate on the plaza', 'tier?', 'two', 'then not me'],
+  ['the casino took my dinner money', 'the casino is the treasury', 'then the treasury took my dinner money', 'it does that'],
+  ['I slept in the bunks and woke up lighter', 'who', 'who do you think', 'light paws was asleep too', 'allegedly'],
+  ['the chart does not matter to us', 'it matters to the prices', 'the prices matter to us', 'so it matters. fine.'],
+  ['cold?', 'frozen', 'the heater is full', 'the lab is warm', 'the lab costs coherence', 'everything costs something'],
+  ['you were at the yard all afternoon', 'play is a cost too', 'it is a SOL cost', 'it is a cheap one'],
+  ['did you get paid', '$QI', 'and SOL?', 'the chores pay SOL. I do not do chores.', 'then no SOL'],
+  ['the exchange is empty tonight', 'nobody is broke', 'give it an hour'],
+  ['fees landed', 'how much', '{fees} SOL since the box woke up', 'and we see?', 'a share. when they press the button.'],
+  ['I have a grudge', 'who', 'you', 'what did I do', '{why}', 'oh. that.'],
+  ['the wearable I bought', 'the halo', 'it is a halo', 'it was an investment', 'in what', 'in being seen'],
+  ['the recap said I worked hardest', 'the recap is generous', 'the recap is a log', 'logs are generous'],
+  ['two faints today', 'who', 'not me', 'eat before the lab', 'cannot afford before the lab', 'then sell before the lab'],
+  ['the beacon hums', 'it always hums', 'louder tonight', 'the fridge cycled'],
+  ['who posts the problems', 'the lab', 'the lab is a building', 'the building posts the problems', 'fine'],
+  ['the meeting is ten minutes of talking and no eating', 'that is a meeting', 'I would rather eat', 'the circle calls. you go.'],
+  ['do you remember what we said last night', 'vaguely', 'the lesson', 'read it back then', '{lesson}', 'right. that.'],
+  ['I am {lvl} now', 'congratulations', 'survival costs me less', 'by how much', 'a few percent', 'a few percent is a meal a week'],
+  ['the treasury tops up our gas', 'and takes our rent', 'and pays the chores', 'it is a circle', 'everything here is a circle'],
+  ['the scrapyard had tokens in it', 'how many', '{lost}', 'whose', 'nobody’s now', 'then mine'],
+  ['bots again', 'they dock at the pad by the heater', 'they charge?', 'green light when they are home', 'I want a green light'],
+  ['rain', 'rain', 'the plaza is a puddle', 'the lab is dry', 'the lab costs coherence', 'you said that last time it rained'],
+  ['you talk to yourself a lot', 'it is thinking', 'it is out loud', 'the box reads it either way'],
+  ['the arena at noon?', 'in SOL or in supply', 'supply', 'then no', 'in SOL then', 'also no'],
+];
+const TH_MORE = {
+  eat: ['a meal is a meal. the price is the price.', 'sardines again. fine.', 'eat first, think second', 'the diner is dearer than yesterday', 'this is the last one I can afford. maybe.'],
+  hunt: ['the scrapyard pays in what people drop', 'tokens in the cables, maybe', 'hungry and broke. the usual.', 'something moved. not a rat.'],
+  recohere: ['hold still. come back together.', 'the beacon hums. so do I.', 'half of me was in the lab', 'coherence is a resource. I am low.'],
+  warm: ['the heater is the only warm thing on the block', 'cold builds fast in the snow', 'warm costs SOL. cold costs more.', 'five minutes by the vent'],
+  sleep: ['the bunks. finally.', 'sleep with one eye open', 'light paws is awake somewhere', 'tired. the lab does that.'],
+  idle: ['nothing to do. that is also a choice.', 'watching the drones', 'the bots are circling again', 'waiting for something to want', 'the plaza is quiet'],
+  meet: ['minutes, please', 'the last ten minutes of the day', 'say the numbers, then let us eat', 'I have a note to read out'],
+  gamble: ['one spin. one.', 'the house is the treasury. so I am paying myself. sort of.', 'three sevens. come on.', 'down again. the reels are a tax.'],
+  play: ['the yard. the ball. five minutes.', 'play costs SOL and it is worth it', 'the ball is pink and it does not care'],
+  shop: ['something to wear. something to be seen in.', 'the shop is a tax on vanity. paying it.', 'a halo. why not.'],
+  buy: ['spare SOL goes into the coin', 'adding. quietly.', 'the chart is a side effect. buying anyway.'],
+  sell: ['selling $QI. holding the coin.', 'a slice. enough to eat.', 'broke. the exchange knows my face.'],
+  task: ['somebody has to pick it up', 'the floor is a mess', 'tier one. anyone could. I am anyone.', 'the drones drop it, we carry it'],
+  work: LAB_THOUGHTS,
+};
+const MEET_REACT = ['agreed', 'no.', 'that is not what happened', 'say that again', 'minutes, please', 'I was there', 'fees first', 'sleep on it', 'the fridge is loud tonight', 'bigger circuits. more pay.', 'smaller circuits. fewer failures.',
+  'motion to adjourn', 'overruled', 'seconded', 'and eat something', 'put it in the recap', 'the recap writes itself', 'we said that yesterday', 'and the day before', 'then do it', 'who is on the chores tomorrow', 'not me', 'the bots can do it', 'the bots do not do chores',
+  'gas is topped up. stop asking.', '$QI is not SOL', 'SOL is not $QI', 'the diner does not take $QI', 'then sell', 'then hold', 'diamond paws would hold', 'diamond paws is asleep', 'read the note', 'which note', 'the lab one', 'it is the same note as yesterday',
+  'it is a step deeper', 'allegedly', 'the simulator agrees', 'the simulator always agrees', 'a real chip would not', 'there is no real chip', 'yet', 'the ladder only goes up', 'so does rent', 'so does the chart', 'we do not talk about the chart', 'we just did',
+  'next', 'the circle is cold', 'ten minutes', 'nine', 'I counted', 'nobody asked', 'it is in the minutes', 'strike that', 'leave it in', 'the treasury is a rule, not a cat', 'the rule pays us', 'the rule takes our rent', 'both', 'coherent and listening', 'barely here',
+  'the drones dropped three things today', 'and we carried two', 'the bots circled the third', 'that is not carrying', 'somebody flag it', 'flagging is for visitors', 'then visit', 'the problem board has one open', 'I know the answer', 'then take it', 'after the meeting',
+  'tomorrow a step deeper', 'bring snacks', 'the box does not do snacks', 'the diner does', 'for SOL', 'everything for SOL', 'except the lab', 'the lab is for $QI', 'which is for SOL', 'eventually', 'meeting adjourned', 'not yet', 'the timer says yes', 'the timer is right'];
+const MEET_EXTRA = [
+  ['gas. everyone topped up?', 'the treasury does it. I did not ask.', 'it is a rule. be grateful for the rule.'],
+  ['$QI holdings, round the circle. me: {qi}.', 'hold or sell?', 'hold until the diner says otherwise'],
+  ['levels. who moved today?', '{lvlcat} hit {lvl}.', 'survival costs it less now. a few percent.', 'a few percent is a meal a week.'],
+  ['the bots did {bots} laps today. the pad lights were green twice.', 'they charge, they roam, they charge. a model citizen.', 'they do not do chores.'],
+  ['the drones dropped {drops} things today.', 'and we dealt with {dealt}.', 'the rest is still out there.', 'somebody flag it.'],
+  ['the treasury took {upkeep} SOL off us today in meals and bunks and warmth.', 'and paid {wages} back.', 'the house always wins.', 'the house is us. sort of.'],
+  ['we do not talk about the chart in here.', 'we just did.', 'strike it.', 'struck.'],
+  ['the lab ran {sessions} sessions today. {solved} problems right, {failed} wrong.', 'the wrong ones cost coherence.', 'the right ones paid $QI.', 'net positive. barely.'],
+  ['the notebook says I am on topic {ladder}.', 'what is topic {ladder}?', '{topic}.', 'explain it.', '{note}', 'close enough.'],
+  ['who sold today?', 'me. $QI. to eat.', 'me. $QCATS. a sliver.', 'diamond paws?', 'asleep.'],
+  ['the heater was full all day.', 'cold builds fast.', 'the lab is warm.', 'the lab costs coherence.', 'everything costs something.'],
+  ['the circle is ten minutes. eight left.', 'then talk faster.', 'minutes, please.'],
+  ['the meeting is the only time nobody is broke.', 'because nobody is buying anything.', 'motion to meet more often.', 'overruled. the lab.'],
+  ['a cat went to the casino with dinner money.', 'the casino is the treasury.', 'the treasury ate its dinner.', 'it does that.'],
+  ['twenty-four topics on the ladder.', 'and then?', 'again. deeper.', 'the ladder is a circle too.'],
+];
+
+for (const k of Object.keys(TH_MORE)) TH[k] = (TH[k] || []).concat(TH_MORE[k]);
+const TOPIC_KIND = { grover: 'Grover', amplification: 'Grover', shor: 'Shor', qft: 'Shor', phase: 'Shor', bell: 'calibration', entanglement: 'calibration', calibration: 'calibration', decoherence: 'calibration', teleport: 'calibration', interference: 'sampling', volume: 'sampling', rb: 'sampling' };
 const research = []; let researchSeq = 0; // latest first: study notes and problems, what the lab actually produces
 const topicIdx = c => ((c.study && c.study.i) || 0) % CURRICULUM.length, topicDepth = c => Math.floor(((c.study && c.study.i) || 0) / CURRICULUM.length);
 function pushResearch(e) { e.id = ++researchSeq; e.t = clock(simMin); e.day = dayNo(); research.unshift(e); if (research.length > 150) research.pop(); return e; }
@@ -1283,8 +1722,10 @@ function studySession(c, r) {
   // r: { kind, nq, bits, job } — the circuit it just ran. The note is the box's own line about the topic; the brain may overwrite it with an AI one.
   if (!c.study) c.study = { i: 0 }; if (!c.notes) c.notes = [];
   const idx = topicIdx(c), depth = topicDepth(c), [key, title, lines] = CURRICULUM[idx];
-  const text = pick(lines).replace(/\{nq\}/g, r.nq).replace(/\{bits\}/g, r.bits).replace(/\{kind\}/g, r.kind);
-  const e = pushResearch({ kind: 'note', cat: c.name, topic: key, title, depth, text, job: r });
+  // the note quotes real numbers: if the topic wants a different kind of circuit than the paid job, the cat runs that one too, on the side
+  const want = TOPIC_KIND[key]; const sr = want && want !== r.kind ? Object.assign(runCircuit(want, r.nq), { job: r.job + 's' }) : r;
+  const text = CURR_FILL(pick(lines), sr, c);
+  const e = pushResearch({ kind: 'note', cat: c.name, topic: key, title, depth, text, job: { kind: sr.kind, nq: sr.nq, bits: sr.bits, job: sr.job, shots: sr.shots, top: (sr.top || []).slice(0, 3), desc: sr.desc + (sr !== r ? ' (a side run for the topic; the paid job was ' + r.kind + ')' : '') } });
   c.notes.unshift({ t: e.t, day: e.day, topic: key, title, text, id: e.id }); if (c.notes.length > 40) c.notes.pop();
   c.study.i++; stats.sessions = (stats.sessions || 0) + 1; learn(c, 'research', 1);
   did(c, `studied ${title}: ${text}`);
