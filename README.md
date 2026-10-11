@@ -4,7 +4,7 @@ The server that runs the one shared box. The website reads from it; the admin pa
 
 **What it does right now:**
 - runs the exact simulation that ships in the website, 24/7, so every visitor sees the same cats
-- reads the real market cap from DexScreener once the contract address is set, and releases cats from it
+- reads the real market cap from DexScreener once the contract address is set (all ten cats are in the box from day one; prices in the box climb with the chart)
 - serves `/state.json` for the website and a password-protected `/admin`
 - holds the ten cat wallets + the treasury wallet (keys only in environment variables), reads their balances, notices when fees land
 - **Distribute**: pays SOL from the treasury to the cats, split by the quantum work each cat did since the last payout

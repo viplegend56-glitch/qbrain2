@@ -280,10 +280,10 @@ const TRAITS = {
   greedy:  { label: 'scalper',      eager: 1.0,  dip: 0.4, sneak: 1.7,  social: 0.7, gamble: 1.1, tp: 1.08, panic: false, desc: 'small buys, takes profit at +8%, light paws' },
   loyal:   { label: 'diamond paws', eager: 1.0,  dip: 0.5, sneak: 0.25, social: 1.5, gamble: 0.6, tp: 0,    panic: false, desc: 'only ever buys, never sells, never steals' },
 };
-const UNLOCK_MC = [0, 0, 10000, 20000, 30000, 50000, 100000, 150000, 300000, 500000]; // market cap that releases each cat
+const UNLOCK_MC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // every cat is in the box from day one
 const STAGES = [
-  { key: 'launch', title: 'Launch', mc: 0, blurb: 'Two cats, the lab, the exchange. They run quantum jobs for a cut of the creator fees and trade.' },
-  { key: 'cats', title: 'The cats', mc: 10000, mcEnd: 500000, blurb: 'Eight more cats are released as the chart climbs: $10K, $20K, $30K, $50K, $100K, $150K, $300K, $500K.' },
+  { key: 'launch', title: 'Launch', mc: 0, blurb: 'Ten cats, the lab, the exchange. They run quantum jobs for a cut of the creator fees and trade.' },
+  { key: 'cats', title: 'The cats', mc: 0, mcEnd: 0, blurb: 'All ten cats are in the box from day one.' },
 ];
 const stageSeen = {};
 const stageOn = k => { if (k === 'lab' || stageSeen[k]) return true; const st = STAGES.find(x => x.key === k); return !!st && mcapUsd() >= st.mc; };
@@ -1038,7 +1038,7 @@ function release(i) {
   const at = Math.random() < 0.5 ? [BLK + 0.9, rand(M(6), M(17))] : [rand(M(6), M(17)), BLK + 0.9];
   c.x = at[0]; c.y = at[1]; c.rx = Math.random() < 0.5 ? 0 : 1; c.rdir = c.rx ? -1 : 1;
   const sp = ST.plaza.spot(); c.state = 'walk'; c.act = 'idle'; c.tx = sp[0]; c.ty = sp[1];
-  c.doing = 'walking into the box'; c.thought = 'finally'; c.because = `the chart hit ${fmtUsd(UNLOCK_MC[i])}`;
+  c.doing = 'walking into the box'; c.thought = 'finally'; c.because = UNLOCK_MC[i] ? `the chart hit ${fmtUsd(UNLOCK_MC[i])}` : 'the box opened';
   c.hunger = 0.3; c.cold = 0.2; c.tired = 0.1; c.coh = 0.95;
   cats.push(c);
   log(`${fmtUsd(mcapUsd())} MC. ${c.name} has been released into the box: a ${JOBS[c.job].label}, ${c.tr.label}, ${fmtQ(CAT_ALLOC)} ${TK} in its wallet.`, 'gain', 'boxes');
@@ -1202,9 +1202,10 @@ function stepMeeting(dt) {
     for (const c of cats) if (c.act === 'meet') { c.chair = null; gainXp(c, 6); c.meetings = (c.meetings || 0) + 1; did(c, `sat through meeting #${meeting.n} in the circle`); c.coh = clamp(c.coh + 0.1); c.lonely = clamp(c.lonely - 0.3); c.state = 'pause'; c.pauseT = rand(3, 9); c.act = 'idle'; }
   }
 }
+const benched = new Set(); // cats an admin took out stay out until they are put back
 function checkReleases() {
   const mc = mcapUsd();
-  for (let i = 0; i < ROSTER.length; i++) if (UNLOCK_MC[i] > 0 && mc >= UNLOCK_MC[i] && !cats.some(c => c.name === ROSTER[i][0])) { release(i); break; }
+  for (let i = 0; i < ROSTER.length; i++) if (mc >= UNLOCK_MC[i] && !cats.some(c => c.name === ROSTER[i][0]) && !benched.has(ROSTER[i][0])) { release(i); break; }
 }
 function feeIn(big) {
   // simulated creator fees: roughly a quarter of a SOL a day at a $60K cap, growing a little faster than the cats' costs do
@@ -1344,10 +1345,10 @@ let externalFees = 0;     // SOL dropped into the treasury from outside (real fe
 function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; mkt.pinned = false; return; } realMcap = v; mkt.pinned = true; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; }
 function setPaused(p) { paused = !!p; }
 function dropFees(sol) { if (!(sol > 0)) return; stats.treasury += sol; stats.fees += sol; externalFees += sol; if (stats.treasury >= 0.02) stats.low = false; feeFX(sol); log(`Creator fees dropped ${fmtSol(sol)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); }
-function setReleased(names) { for (const n of names) { const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
+function setReleased(names) { for (const n of names) { benched.delete(n); const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
 function unrelease(name) {
   const i = cats.findIndex(c => c.name === name); if (i < 0) return false;
-  const c = cats[i]; cats.splice(i, 1);
+  const c = cats[i]; cats.splice(i, 1); benched.add(name);
   for (const o of cats) { if (o.partner === c.id) { o.partner = null; o.initiator = false; o.state = 'pause'; o.pauseT = 1; } if (o.grudgeOn === c.id) { o.grudge = 0; o.grudgeOn = null; } }
   log(`${c.name} was taken back out of the box.`, 'info', 'boxes'); return true;
 }
