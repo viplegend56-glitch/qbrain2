@@ -196,11 +196,27 @@ const ACTS = {
   sleep:    { st: 'loft',     dur: 120,  verb: 'asleep in the loft',            walk: 'heading to the loft to sleep',    color: '110,120,170', name: 'sleep' },
 };
 const FOOD = 0.0006, CRYO = 0.0004, WARM = 0.0003, RESERVE = 0.0016;
-const spare = c => Math.max(0, c.sol - RESERVE);
+// survival gets dearer as the chart climbs: x1 at the starting cap, x4 at 16x, x8 at 64x, capped at x40
+const priceMul = () => clamp(Math.sqrt(Math.max(1, mcapUsd() / CONFIG.START_MC_USD)), 1, 40);
+const costOf = (base, c) => base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
+const spare = c => Math.max(0, c.sol - costOf(RESERVE, c));
+// ---- levels: XP for everything a cat does; higher levels pay less for food, cryo time and warmth ----
+const LVL_XP = [0, 250, 750, 1600, 3000, 5500, 10000, 20000, 40000, 80000]; // roughly: L2 in half an hour, L5 in a day, L10 in a week
+const LVL_TITLE = ['stray', 'scrapper', 'hustler', 'trader', 'operator', 'whale', 'entangled', 'superposed', 'coherent', 'quantum'];
+const lvlOf = xp => { let l = 1; while (l < LVL_XP.length && xp >= LVL_XP[l]) l++; return l; };
+const lvlTitle = c => LVL_TITLE[Math.min(LVL_TITLE.length, c.lvl || 1) - 1];
+function gainXp(c, n) {
+  c.xp = (c.xp || 0) + n; const nl = lvlOf(c.xp);
+  if (nl > (c.lvl || 1)) {
+    c.lvl = nl; burst(c, '247,200,106', 26); ringFX(c.x, c.y, '247,200,106', 1.5); floatText(c, 'level ' + nl, '#F7C86A');
+    log(`${c.name} hit level ${nl}: ${lvlTitle(c)}. Survival costs it ${4 * (nl - 1)}% less now.`, 'gain');
+    say(c, pick(['levelled', 'getting good at this', 'level ' + nl + '. noted', 'the box respects me now']));
+  }
+}
 function sellUrge(c) {
   if (c.qcat < 20000) return 0;
   let w = 0;
-  if (c.sol < FOOD && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6;
+  if (c.sol < costOf(FOOD, c) && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6;
   if (c.tr.tp && mkt.price > c.entry * c.tr.tp) w = Math.max(w, 0.7);
   if (c.tr.panic && mkt.mom < -0.004) w = Math.max(w, 0.62);
   return w;
@@ -208,13 +224,13 @@ function sellUrge(c) {
 const anyoneAsleep = c => cats.some(o => o !== c && asleep(o));
 const DRIVES = [
   { act: 'eat',      label: 'hungry',                   w: c => c.hunger * 1.25 * (c.sol >= FOOD ? 1 : 0.15) },
-  { act: 'hunt',     label: 'broke and hungry',         w: c => c.hunger * (c.sol < FOOD ? 1.2 : 0.3) + (stats.lostPool > 2000 ? 0.25 : 0) },
+  { act: 'hunt',     label: 'broke and hungry',         w: c => c.hunger * (c.sol < costOf(FOOD, c) ? 1.2 : 0.3) + (stats.lostPool > 2000 ? 0.25 : 0) },
   { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= CRYO ? 1 : 0.45) },
   { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= WARM ? 1 : 0.4) },
   { act: 'work',     label: 'needs SOL',                w: c => clamp(1 - c.sol / 0.012) * 1.05 + 0.12 },
   { act: 'buy',      label: 'spare SOL',                w: c => clamp(spare(c) / 0.008) * 0.9 * c.tr.eager * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40) ) },
-  { act: 'sell',     label: c => (c.sol < FOOD && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : 'taking profit'), w: c => sellUrge(c) },
-  { act: 'steal',    label: 'light paws',               w: c => (c.sol < FOOD * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
+  { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : 'taking profit'), w: c => sellUrge(c) },
+  { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
   { act: 'wager',    label: 'feeling lucky',            w: c => (0.1 + 0.32 * c.tr.gamble) * (c.qcat > 50000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) },
   { act: 'entangle', label: 'wants company',            w: c => c.lonely * 0.85 * c.tr.social },
@@ -288,7 +304,7 @@ function makeCat(i) {
   return {
     id: ++uid, name, job, trait, tr: TRAITS[trait], coat: coat.c, eye: coat.e, dark: !!coat.d,
     x: sp[0], y: sp[1], tx: sp[0], ty: sp[1], face: Math.random() < 0.5 ? 1 : -1,
-    sol: rand(0.0008, 0.008), qcat: CAT_ALLOC, earned: 0, bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: P0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
+    sol: rand(0.0008, 0.008), qcat: CAT_ALLOC, earned: 0, xp: 0, lvl: 1, bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: P0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
     hunger: rand(0, 0.75), coh: rand(0.35, 1), cold: rand(0, 0.6), lonely: rand(0, 0.6),
     grudge: 0, grudgeOn: null, grudgeWhy: '', starve: 0, tired: rand(0, 0.7),
     rx: (i + 0.5) / ROSTER.length, rdir: Math.random() < 0.5 ? 1 : -1, rsp: rand(0.012, 0.022),
@@ -311,11 +327,11 @@ function findPartner(c, act) {
 function because(c, act, p) {
   switch (act) {
     case 'eat': { const h = Math.round((simMin - c.lastAte) / 60); return h >= 1 ? `nothing to eat in ${h} hour${h > 1 ? 's' : ''}` : 'stomach has been growling'; }
-    case 'hunt': return c.sol < FOOD ? `only ${fmtSol(c.sol)} SOL and a meal costs ${fmtSol(FOOD)}` : `${fmtQ(stats.lostPool)} ${TK} lying in the trays`;
+    case 'hunt': return c.sol < costOf(FOOD, c) ? `only ${fmtSol(c.sol)} SOL and a meal costs ${fmtSol(costOf(FOOD, c))}` : `${fmtQ(stats.lostPool)} ${TK} lying in the trays`;
     case 'recohere': return `coherence down to ${Math.round(c.coh * 100)}%`;
     case 'warm': return (wx.rain > 0.3 ? 'soaked through, ' : wx.snow > 0.3 ? 'snow in its fur, ' : '') + `cold for ${Math.max(5, Math.round(c.cold * 90))} minutes`;
     case 'work': return c.sol < 0.004 ? `only ${fmtSol(c.sol)} SOL left` : (c.job === 'tunneler' ? 'the tunnel pays best' : 'the shift pays tonight');
-    case 'sell': return c.sol < FOOD && c.hunger > 0.5 ? `broke and a meal costs ${fmtSol(FOOD)} SOL` : c.tr.panic && mkt.mom < -0.004 ? 'the chart is dumping and it has no stomach for it' : `up ${Math.round((mkt.price / c.entry - 1) * 100)}% on its entry`;
+    case 'sell': return c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? `broke and a meal costs ${fmtSol(costOf(FOOD, c))} SOL` : c.tr.panic && mkt.mom < -0.004 ? 'the chart is dumping and it has no stomach for it' : `up ${Math.round((mkt.price / c.entry - 1) * 100)}% on its entry`;
     case 'buy': return `${fmtSol(spare(c))} SOL to spare` + (mkt.mom > 0.002 ? ' and the chart is moving' : mkt.mom < -0.002 ? ' and the chart dipped' : '');
     case 'steal': return p ? `${p.name} is asleep in the loft` : 'somebody is always asleep up there';
     case 'scrap': return c.grudgeWhy || (p ? `${p.name} looked at it wrong` : 'something to prove');
@@ -425,7 +441,7 @@ function finish(c, p) {
     const slipped = Math.random() < j.risk * (c.job === 'runner' ? 1 + wx.rain : 1);
     if (pay > 0 && !slipped) {
       stats.treasury -= pay; c.sol += pay; c.earned += pay; stats.wages += pay; placeStats[st].paid += pay;
-      floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c);
+      floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); gainXp(c, 6);
       log(`${c.name} ${j.did.replace('{n}', fmtSol(pay) + ' SOL')}`, 'gain', st); tx(c, 'wage', '+' + fmtSol(pay) + ' SOL', ST[st].label);
     } else if (slipped) {
       if (c.job === 'tunneler') { const drop = c.qcat * rand(0.004, 0.012); c.qcat -= drop; stats.lostPool += drop; placeStats.trays.found += 0; log(`${c.name} ${j.riskWhy} and scattered ${fmtQ(drop)} ${TK}. It ended up in the cable trays.`, 'loss', st); tx(c, 'lost', '-' + fmtQ(drop) + ' ' + TK, 'the tunnel'); burst(c, '255,79,174', 14); }
@@ -436,25 +452,25 @@ function finish(c, p) {
     stats.treasury -= cost + pay; stats.labSol += cost; placeStats.lab.spent += cost; placeStats.lab.visits++; placeStats.lab.circuits++; stats.circuits++;
     c.sol += pay; c.earned += pay; stats.wages += pay; placeStats.lab.paid += pay;
     const nq = randi(2, 5), bits = Array.from({ length: nq }, () => Math.random() < 0.5 ? '0' : '1').join(''), job = 'qc-' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-    stats.lastJob = { name: c.name, nq, bits, job, t: T };
+    stats.lastJob = { name: c.name, nq, bits, job, t: T }; gainXp(c, 20);
     floatText(c, '|' + bits + '\u27E9', '#78C8FF'); ringFX(LAB.x, LAB.y, '120,200,255', 1.3);
     log(`${c.name} ran a ${nq}-qubit circuit in the lab: 1,024 shots, most common result |${bits}\u27E9, job ${job}. ${fmtSol(cost)} SOL of compute.`, 'link', 'lab'); tx(c, 'circuit', '+' + fmtSol(pay) + ' SOL', job);
   } else if (a === 'eat') {
-    spend(c, FOOD, 'crates', 'a meal'); c.hunger = 0.03; c.lastAte = simMin;
+    spend(c, costOf(FOOD, c), 'crates', 'a meal'); c.hunger = 0.03; c.lastAte = simMin; gainXp(c, 2);
     if (Math.random() < 0.3) log(`${c.name} ate at the crates`, 'info', 'crates');
   } else if (a === 'hunt') {
     placeStats.trays.visits++;
     if (stats.lostPool > 500) {
       const take = stats.lostPool * rand(0.25, 0.7); stats.lostPool -= take; c.qcat += take; c.found += take; placeStats.trays.found += take;
-      floatText(c, '+' + fmtQ(take), '#F7C86A'); log(`${c.name} dug ${fmtQ(take)} ${TK} out of the cable trays`, 'gain', 'trays'); tx(c, 'found', '+' + fmtQ(take) + ' ' + TK, 'the cable trays');
+      floatText(c, '+' + fmtQ(take), '#F7C86A'); gainXp(c, 8); log(`${c.name} dug ${fmtQ(take)} ${TK} out of the cable trays`, 'gain', 'trays'); tx(c, 'found', '+' + fmtQ(take) + ' ' + TK, 'the cable trays');
     }
     if (Math.random() < 0.55) { c.hunger = 0.12; c.lastAte = simMin; if (Math.random() < 0.5) log(`${c.name} caught something in the cable trays`, 'info', 'trays'); }
   } else if (a === 'recohere') {
-    spend(c, CRYO, 'cryo', 'cryo time'); c.coh = 1;
+    spend(c, costOf(CRYO, c), 'cryo', 'cryo time'); c.coh = 1; gainXp(c, 2);
     floatText(c, 'coherent', '#B9A6FF');
     if (Math.random() < 0.4) log(`${c.name} recohered under the cryostat`, 'link', 'cryo');
   } else if (a === 'warm') {
-    spend(c, WARM, 'vent', 'a warm-up'); c.cold = 0;
+    spend(c, costOf(WARM, c), 'vent', 'a warm-up'); c.cold = 0; gainXp(c, 1);
     if (Math.random() < 0.25) log(`${c.name} warmed up at the vent`, 'info', 'vent');
   } else if (a === 'buy') {
     const amt = spare(c) * rand(0.6, 0.95);
@@ -465,17 +481,17 @@ function finish(c, p) {
       stats.buySol += amt; stats.boughtBack += got; stats.buys++; stats.lastTrade = { name: c.name, side: 'bought', sol: amt, q: got, t: T };
       placeStats.exchange.bought += got; placeStats.exchange.buysol += amt; placeStats.exchange.visits++;
       mkt.price *= 1 + amt / (mkt.price * SUPPLY * 0.35);
-      floatText(c, '+' + fmtQ(got), '#5CFFAA'); buyFX(c);
+      floatText(c, '+' + fmtQ(got), '#5CFFAA'); buyFX(c); gainXp(c, 8);
       log(`${c.name} bought ${fmtQ(got)} ${TK} for ${fmtSol(amt)} SOL at the exchange`, 'gain', 'exchange'); tx(c, 'buy', '+' + fmtQ(got) + ' ' + TK, fmtSol(amt) + ' SOL');
     }
   } else if (a === 'sell') {
-    const broke = c.sol < FOOD && c.hunger > 0.5;
+    const broke = c.sol < costOf(FOOD, c) && c.hunger > 0.5;
     const q = c.qcat * (broke ? rand(0.008, 0.015) : rand(0.02, 0.05)), got = q * mkt.price * 0.99;
     c.qcat -= q; c.sol += got; c.sold += q; c.sellSol += got; c.sells++;
     stats.sold += q; stats.sellSol += got; stats.sells++; stats.lastTrade = { name: c.name, side: 'sold', sol: got, q, t: T };
     placeStats.exchange.visits++;
     mkt.price *= 1 - got / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005;
-    floatText(c, '-' + fmtQ(q), '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1);
+    floatText(c, '-' + fmtQ(q), '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, 6);
     const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at +${Math.round((mkt.price / c.entry - 1) * 100)}%`;
     log(`${c.name} sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`, 'loss', 'exchange'); tx(c, 'sell', '-' + fmtQ(q) + ' ' + TK, '+' + fmtSol(got) + ' SOL');
   } else if (a === 'steal') {
@@ -489,7 +505,7 @@ function finish(c, p) {
       } else {
         const take = moveTokens(v, c, v.qcat * rand(0.01, 0.04)); c.stole += take; v.robbed += take; stats.stolen += take; placeStats.loft.stolen += take;
         v.grudge = Math.max(v.grudge, 0.8); v.grudgeOn = c.id; v.grudgeWhy = `${c.name} robbed it while it slept`;
-        floatText(c, '+' + fmtQ(take), '#FF4FAE'); log(`${c.name} lifted ${fmtQ(take)} ${TK} from ${v.name} while it slept`, 'loss', 'loft'); tx(c, 'stole', '+' + fmtQ(take) + ' ' + TK, 'from ' + v.name);
+        floatText(c, '+' + fmtQ(take), '#FF4FAE'); gainXp(c, 12); log(`${c.name} lifted ${fmtQ(take)} ${TK} from ${v.name} while it slept`, 'loss', 'loft'); tx(c, 'stole', '+' + fmtQ(take) + ' ' + TK, 'from ' + v.name);
       }
     }
   } else if (a === 'wager' && p) {
@@ -499,7 +515,7 @@ function finish(c, p) {
     let take, label;
     if (inSol) { take = Math.min(l.sol, Math.min(c.sol, p.sol) * rand(0.15, 0.35)); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; label = fmtSol(take) + ' SOL'; }
     else { take = moveTokens(l, w, Math.min(c.qcat, p.qcat) * rand(0.02, 0.06)); w.arenaNet += take; l.arenaNet -= take; placeStats.arena.wagered += take; label = fmtQ(take) + ' ' + TK; }
-    w.arenaW++; l.arenaL++;
+    w.arenaW++; l.arenaL++; gainXp(w, 15); gainXp(l, 4);
     floatText(w, '+' + label, '#FFC850'); floatText(l, '-' + label, '#FF4FAE'); burst(w, '255,200,80', 22); ringFX(ARENA.x, ARENA.y, '255,200,80', 1.6);
     log(`${w.name} beat ${l.name} in the arena and took ${label}`, 'gain', 'arena'); tx(w, 'wager', '+' + label, 'from ' + l.name);
     say(w, pick(['told you', 'the coin likes me', `thanks ${l.name}`])); if (Math.random() < 0.6) say(l, pick(['rigged', 'double or nothing next time', 'the coin was warm']));
@@ -508,7 +524,7 @@ function finish(c, p) {
   } else if (a === 'scrap' && p) {
     const cw = c.coh + c.sol * 20 + Math.random(), pw = p.coh + p.sol * 20 + Math.random();
     const [w, l] = cw >= pw ? [c, p] : [p, c];
-    const take = moveTokens(l, w, l.qcat * rand(0.01, 0.03)); w.stole += take; l.robbed += take; stats.stolen += take;
+    const take = moveTokens(l, w, l.qcat * rand(0.01, 0.03)); w.stole += take; l.robbed += take; stats.stolen += take; gainXp(w, 10); gainXp(l, 3);
     log(take > 0 ? `${w.name} won the scrap with ${l.name} and took ${fmtQ(take)} ${TK}` : `${w.name} won the scrap with ${l.name}`, 'loss');
     if (take > 0) { floatText(w, '+' + fmtQ(take), '#F7C86A'); tx(w, 'scrap', '+' + fmtQ(take) + ' ' + TK, 'from ' + l.name); }
     l.grudge = 0.4; l.grudgeOn = w.id; l.grudgeWhy = `${w.name} beat it in a scrap`;
@@ -723,8 +739,8 @@ function step(dt) {
 }
 function snapshot() {
   return {
-    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), paused, realMcap,
-    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released })),
+    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), paused, realMcap,
+    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1 })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, relayBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),

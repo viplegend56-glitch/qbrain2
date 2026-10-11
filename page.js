@@ -48,6 +48,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   .dist{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
   select{background:#0B1028;color:var(--text);border:1px solid var(--line2);font:11px "IBM Plex Mono",monospace;padding:2px 4px}
   .foot{margin-top:30px;color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .sellrow{min-width:150px}.sellrow input[type=range]{width:140px;margin:0}.rs-lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);margin:2px 0 4px}.rs-lbl b{color:var(--text)}
   .foot input{width:110px;padding:3px 6px;font-size:11px}.foot button{padding:3px 8px;font-size:11px;margin:0;background:transparent;color:var(--muted);border:1px solid var(--line);cursor:pointer}
   @media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.row,.row3{grid-template-columns:1fr}.chk{grid-template-columns:1fr 1fr}.dist{grid-template-columns:1fr}}`;
 
@@ -61,7 +62,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
       <td>${b ? `<b>${sol(b.sol)}</b><br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}` : '<span class="mut">—</span>'}</td>
-      <td>${c && w && b && b.qcat > 0 ? `<form class="inline sellone" method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + document.getElementById('sellPct').value + '% of ${esc(name)}\\'s ${esc(config.TICKER)} for SOL?')"><input type="hidden" name="name" value="${esc(name)}"><input type="hidden" name="pct" class="pctmirror" value="10"><button class="btn ghost mini" ${busy ? 'disabled' : ''}>sell</button></form>` : ''}</td></tr>`;
+      <td>${c && w && b && b.qcat > 0 ? `<form class="sellrow" method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + this.pct.value + '% of ${esc(name)}\\'s ${esc(config.TICKER)} (' + this.querySelector('.rs-q').textContent + ') for SOL?')"><input type="hidden" name="name" value="${esc(name)}"><input type="range" name="pct" class="rs" min="1" max="100" step="1" value="10" data-held="${b.qcat}"><div class="rs-lbl"><b class="rs-p">10%</b> = <span class="rs-q">${num(b.qcat * 0.1)}</span> ${esc(config.TICKER)}</div><button class="btn ghost mini" ${busy ? 'disabled' : ''}>sell</button></form>` : (c && w && b ? '<span class="mut">no tokens</span>' : '')}</td></tr>`;
   }).join('');
 
   const distChecks = engine.ROSTER.map(([name]) => {
@@ -87,7 +88,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     <div class="tile c"><small>market cap</small><b>${usd(snap.mkt.mcapUsd)}</b><small>${market.ok ? 'live · dexscreener · ' + ago(market.at) : 'simulated · ' + esc(market.err || '')}</small></div>
     <div class="tile"><small>treasury wallet</small><b>${tre != null ? sol(tre) : '—'}</b><small>${balances && balances.at ? 'read ' + ago(balances.at) : (wallets.ready ? (env.RPC_URL ? 'reading…' : 'set RPC_URL') : 'no wallets')}${balances && balances.err ? ' · <span class="bad">' + esc(balances.err.slice(0, 60)) + '</span>' : ''}</small></div>
     <div class="tile g"><small>fees landed (real, total)</small><b>${sol(config.feesSeenSol || 0)}</b><small>paid out so far ${sol(snap.stats.wages)}</small></div>
-    <div class="tile"><small>cats in the box</small><b>${snap.cats.length} / 10</b><small>SOL/USD ${config.SOL_USD ? '$' + Number(config.SOL_USD).toFixed(0) : '—'} · auto</small></div>
+    <div class="tile"><small>cats in the box</small><b>${snap.cats.length} / 10</b><small>survival prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
   </div>
 
   <form method="post" action="/admin/config">
@@ -127,10 +128,10 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
           <input type="range" id="sellPct" name="pct" min="1" max="100" step="1" value="10">
           <button class="btn warn" style="margin:0" ${busy ? 'disabled' : ''}>Sell from every released cat</button>
         </div>
-        <small class="mut">The per-row "sell" button uses the same percentage for one cat.</small>
+        <small class="mut">Each row below has its own slider for one cat at a time.</small>
       </form></div>` : ''}
     <div class="pb">
-    <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th><th></th></tr>${catRows}</table>
+    <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th><th>sell back to SOL</th></tr>${catRows}</table>
   </div></div>
 
   <form method="post" action="/admin/config">
@@ -153,7 +154,8 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), each=document.getElementById('dEach'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
       function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; each.textContent=on?(v/on).toFixed(4):'0'; if(btn&&!btn.dataset.busy) btn.disabled=!(v>0&&on>0&&v/on>=0.001); }
       r.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
-    var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'); function u2(){ lbl.textContent=sp.value+'%'; document.querySelectorAll('.pctmirror').forEach(function(m){m.value=sp.value}); } sp.addEventListener('input',u2); u2(); }
+    var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'); function u2(){ lbl.textContent=sp.value+'%'; } sp.addEventListener('input',u2); u2(); }
+    document.querySelectorAll('.rs').forEach(function(r){ var f=r.closest('form'); function u3(){ f.querySelector('.rs-p').textContent=r.value+'%'; f.querySelector('.rs-q').textContent=Math.round(Number(r.dataset.held)*r.value/100).toLocaleString('en-US'); } r.addEventListener('input',u3); u3(); });
     document.querySelectorAll('.addr').forEach(function(a){ a.addEventListener('click',function(){ var t=a.dataset.copy; (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){a.classList.add('did');setTimeout(function(){a.classList.remove('did')},1200)}).catch(function(){prompt('address',t)}); }); });
   })();
   </script>
