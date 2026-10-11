@@ -28,7 +28,7 @@ const DEFAULTS = {
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
-  chain: { mode: 'off', buyQi: true, maxPaySol: 0.2, dayCapSol: 2 }, // mode: off (the box only) · dry (log what would be sent) · live (send it). buyQi: the treasury buys the $QI it owes at payout time
+  chain: { mode: 'off', buyQi: true, maxPaySol: 0.2, dayCapSol: 2, testFlat: 0.001 }, // mode: off = sandbox (the box only) · dry (log what would be sent) · test (real transactions, every payment testFlat SOL, lab pay a hundredth) · live (the real deal)
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: true, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; under `min` the treasury refills it
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
@@ -69,7 +69,7 @@ const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() 
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
 engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery((config.payoutEveryMin || 20) * 60); engine.setPriceMul(config.PRICE_MUL || 1);
-const applyChainMode = () => { const m = (config.chain || {}).mode || 'off'; engine.setLiveTx(m === 'live' || m === 'dry'); engine.setDryRun(m === 'dry'); }; applyChainMode();
+const applyChainMode = () => { const m = (config.chain || {}).mode || 'off'; engine.setLiveTx(m === 'live' || m === 'dry' || m === 'test'); engine.setDryRun(m === 'dry'); engine.setTestFlat(m === 'test' ? (config.chain.testFlat || 0.001) : 0); }; applyChainMode();
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
   logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
@@ -119,7 +119,7 @@ async function pollBalances() {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA, config.QI_MINT)) };
     const t = balances.treasury && balances.treasury.sol;
     { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); }
-    if ((config.chain || {}).mode === 'live') engine.setLiveBalances(balances.cats); // the wallets are the truth once the box is paying for real
+    if (['live', 'test'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats); // the wallets are the truth once the box is paying for real
     if (typeof t === 'number') {
       engine.setTreasury(t);
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005) {
@@ -157,7 +157,7 @@ async function runIntent(i) {
   throw new Error('unknown intent type ' + i.type);
 }
 async function chainTick() {
-  const ch = config.chain || {}; if (ch.mode !== 'live' && ch.mode !== 'dry') return;
+  const ch = config.chain || {}; if (!['live', 'dry', 'test'].includes(ch.mode)) return;
   if (busy) return;
   const i = engine.takeIntent(); if (!i) return;
   engine.markIntent(i.id, 'sending');
@@ -447,9 +447,9 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
       if (p === '/admin/chain') {
-        const ch = config.chain; ch.mode = ['off', 'dry', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = !!b.buyQi;
+        const ch = config.chain; ch.mode = ['off', 'dry', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = !!b.buyQi; if (b.testFlat !== '' && b.testFlat != null) ch.testFlat = Math.max(0.0001, Number(b.testFlat));
         if (b.maxPaySol !== '' && b.maxPaySol != null) ch.maxPaySol = Math.max(0.001, Number(b.maxPaySol)); if (b.dayCapSol !== '' && b.dayCapSol != null) ch.dayCapSol = Math.max(0.01, Number(b.dayCapSol));
-        applyChainMode(); saveConfig(); return back(res, 'on-chain mode: ' + ch.mode);
+        applyChainMode(); saveConfig(); return back(res, 'economy mode: ' + ({ off: 'sandbox', dry: 'dry-run', test: 'real testing', live: 'the real deal' })[ch.mode]);
       }
       if (p === '/admin/payowed') {
         if (busy) return back(res, 'another transaction is still running', true);

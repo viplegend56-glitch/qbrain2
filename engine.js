@@ -924,6 +924,7 @@ function arrive(c, p) {
 function endPair(a, b) { for (const k of [a, b]) { if (!k) continue; k.partner = null; k.initiator = false; k.state = 'pause'; k.pauseT = rand(2, 6); } }
 function wake(c, why) { if (!asleep(c)) return; c.state = 'pause'; c.pauseT = 0.5; c.tired = clamp(c.tired - 0.4); c.doing = 'woke up'; c.because = why; }
 function spend(c, amt, place, what) {
+  if (testFlat() && amt > 0) amt = testFlat();
   const cost = Math.min(c.sol, amt); c.sol -= cost; c.upkeep = (c.upkeep || 0) + cost; stats.upkeep += cost; if (feePool()) stats.treasury += cost; placeStats[place].spent += cost; placeStats[place].visits++; const pd = placeDay[place] || (placeDay[place] = { visits: 0, spent: 0 }); pd.visits++; pd.spent += cost;
   tx(c, 'spent', '-' + fmtSol(cost) + ' SOL', what);
   if (cost > 0 && liveTx()) { const i = queueIntent({ type: 'pay', cat: c.name, sol: Math.round(cost * 1e6) / 1e6, memo: what, place }); txs[0].intent = i.id; if (c.hist && c.hist[0]) c.hist[0].intent = i.id; }
@@ -941,7 +942,7 @@ function finish(c, p) {
     // the lab pays $QI, not SOL: a fixed rate per job, more for bigger circuits and a practised cat. While the box runs on its own it pays
     // straight out of the lab's pool; once the real $QI wallet is wired in, jobs only build up a share of the next payout.
     // what the job is worth: between the minimum and the maximum, by circuit size (and a little more at higher levels); double during a lab surge
-    let usd = labPayMin() + (labPayMax() - labPayMin()) * clamp((diff - 0.8) / 1.4) * (1 + 0.03 * ((c.lvl || 1) - 1)); if (T < labBoostUntil && st === 'lab') usd *= 2; usd = Math.min(usd, labPayMax() * 2);
+    let usd = labPayMin() + (labPayMax() - labPayMin()) * clamp((diff - 0.8) / 1.4) * (1 + 0.03 * ((c.lvl || 1) - 1)); if (T < labBoostUntil && st === 'lab') usd *= 2; usd = Math.min(usd, labPayMax() * 2); if (testFlat()) usd *= 0.01; // real testing: a hundredth of the money
     let pay = qiFor(usd); if (!qiLive()) { pay = Math.min(pay, stats.qiPool); stats.qiPool -= pay; }
     placeStats[st].visits++; c.coh = clamp(c.coh - 0.06);
     const slipped = Math.random() < j.risk * (1 - c.coh * 0.5) / (1 + sk * 0.35); // a coherent cat makes fewer mistakes, and so does a practised one
@@ -984,7 +985,7 @@ function finish(c, p) {
     } else c.task = null;
   } else if (a === 'gamble') {
     // a slice of spare SOL on one spin against the house. The house is the treasury: losses go in, wins come out. The odds favour the house a little.
-    const stake = Math.min(c.sol * 0.5, clamp(c.sol * rand(0.1, 0.25) * (c.tr.gamble > 1 ? 1.5 : 1), 0.01, 0.05)), jackpot = Math.random() < 0.08, won = jackpot || Math.random() < 0.42;
+    const stake = testFlat() ? Math.min(c.sol, testFlat()) : Math.min(c.sol * 0.5, clamp(c.sol * rand(0.1, 0.25) * (c.tr.gamble > 1 ? 1.5 : 1), 0.01, 0.05)), jackpot = Math.random() < 0.08, won = jackpot || Math.random() < 0.42;
     c.casinoT = T; placeStats.casino.visits++; placeStats.casino.wagered += stake;
     if (won) {
       const pay = Math.min(stake * (jackpot ? 3 : 1), feePool() ? stats.treasury * 0.1 : Infinity); // the winnings on top of the stake back
@@ -1096,7 +1097,7 @@ function finish(c, p) {
     const pc = clamp(0.5 + (c.coh - p.coh) * 0.4, 0.15, 0.85);
     const [w, l] = Math.random() < pc ? [c, p] : [p, c];
     // the stake is SOL, always: a slice of whatever the poorer of the two can put up
-    const take = Math.max(0, Math.min(l.sol, Math.max(0.005, Math.min(c.sol, p.sol) * rand(0.15, 0.35)))); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; placeStats.arena.wagered += take; placeStats.arena.fights = (placeStats.arena.fights || 0) + 1;
+    const take = testFlat() ? Math.min(l.sol, testFlat()) : Math.max(0, Math.min(l.sol, Math.max(0.005, Math.min(c.sol, p.sol) * rand(0.15, 0.35)))); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; placeStats.arena.wagered += take; placeStats.arena.fights = (placeStats.arena.fights || 0) + 1;
     const label = fmtSol(take) + ' SOL'; if (liveTx() && take > 0) queueIntent({ type: 'wager', cat: l.name, to: w.name, sol: Math.round(take * 1e6) / 1e6, memo: `arena: lost to ${w.name}`, place: 'arena' });
     w.arenaW++; l.arenaL++; gainXp(w, 25); gainXp(l, 3); w.wagerT = T; l.wagerT = T;
     floatText(w, '+' + label, '#FFC850'); floatText(l, '-' + label, '#FF4FAE'); burst(w, '255,200,80', 22); ringFX(ARENA.x, ARENA.y, '255,200,80', 1.6);
@@ -1810,7 +1811,7 @@ function problemFor(c, pr) {
   const covered = (c.notes || []).some(n => n.topic === pr.topic);
   const p = clamp(0.3 + sk * 0.06 + (covered ? 0.25 : 0) + 0.04 * ((c.lvl || 1) - 1), 0.2, 0.95), ok = Math.random() < p;
   let bonus = 0;
-  if (ok) { bonus = qiFor(labPayMin()); if (!qiLive()) { bonus = Math.min(bonus, stats.qiPool); stats.qiPool -= bonus; } if (bonus > 0) { c.qiOwed = (c.qiOwed || 0) + bonus; floatText(c, '+' + fmtQi(bonus) + ' ' + QI, '#C4B2FF'); tx(c, 'circuit', '+' + fmtQi(bonus) + ' ' + QI, 'problem solved · owed'); } c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
+  if (ok) { bonus = qiFor(labPayMin() * (testFlat() ? 0.01 : 1)); if (!qiLive()) { bonus = Math.min(bonus, stats.qiPool); stats.qiPool -= bonus; } if (bonus > 0) { c.qiOwed = (c.qiOwed || 0) + bonus; floatText(c, '+' + fmtQi(bonus) + ' ' + QI, '#C4B2FF'); tx(c, 'circuit', '+' + fmtQi(bonus) + ' ' + QI, 'problem solved · owed'); } c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
   else { c.coh = clamp(c.coh - 0.08); c.failed = (c.failed || 0) + 1; stats.failed = (stats.failed || 0) + 1; }
   const e = pushResearch({ kind: 'problem', cat: c.name, topic: pr.topic, q: pr.q, a: pr.a, given: ok ? pr.a : pr.wrong, ok, bonus, waited: pr.posted != null ? Math.round((T - pr.posted) / 60) : 0 });
   recordEvent('lab', `${c.name} ${ok ? 'solved' : 'missed'} a lab problem: ${pr.q} ${ok ? '' : '(it said ' + e.given + ')'}`);
@@ -1821,6 +1822,7 @@ function setNote(id, text) { const e = research.find(x => x.id === id); if (!e |
 // ---------- on-chain intents: when the wallets are live, every payment the box decides becomes a transaction the brain sends ----------
 const intents = []; let intentSeq = 0; const intentLog = []; // queued, newest last; intentLog: what happened, newest first
 const liveTx = () => CONFIG.LIVE_TX === true; // set by the brain once it is executing for real (or in dry-run)
+const testFlat = () => (Number(CONFIG.TEST_FLAT) > 0 ? Number(CONFIG.TEST_FLAT) : 0); // real-testing mode: every payment the cats make is this flat amount of SOL, so the plumbing can be tested for cents
 function queueIntent(i) { i.id = 'I' + (++intentSeq); i.at = T; i.t = clock(simMin); i.state = 'queued'; intents.push(i); if (intents.length > 500) intents.shift(); return i; }
 function intentDone(id, sig) { const k = intents.findIndex(x => x.id === id); if (k < 0) return false; const i = intents.splice(k, 1)[0]; i.state = 'done'; i.sig = sig || null; intentLog.unshift(i); if (intentLog.length > 200) intentLog.pop();
   const row = txs.find(x => x.intent === id); if (row && sig) row.sig = sig; const c = cats.find(x => x.name === i.cat); if (c) { const h = (c.hist || []).find(x => x.intent === id); if (h && sig) h.sig = sig; } return true; }
@@ -2110,7 +2112,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, get research() { return research; }, owedAll, settle, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, payoutDue() { return !!payouts.next && T >= payouts.next; }, setPayoutEvery(sec) { if (sec > 0) { payouts.every = sec; if (!payouts.next || payouts.next > T + sec) payouts.next = T + sec; } }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, get research() { return research; }, owedAll, settle, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, payoutDue() { return !!payouts.next && T >= payouts.next; }, setPayoutEvery(sec) { if (sec > 0) { payouts.every = sec; if (!payouts.next || payouts.next > T + sec) payouts.next = T + sec; } }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
