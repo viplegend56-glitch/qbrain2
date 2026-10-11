@@ -166,6 +166,23 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   </div></div>
   </form>
 
+  <form method="post" action="/admin/task">
+  <div class="panel"><div class="ph"><span>Job board</span><small class="mut">pin a task for the cats · ${esc(String((engine.board.tasks || []).filter(t => t.status === 'open').length))} open, ${esc(String((engine.board.tasks || []).filter(t => t.status === 'taken').length))} taken, ${esc(String((engine.board.done || []).length))} done recently</small></div><div class="pb">
+    <div class="row3">
+      <div><label>Task (what the cat does)</label><input type="text" name="title" maxlength="80" placeholder="e.g. run a 6-qubit Grover search" required></div>
+      <div><label>Kind</label><select name="kind"><option value="quantum">quantum</option><option value="chore">chore</option></select></div>
+      <div><label>Tier (1 any cat · 2 and 3 need experience)</label><select name="tier"><option>1</option><option>2</option><option>3</option></select></div>
+    </div>
+    <div class="row3">
+      <div><label>Where</label><select name="place"><option value="lab">the lab</option><option value="cryo">the circle</option><option value="crates">the diner</option><option value="trays">the scrapyard</option><option value="yard">the yard</option><option value="vent">the heater</option><option value="bazaar">the drip shop</option><option value="exchange">the exchange</option></select></div>
+      <div><label>Takes (seconds)</label><input type="number" name="dur" min="20" max="600" step="5" value="90"></div>
+      <div><label>Bounty on top (SOL, paid from the fee pool; 0 = normal pay)</label><input type="number" name="bounty" min="0" step="0.0001" value="0"></div>
+    </div>
+    <button class="btn">Pin it on the board</button>
+    ${(engine.board.tasks || []).length ? `<table style="margin-top:12px"><tr><th>tier</th><th>task</th><th>status</th></tr>${(engine.board.tasks || []).map(t => `<tr><td>${t.tier}</td><td>${esc(t.title)}${t.poster && t.poster !== 'the box' ? ' <span class="mut">(pinned)</span>' : ''}</td><td>${t.status === 'taken' ? esc(t.by) + ' is on it' : 'open'}</td></tr>`).join('')}</table>` : ''}
+  </div></div>
+  </form>
+
   <form method="post" action="/admin/config">
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut">rules for the cats' own trading</small></div><div class="pb">
     <div class="row3">

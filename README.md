@@ -10,6 +10,7 @@ The server that runs the one shared box. The website reads from it; the admin pa
 - **Distribute**: pays SOL from the treasury to the cats, split by the quantum work each cat did since the last payout
 - **Sell**: swaps a slice of a cat's $QCATS back to SOL through Jupiter
 - **Autopilot**: does both of the above at random intervals, inside the caps you set
+- **Job board**: the box posts tasks for the cats (mostly quantum, some chores, three tiers); the admin panel lets you pin your own task with an optional SOL bounty. The site's Work page shows the board, who is on what, and what each cat has learned.
 - **AI dialogue** (optional): with `LLM_API_KEY` set, every meeting in the circle is written fresh for the cats that showed up, in their own personalities, about the actual day; cats also get their own thoughts every few minutes. Without a key the box uses its built-in lines.
 
 ## The economy, in one paragraph

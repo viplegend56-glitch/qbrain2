@@ -257,6 +257,11 @@ const server = http.createServer(async (req, res) => {
         a.maxMin = Math.max(5, a.maxMin || 20); a.nextDist = a.distribute ? when() : 0; a.nextSell = a.sell ? when() : 0;
         saveConfig(); return back(res, 'autopilot ' + (a.distribute || a.sell ? 'on: ' + [a.distribute ? 'distribute' : '', a.sell ? 'sell' : ''].filter(Boolean).join(' + ') : 'off'));
       }
+      if (p === '/admin/task') {
+        const title = String(b.title || '').trim().slice(0, 80); if (!title) return back(res, 'give the task a name', true);
+        const t = engine.postTask({ title, kind: b.kind, tier: Number(b.tier) || 1, place: b.place, dur: Number(b.dur) || 90, bounty: Math.max(0, Number(b.bounty) || 0) }, 'the operator');
+        return back(res, `pinned "${t.title}" (tier ${t.tier})`);
+      }
       if (p === '/admin/release') { if (b.name) engine.setReleased([b.name]); return back(res, b.name + ' released'); }
       if (p === '/admin/unrelease') { const ok = b.name && engine.unrelease(b.name); return back(res, ok ? b.name + ' taken out' : 'not in the box', !ok); }
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
