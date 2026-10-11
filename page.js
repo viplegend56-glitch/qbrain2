@@ -48,7 +48,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   .dist{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
   select{background:#0B1028;color:var(--text);border:1px solid var(--line2);font:11px "IBM Plex Mono",monospace;padding:2px 4px}
   .foot{margin-top:30px;color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-  .sellrow{min-width:150px}.sellrow input[type=range]{width:140px;margin:0}.rs-lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);margin:2px 0 4px}.rs-lbl b{color:var(--text)}
+  .selall{display:inline-flex;gap:6px;margin-top:10px}
   .foot input{width:110px;padding:3px 6px;font-size:11px}.foot button{padding:3px 8px;font-size:11px;margin:0;background:transparent;color:var(--muted);border:1px solid var(--line);cursor:pointer}
   @media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.row,.row3{grid-template-columns:1fr}.chk{grid-template-columns:1fr 1fr}.dist{grid-template-columns:1fr}}`;
 
@@ -62,13 +62,18 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
       <td>${b ? `<b>${sol(b.sol)}</b><br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}` : '<span class="mut">—</span>'}</td>
-      <td>${c && w && b && b.qcat > 0 ? `<form class="sellrow" method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + this.pct.value + '% of ${esc(name)}\\'s ${esc(config.TICKER)} (' + this.querySelector('.rs-q').textContent + ') for SOL?')"><input type="hidden" name="name" value="${esc(name)}"><input type="range" name="pct" class="rs" min="1" max="100" step="1" value="10" data-held="${b.qcat}"><div class="rs-lbl"><b class="rs-p">10%</b> = <span class="rs-q">${num(b.qcat * 0.1)}</span> ${esc(config.TICKER)}</div><button class="btn ghost mini" ${busy ? 'disabled' : ''}>sell</button></form>` : (c && w && b ? '<span class="mut">no tokens</span>' : '')}</td></tr>`;
+</tr>`;
   }).join('');
 
-  const distChecks = engine.ROSTER.map(([name]) => {
-    const on = inBox.has(name);
-    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? '' : ' <span class="mut">(not released)</span>'}</label>`;
+  const checks = (prefix, cls, okFn) => engine.ROSTER.map(([name]) => {
+    const on = inBox.has(name) && okFn(name);
+    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="${prefix}_${esc(name)}" class="${cls}" ${on ? 'checked' : 'disabled'}> ${esc(name)}${inBox.has(name) ? (on ? '' : ' <span class="mut">(no tokens)</span>') : ' <span class="mut">(not released)</span>'}</label>`;
   }).join('');
+  const allNone = cls => `<span class="selall"><button type="button" class="btn ghost mini" data-all="${cls}">select all</button> <button type="button" class="btn ghost mini" data-none="${cls}">unselect all</button></span>`;
+  const distChecks = checks('dist', 'dchk', () => true);
+  const sellChecks = checks('sel', 'schk', n => { const b = balances && balances.cats && balances.cats[n]; return !!(b && b.qcat > 0); });
+  const a = config.auto || {};
+  const mins = ms => ms ? Math.max(0, Math.round((ms - Date.now()) / 60000)) + ' min' : '—';
 
   const genBlock = generated ? `<div class="panel"><div class="ph"><span>New wallets — shown once</span></div><div class="pb">
     <p><b>Copy these into your host's environment variables now.</b> They are not stored anywhere on this server. Close this page and they are gone. After adding them, redeploy the service.</p>
@@ -108,7 +113,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
           <label>Amount to distribute — treasury has ${sol(tre)} (0.005 kept for fees)</label>
           <input type="range" id="dRange" min="0" max="${maxDist}" step="0.001" value="${Math.min(maxDist, Math.max(0, Math.floor(maxDist * 0.5 * 1000) / 1000))}">
           <input type="hidden" name="sol" id="dSol" value="0">
-          <div class="chk" style="margin-top:12px">${distChecks}</div>
+          <div class="chk" style="margin-top:12px">${distChecks}</div>${allNone('dchk')}
         </div>
         <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dEach">0</span> SOL to each of <span id="dN">0</span> cats</div>
           <button class="btn gold" id="dBtn" ${busy ? 'disabled data-busy="1"' : ''}>Distribute</button></div>
@@ -122,17 +127,40 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       ${walletsReady ? `<form method="post" action="/admin/refresh" class="inline"><button class="btn ghost mini">refresh balances</button></form>` : ''}
     </span></div>
     ${walletsReady && config.CA ? `<div class="pb" style="border-bottom:1px solid var(--line)">
-      <form method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + document.getElementById('sellPct').value + '% of every released cat\\'s ${esc(config.TICKER)} for SOL?')">
-        <label>Sell back into SOL — <b id="sellLbl" style="color:var(--text)">10%</b> of each cat's ${esc(config.TICKER)} (via Jupiter, ${(config.slippageBps / 100).toFixed(1)}% slippage)</label>
-        <div style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center">
-          <input type="range" id="sellPct" name="pct" min="1" max="100" step="1" value="10">
-          <button class="btn warn" style="margin:0" ${busy ? 'disabled' : ''}>Sell from every released cat</button>
+      <form method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + document.getElementById('sellPct').value + '% of the ticked cats\\' ${esc(config.TICKER)} for SOL?')">
+        <div class="dist">
+          <div>
+            <label>Cats → SOL — sell <b id="sellLbl" style="color:var(--text)">10%</b> of each ticked cat's ${esc(config.TICKER)} (via Jupiter, ${(config.slippageBps / 100).toFixed(1)}% slippage)</label>
+            <input type="range" id="sellPct" name="pct" min="1" max="100" step="1" value="10">
+            <div class="chk" style="margin-top:12px">${sellChecks}</div>${allNone('schk')}
+          </div>
+          <div style="text-align:right"><div class="big" style="color:var(--magenta)"><span id="sellBig">10%</span></div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="sellN">0</span> cats · <span id="sellQ">0</span> ${esc(config.TICKER)} total</div>
+            <button class="btn warn" id="sellBtn" ${busy ? 'disabled' : ''}>Sell</button></div>
         </div>
-        <small class="mut">Each row below has its own slider for one cat at a time.</small>
       </form></div>` : ''}
     <div class="pb">
-    <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th><th>sell back to SOL</th></tr>${catRows}</table>
+    <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th></tr>${catRows}</table>
   </div></div>
+
+  <form method="post" action="/admin/auto">
+  <div class="panel"><div class="ph"><span>Autopilot</span><small class="mut">runs on its own at a random moment every few minutes, so the box keeps going while you are away</small></div><div class="pb">
+    ${walletsReady ? `
+    <div class="row">
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="distribute" ${a.distribute ? 'checked' : ''}> <b>Auto-distribute</b> <span class="mut">${a.distribute ? 'next in ~' + mins(a.nextDist) : 'off'}</span></label>
+        <div class="row"><div><label>keep at least (SOL) in the treasury</label><input type="number" step="0.001" min="0" name="distKeep" value="${esc(a.distKeep != null ? a.distKeep : 0.02)}"></div><div><label>hand out this % of the rest each run</label><input type="number" step="1" min="1" max="100" name="distPct" value="${esc(a.distPct != null ? a.distPct : 50)}"></div></div>
+        <small class="mut">${esc(a.lastDist || '')}</small>
+      </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="sell" ${a.sell ? 'checked' : ''} ${config.CA ? '' : 'disabled'}> <b>Auto-sell</b> <span class="mut">${!config.CA ? 'needs a CA' : a.sell ? 'next in ~' + mins(a.nextSell) : 'off'}</span></label>
+        <div class="row"><div><label>each run, every released cat sells this % of its ${esc(config.TICKER)}</label><input type="number" step="0.5" min="0.5" max="100" name="sellPct" value="${esc(a.sellPct != null ? a.sellPct : 1)}"></div><div><label>never more than this % per cat per day</label><input type="number" step="1" min="1" max="100" name="sellDayCap" value="${esc(a.sellDayCap != null ? a.sellDayCap : config.sellCapPct)}"></div></div>
+        <small class="mut">${esc(a.lastSell || '')}</small>
+      </div>
+    </div>
+    <label>longest gap between runs (minutes) — each run lands at a random moment between 5 and this</label><input type="number" step="1" min="5" max="1440" name="maxMin" value="${esc(a.maxMin || 20)}" style="max-width:160px">
+    <button class="btn">Save autopilot</button>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+  </div></div>
+  </form>
 
   <form method="post" action="/admin/config">
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut">rules for the cats' own trading</small></div><div class="pb">
@@ -154,8 +182,11 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), each=document.getElementById('dEach'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
       function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; each.textContent=on?(v/on).toFixed(4):'0'; if(btn&&!btn.dataset.busy) btn.disabled=!(v>0&&on>0&&v/on>=0.001); }
       r.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
-    var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'); function u2(){ lbl.textContent=sp.value+'%'; } sp.addEventListener('input',u2); u2(); }
-    document.querySelectorAll('.rs').forEach(function(r){ var f=r.closest('form'); function u3(){ f.querySelector('.rs-p').textContent=r.value+'%'; f.querySelector('.rs-q').textContent=Math.round(Number(r.dataset.held)*r.value/100).toLocaleString('en-US'); } r.addEventListener('input',u3); u3(); });
+    var held=${JSON.stringify(Object.fromEntries(engine.ROSTER.map(([n]) => [n, balances && balances.cats && balances.cats[n] && balances.cats[n].qcat || 0])))};
+    var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'), big=document.getElementById('sellBig'), sn=document.getElementById('sellN'), sq=document.getElementById('sellQ'), sb=document.getElementById('sellBtn');
+      function u2(){ lbl.textContent=sp.value+'%'; big.textContent=sp.value+'%'; var on=[].slice.call(document.querySelectorAll('.schk:checked')); sn.textContent=on.length; var q=0; on.forEach(function(c){ q+=(held[c.name.replace('sel_','')]||0)*sp.value/100; }); sq.textContent=Math.round(q).toLocaleString('en-US'); if(sb&&!sb.disabled) sb.disabled=false; sb.disabled=!on.length; }
+      sp.addEventListener('input',u2); document.querySelectorAll('.schk').forEach(function(c){c.addEventListener('change',u2)}); u2(); }
+    document.querySelectorAll('[data-all],[data-none]').forEach(function(b){ b.addEventListener('click',function(){ var cls=b.dataset.all||b.dataset.none, on=!!b.dataset.all; document.querySelectorAll('.'+cls).forEach(function(c){ if(!c.disabled) c.checked=on; c.dispatchEvent(new Event('change')); }); }); });
     document.querySelectorAll('.addr').forEach(function(a){ a.addEventListener('click',function(){ var t=a.dataset.copy; (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){a.classList.add('did');setTimeout(function(){a.classList.remove('did')},1200)}).catch(function(){prompt('address',t)}); }); });
   })();
   </script>

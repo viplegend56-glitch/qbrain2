@@ -30,9 +30,10 @@ const DEFAULTS = {
   paused: false,
   lastTreasurySol: null,  // last treasury balance we saw, so a rise can be logged as "fees landed"
   feesSeenSol: 0,         // total real SOL that has landed in the treasury
+  auto: { distribute: false, distKeep: 0.02, distPct: 50, sell: false, sellPct: 1, sellDayCap: 5, maxMin: 20, nextDist: 0, nextSell: 0, lastDist: '', lastSell: '', soldDay: '', soldPct: {} },
 };
 let config = { ...DEFAULTS };
-try { config = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) }; } catch (_) {}
+try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) } }; } catch (_) {}
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
 const simulateFees = () => !config.CA;
@@ -155,6 +156,54 @@ async function sellFor(name, pct) {
   return { q, sol, sig: r.sig };
 }
 
+async function sellMany(names, pct) {
+  const done = [], failed = [];
+  for (const n of names) { try { const r = await sellFor(n, pct); done.push(`${n} ${r.sol.toFixed(4)} SOL`); noteSold(n, Number(pct)); } catch (e) { failed.push(`${n}: ${e.message}`); } }
+  pollBalances();
+  const msg = (done.length ? 'sold · ' + done.join(' · ') : '') + (failed.length ? (done.length ? ' — ' : '') + 'failed · ' + failed.join(' · ') : '');
+  return { done, failed, msg: msg || 'nothing to sell' };
+}
+// per-cat "% sold today" so autopilot never blows through the daily cap
+function noteSold(name, pct) {
+  const day = new Date().toISOString().slice(0, 10), a = config.auto;
+  if (a.soldDay !== day) { a.soldDay = day; a.soldPct = {}; }
+  a.soldPct[name] = (a.soldPct[name] || 0) + pct; saveConfig();
+}
+const soldToday = name => (config.auto.soldDay === new Date().toISOString().slice(0, 10) ? config.auto.soldPct[name] || 0 : 0);
+
+// ---------- autopilot ----------
+const when = () => Date.now() + (5 + Math.random() * Math.max(0, (config.auto.maxMin || 20) - 5)) * 60000;
+const stamp = () => new Date().toISOString().slice(11, 16) + ' UTC';
+async function autoTick() {
+  const a = config.auto, ws = wallets.load();
+  if (!ws.ready || !RPC_URL) return;
+  const now = Date.now();
+  if (a.distribute) { if (!a.nextDist || a.nextDist > now + a.maxMin * 60000) { a.nextDist = when(); saveConfig(); } }
+  if (a.sell && config.CA) { if (!a.nextSell || a.nextSell > now + a.maxMin * 60000) { a.nextSell = when(); saveConfig(); } }
+  if (busy) return;
+  if (a.distribute && now >= a.nextDist) {
+    a.nextDist = when(); busy = true;
+    try {
+      await pollBalances();
+      const tre = balances.treasury && balances.treasury.sol, names = engine.cats.map(c => c.name);
+      const amount = Math.floor(Math.max(0, (tre || 0) - a.distKeep - 0.005) * a.distPct / 100 * 1000) / 1000;
+      if (names.length && amount / names.length >= 0.001) { const b = { sol: amount }; for (const n of names) b['dist_' + n] = 'on'; a.lastDist = stamp() + ' · ' + await distribute(b); }
+      else a.lastDist = stamp() + ' · skipped (treasury ' + (tre == null ? 'unread' : tre.toFixed(4) + ' SOL, nothing above the keep amount') + ')';
+    } catch (e) { a.lastDist = stamp() + ' · failed: ' + e.message; console.error('auto-distribute', e); }
+    finally { busy = false; saveConfig(); }
+  }
+  if (a.sell && config.CA && now >= a.nextSell && !busy) {
+    a.nextSell = when(); busy = true;
+    try {
+      const names = engine.cats.map(c => c.name).filter(n => { const b = balances.cats[n]; return b && b.qcat > 0 && soldToday(n) + a.sellPct <= a.sellDayCap + 1e-9; });
+      if (names.length) { const r = await sellMany(names, a.sellPct); a.lastSell = stamp() + ' · ' + r.msg; }
+      else a.lastSell = stamp() + ' · skipped (every cat is at the daily cap or holds no tokens)';
+    } catch (e) { a.lastSell = stamp() + ' · failed: ' + e.message; console.error('auto-sell', e); }
+    finally { busy = false; saveConfig(); }
+  }
+}
+setInterval(() => { autoTick().catch(e => console.error('autoTick', e)); }, 20000);
+
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'); const p = u.pathname;
   try {
@@ -181,6 +230,13 @@ const server = http.createServer(async (req, res) => {
         engine.setLabMc(config.LAB_MC_USD); engine.setSimulateFees(simulateFees());
         saveConfig(); pollMarket(); pollBalances(); return back(res, 'saved');
       }
+      if (p === '/admin/auto') {
+        const a = config.auto;
+        a.distribute = !!b.distribute; a.sell = !!b.sell && !!config.CA;
+        for (const k of ['distKeep', 'distPct', 'sellPct', 'sellDayCap', 'maxMin']) if (k in b && b[k] !== '') a[k] = Number(b[k]);
+        a.maxMin = Math.max(5, a.maxMin || 20); a.nextDist = a.distribute ? when() : 0; a.nextSell = a.sell ? when() : 0;
+        saveConfig(); return back(res, 'autopilot ' + (a.distribute || a.sell ? 'on: ' + [a.distribute ? 'distribute' : '', a.sell ? 'sell' : ''].filter(Boolean).join(' + ') : 'off'));
+      }
       if (p === '/admin/release') { if (b.name) engine.setReleased([b.name]); return back(res, b.name + ' released'); }
       if (p === '/admin/unrelease') { const ok = b.name && engine.unrelease(b.name); return back(res, ok ? b.name + ' taken out' : 'not in the box', !ok); }
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
@@ -194,12 +250,10 @@ const server = http.createServer(async (req, res) => {
         busy = true;
         try {
           const released = new Set(engine.cats.map(c => c.name));
-          const names = b.name ? [b.name] : wallets.ROSTER_NAMES.filter(n => released.has(n));
-          const done = [], failed = [];
-          for (const n of names) { try { const r = await sellFor(n, b.pct); done.push(`${n} ${r.sol.toFixed(4)} SOL`); } catch (e) { failed.push(`${n}: ${e.message}`); } }
-          pollBalances();
-          const msg = (done.length ? 'sold · ' + done.join(' · ') : '') + (failed.length ? (done.length ? ' — ' : '') + 'failed · ' + failed.join(' · ') : '');
-          return back(res, msg || 'nothing to sell', !done.length);
+          const names = b.name ? [b.name] : wallets.ROSTER_NAMES.filter(n => released.has(n) && b['sel_' + n]);
+          if (!names.length) return back(res, 'no cat is ticked', true);
+          const r = await sellMany(names, b.pct);
+          return back(res, r.msg, !r.done.length);
         } finally { busy = false; }
       }
       if (p === '/admin/reset') { if (b.confirm !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
