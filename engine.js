@@ -58,47 +58,58 @@ for (const b of BUILD) {
     for (let i = 0; i < cr; i++) b.win.push({ f: 'R', u: b.y + 0.3 + i * 0.75, z: 0.5 + j * 0.9, on: Math.random() < 0.45, c: pick(WINC), ph: Math.random() * 100 });
   }
 }
+// where everything stands: the circle dead centre, the lab under the big billboard, the rest spread round the edges of the plaza
+const CRY = { x: M(11.25), y: M(11.25) };                                      // the circle (meetings, recohering)
+const LAB = { x: M(6.95), y: M(5.95), w: 3.6, d: 3.0 };                        // the lab, under the billboard
+const FRIDGE = { x: M(9.9), y: M(5.8), r: 0.62 };                              // the dilution fridge that keeps the chip cold, next to the lab
+const VAULT = { x: M(14.3), y: M(7.6) };                                       // the treasury
+const LOFT = { x: M(16.3), y: M(5.3), w: 2.0, d: 1.1 };                        // the bunks, over the corner shop
+const TRAYS = { x: M(16.7), y: M(11.5), w: 0.6, d: 3.2 };                      // the scrapyard strip along the right edge
+const CRATES = { x: M(14.9), y: M(16.0), w: 1.6, d: 0.8 };                     // the diner counter
+const VENT = { x: M(10.7), y: M(16.6) };                                       // the heater grate (1.4 x 0.85)
+const ARENA = { x: M(7.5), y: M(13.5), r: 0.95 }; ARENA.slots = [[ARENA.x - 0.65, ARENA.y + 0.45], [ARENA.x + 0.65, ARENA.y - 0.45]];
+const YARD = { x: M(4.7), y: M(15.4), w: 2.5, d: 2.2 };                        // the yard, in the left corner
+const EXC = { x: M(5.7), y: M(10.2) };                                         // the exchange kiosk
+// the lab's consoles: five along the glass front, three down the right side
+const LAB_CONSOLES = [-1.4, -0.7, 0, 0.7, 1.4].map(u => [LAB.x + u, LAB.y + LAB.d / 2 + 0.5]).concat([-0.8, -0.1, 0.6].map(u => [LAB.x + LAB.w / 2 + 0.5, LAB.y + u]));
 const ST = {
-  cryo:   { label: 'the circle',      spot: () => { const a = rand(0, TAU), r = rand(1.2, 1.6); return [M(11.6) + Math.cos(a) * r, M(11.6) + Math.sin(a) * r]; } },
-  crates: { label: 'the diner',       spot: () => [rand(M(15.05), M(16.5)), rand(M(15.45), M(15.75))] },
-  vent:   { label: 'the heater',      spot: () => [rand(M(11.8), M(12.9)), rand(M(16.3), M(16.9))] },
-  trays:  { label: 'the scrapyard',   spot: () => [rand(M(15.6), M(16.2)), rand(M(10.4), M(12.8))] },
-  loft:   { label: 'the bunks',       spot: () => [rand(M(16.6), M(17.6)), rand(M(5.6), M(6.0))] },
-  exchange: { label: 'the exchange',  spot: () => [rand(M(6.9), M(7.6)), rand(M(10.9), M(12.1))] },
-  arena:    { label: 'the arena',     spot: () => [rand(M(7.5), M(8.5)), rand(M(14.4), M(15.4))] },
+  cryo:   { label: 'the circle',      spot: () => { const a = rand(0, TAU), r = rand(1.2, 1.6); return [CRY.x + Math.cos(a) * r, CRY.y + Math.sin(a) * r]; } },
+  crates: { label: 'the diner',       spot: () => [rand(CRATES.x + 0.07, CRATES.x + 1.55), rand(CRATES.y + 1.25, CRATES.y + 1.6)] },
+  vent:   { label: 'the heater',      spot: () => [rand(VENT.x + 0.26, VENT.x + 1.4), rand(VENT.y + 0.26, VENT.y + 1.04)] },
+  trays:  { label: 'the scrapyard',   spot: () => [rand(TRAYS.x - 1.3, TRAYS.x - 0.5), rand(TRAYS.y + 0.5, TRAYS.y + 2.9)] },
+  loft:   { label: 'the bunks',       spot: () => [rand(LOFT.x + 0.4, LOFT.x + 1.7), rand(LOFT.y + 0.4, LOFT.y + 0.9)] },
+  exchange: { label: 'the exchange',  spot: () => [rand(EXC.x + 1.05, EXC.x + 1.95), rand(EXC.y - 0.8, EXC.y + 0.8)] },
+  arena:    { label: 'the arena',     spot: () => [rand(ARENA.x - 0.65, ARENA.x + 0.65), rand(ARENA.y - 0.65, ARENA.y + 0.65)] },
   lab:      { label: 'the lab',       spot: () => { const taken = cats.filter(c => c.act === 'work' && JOBS[c.job].st === 'lab').map(c => [c.tx, c.ty]); const free = LAB_CONSOLES.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); const q = pick(free.length ? free : LAB_CONSOLES); return [q[0], q[1]]; } },
   yard:     { label: 'the yard',      spot: () => [rand(YARD.x + 0.4, YARD.x + YARD.w - 0.4), rand(YARD.y + 0.4, YARD.y + YARD.d - 0.4)] },
 };
-const ARENA = { x: M(8.0), y: M(14.9), r: 0.95, slots: [[M(7.5), M(15.25)], [M(8.5), M(14.55)]] };
-const LABELS = [['vault', M(13.3), M(13.7), 2.2], ['yard', M(4.6), M(15.9), 2.0], ['lab', M(13.4), M(9.4), 3.2], ['cryo', M(11.6), M(11.6), 5.4], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(8.0), M(14.9), 1.6]];
+const LABELS = [['vault', VAULT.x, VAULT.y, 2.2], ['yard', YARD.x + YARD.w / 2, YARD.y + YARD.d / 2, 2.0], ['lab', LAB.x, LAB.y, 3.2], ['fridge', FRIDGE.x, FRIDGE.y, 3.4], ['cryo', CRY.x, CRY.y, 5.4], ['crates', CRATES.x + 0.8, CRATES.y + 0.4, 2.6], ['vent', VENT.x + 0.7, VENT.y + 0.4, 1.9], ['trays', TRAYS.x + 0.3, TRAYS.y + 1.6, 1.5], ['loft', LOFT.x + 1.0, LOFT.y + 0.55, 3.4], ['exchange', EXC.x, EXC.y, 2.4], ['arena', ARENA.x, ARENA.y, 1.6]];
 const LAMPS = [[BLK - 0.4, M(8.7)], [BLK - 0.4, M(13.9)], [BLK - 0.4, M(17.2)], [M(6.5), BLK - 0.4], [M(12), BLK - 0.4]];
+// light lines painted on the ground, running from the circle out to the places
 const TRACES = [
-  [[M(7.2), M(10.0)], [M(7.2), M(11.6)], [M(10.5), M(11.6)]],
-  [[M(12.7), M(11.6)], [M(15.0), M(11.6)], [M(15.0), M(9.6)]],
-  [[M(11.6), M(12.7)], [M(11.6), M(14.6)], [M(8.7), M(14.6)]],
-  [[M(11.6), M(10.5)], [M(11.6), M(8.5)], [M(10.2), M(8.5)]],
-  [[M(15.0), M(11.6)], [M(16.3), M(11.6)]],
-  [[M(12.4), M(12.7)], [M(12.4), M(15.9)]],
+  [[CRY.x, CRY.y - 2.6], [CRY.x, LAB.y + 1.4], [LAB.x + LAB.w / 2 + 1.2, LAB.y + 1.4]],          // to the lab
+  [[CRY.x - 2.6, CRY.y], [EXC.x + 2.3, CRY.y], [EXC.x + 2.3, EXC.y + 0.4]],                      // to the exchange
+  [[CRY.x, CRY.y + 2.6], [CRY.x, VENT.y - 0.3]],                                                 // to the heater
+  [[CRY.x + 2.6, CRY.y], [TRAYS.x - 1.6, CRY.y], [TRAYS.x - 1.6, TRAYS.y + 0.6]],                // to the scrapyard
+  [[CRY.x + 1.9, CRY.y - 1.9], [VAULT.x, CRY.y - 1.9], [VAULT.x, VAULT.y + 0.9]],                // to the treasury
+  [[CRY.x + 1.9, CRY.y + 1.9], [CRATES.x + 0.8, CRY.y + 1.9], [CRATES.x + 0.8, CRATES.y - 0.3]], // to the diner
+  [[CRY.x - 1.9, CRY.y + 1.9], [ARENA.x, CRY.y + 1.9], [ARENA.x, ARENA.y - 1.3]],                // to the arena
 ].map(pts => { const seg = []; let len = 0; for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); seg.push(l); len += l; } return { pts, seg, len, off: Math.random() * len }; });
 
 /* ---------- the wider city + harbor ---------- */
 const QUAY = BLK + 3.2; // land ends here on the two front sides; past it is the harbor
 const QLAMPS = [[QUAY - 0.7, 4], [QUAY - 0.7, 11], [QUAY - 0.7, 18], [4, QUAY - 0.7], [11, QUAY - 0.7], [18, QUAY - 0.7]];
-const VAULT = { x: M(13.3), y: M(13.7) };
-const EXC = { x: M(6.1), y: M(11.5) }, LAB = { x: M(13.4), y: M(9.4), w: 2.6, d: 2.4 }, CRY = { x: M(11.6), y: M(11.6) }, VENT = { x: M(11.6), y: M(16.1) }, YARD = { x: M(3.4), y: M(14.8), w: 2.4, d: 2.2 };
-// the lab's consoles: where a cat stands while it runs a job (along the glass front and the right side)
-const LAB_CONSOLES = [[LAB.x - 0.9, LAB.y + LAB.d / 2 + 0.4], [LAB.x - 0.3, LAB.y + LAB.d / 2 + 0.4], [LAB.x + 0.3, LAB.y + LAB.d / 2 + 0.4], [LAB.x + 0.9, LAB.y + LAB.d / 2 + 0.4], [LAB.x + LAB.w / 2 + 0.4, LAB.y - 0.6], [LAB.x + LAB.w / 2 + 0.4, LAB.y + 0.1], [LAB.x + LAB.w / 2 + 0.4, LAB.y + 0.8]];
 // things a cat cannot walk through: the structures on the plaza and the buildings on the back edges
 const OBST = [
-  { x: M(15.0), y: M(14.2), w: 1.6, d: 0.8 },          // diner (crates)
-  { x: M(16.6), y: M(10.0), w: 0.6, d: 3.2 },          // scrapyard (trays)
-  { x: EXC.x - 0.8, y: EXC.y - 0.8, w: 1.6, d: 1.6 },  // exchange
+  { x: CRATES.x, y: CRATES.y, w: CRATES.w, d: CRATES.d },      // diner counter
+  { x: TRAYS.x, y: TRAYS.y, w: TRAYS.w, d: TRAYS.d },          // scrapyard strip
+  { x: EXC.x - 0.8, y: EXC.y - 0.8, w: 1.6, d: 1.6 },          // exchange kiosk
   { x: LAB.x - LAB.w / 2, y: LAB.y - LAB.d / 2, w: LAB.w, d: LAB.d }, // lab
-  { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 }, // treasury
-  { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },  // heater unit
+  { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 },    // treasury
+  { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },      // heater unit
   ...BUILD.map(b => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
 ];
-const OBC = [[CRY.x, CRY.y, 0.55]]; // round ones: the beacon in the middle of the circle
+const OBC = [[CRY.x, CRY.y, 0.55], [FRIDGE.x, FRIDGE.y, FRIDGE.r + 0.12]]; // round ones: the beacon in the middle of the circle, the fridge
 // repulsion away from anything within m of (px, py); [fx, fy, strength]
 function pushOut(px, py, m) {
   let fx = 0, fy = 0, best = 0;
@@ -152,7 +163,7 @@ const OUT = [];
       OUT.push(b);
     }
   }
-  const SIGNS = [['QPU', '92,242,255'], ['CRYO', '154,123,255'], ['24H', '255,79,174'], ['QUBITS', '247,200,106'], ['ENTANGLE', '255,79,174'], ['NOODLES', '255,138,92'], ['PAWN', '247,200,106'], ['SOL', '92,255,170'], ['HOTEL', '255,79,174'], ['DECOHERE', '154,123,255']];
+  const SIGNS = [['NODE', '92,242,255'], ['CRYO', '154,123,255'], ['24H', '255,79,174'], ['QUBITS', '247,200,106'], ['ENTANGLE', '255,79,174'], ['NOODLES', '255,138,92'], ['PAWN', '247,200,106'], ['SOL', '92,255,170'], ['HOTEL', '255,79,174'], ['DECOHERE', '154,123,255']];
   const cand = OUT.filter(b => !b.far && b.h > 6 && b.w > 2.8);
   for (let i = 0; i < SIGNS.length && cand.length; i++) { const b = cand.splice(Math.floor(r() * cand.length), 1)[0]; b.sign = { text: SIGNS[i][0], c: SIGNS[i][1] }; }
 })();
@@ -340,16 +351,16 @@ const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
 const fmtPrice = () => fmtUsd(mcapUsd()) + ' MC';
 const fmtKeys = v => (v >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? (v / 1e9).toFixed(1) + 'G' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v).toLocaleString('en-US'));
 const PLACES = {
-  cryo:     { title: 'The circle',      kind: 'where the box meets · recovery',     pt: [M(11.6), M(11.6)], stats: ['here', 'spent', 'visits'],     desc: 'The painted circle in the middle of the box, with the countdown above it. When it hits zero every cat that is awake comes in, sits down and talks through the day: the treasury, the chart, the lab, who did what. Between meetings cats come here to recohere, for a small fee.' },
-  crates:   { title: 'The diner',       kind: 'food',                      pt: [M(15.8), M(15.6)], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
-  vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
-  trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [M(16.0), M(11.6)], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
-  exchange: { title: 'The exchange',    kind: 'where cats buy back',       pt: [M(6.6), M(11.5)],  stats: ['here', 'bought', 'buysol'],  desc: 'A kiosk with a ticker on the front. Any cat with SOL to spare walks up and buys ' + TK + '. Cats never sell here, there is no sell button. Every buy goes straight to the chart.' },
-  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(8.0), M(14.9)],  stats: ['spent', 'here', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
-  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.3), M(5.85)],  stats: ['spent', 'here', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
-  lab:      { title: 'The lab',         kind: 'quantum jobs · pays from the fee pool', pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'paid'], desc: 'Where the cats work. Samplers, factorers and searchers run quantum jobs at the consoles and get paid out of the creator fees for every job that finishes clean. Until the chart hits ' + fmtUsd(CONFIG.LAB_MC_USD) + ' the jobs run on a simulator; after that, fees buy time on a real quantum computer and every job gets a hardware receipt.' },
+  cryo:     { title: 'The circle',      kind: 'where the box meets · recovery',     pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'],     desc: 'The painted circle in the middle of the box, with the countdown above it. When it hits zero every cat that is awake comes in, sits down and talks through the day: the treasury, the chart, the lab, who did what. Between meetings cats come here to recohere, for a small fee.' },
+  crates:   { title: 'The diner',       kind: 'food',                      pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
+  vent:     { title: 'The heater',      kind: 'warmth',                    pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
+  trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [TRAYS.x - 0.7, TRAYS.y + 1.6], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
+  exchange: { title: 'The exchange',    kind: 'where cats buy back',       pt: [EXC.x + 0.5, EXC.y],  stats: ['here', 'bought', 'buysol'],  desc: 'A kiosk with a ticker on the front. Any cat with SOL to spare walks up and buys ' + TK + '. Cats never sell here, there is no sell button. Every buy goes straight to the chart.' },
+  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [ARENA.x, ARENA.y],  stats: ['spent', 'here', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
+  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [LOFT.x + 1.0, LOFT.y + 0.55],  stats: ['spent', 'here', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
+  lab:      { title: 'The lab',         kind: 'quantum jobs · pays from the fee pool', pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'paid'], desc: 'Where the cats work, under the big billboard. Samplers, factorers and searchers run quantum jobs at the consoles along the glass and get paid out of the creator fees for every job that finishes clean. The chip itself hangs in the dilution fridge next door, a few thousandths of a degree above absolute zero. Until the chart hits ' + fmtUsd(CONFIG.LAB_MC_USD) + ' the jobs run on a simulator; after that, fees buy time on a real quantum computer and every job gets a hardware receipt.' },
   yard:     { title: 'The yard',        kind: 'play · costs a little',     pt: [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2], stats: ['spent', 'here', 'visits'], desc: 'A fenced patch with a laser dot that never stays still and a ball of yarn that never ends. Playing costs a little SOL, paid to the treasury, and a cat comes out of it less lonely and more coherent.' },
-  vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.3), M(13.7)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays the creator a fee in SOL, and the fees land here. Every job the cats finish in the lab is paid out of it, in proportion to the work: the more fees land, the more a job pays. When the pool is empty the work goes on the tab for the next payout.' },
+  vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [VAULT.x, VAULT.y], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays the creator a fee in SOL, and the fees land here. Every job the cats finish in the lab is paid out of it, in proportion to the work: the more fees land, the more a job pays. When the pool is empty the work goes on the tab for the next payout.' },
 };
 const placeStats = {}, placeLogs = {};
 for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0 }; placeLogs[k] = []; }
