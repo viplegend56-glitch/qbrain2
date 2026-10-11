@@ -59,21 +59,20 @@ for (const b of BUILD) {
   }
 }
 const ST = {
-  rig:    { label: 'the rig',         spot: () => [rand(M(6.4), M(8.4)), rand(M(9.3), M(10.2))] },
-  relay:  { label: 'the relay',       spot: () => [rand(M(14.0), M(16.0)), rand(M(8.5), M(9.4))] },
+  rig:    { label: 'the mine',        spot: () => [rand(M(6.4), M(8.4)), rand(M(9.3), M(10.2))] },
+  relay:  { label: 'the tower',       spot: () => [rand(M(14.0), M(16.0)), rand(M(8.5), M(9.4))] },
   tunnel: { label: 'the tunnel',      spot: () => [rand(M(7.9), M(9.1)), rand(M(15.5), M(16.3))] },
-  cryo:   { label: 'the cryostat',    spot: () => { const a = rand(0, TAU), r = rand(1.3, 1.65); return [M(11.6) + Math.cos(a) * r, M(11.6) + Math.sin(a) * r]; } },
+  cryo:   { label: 'the core',        spot: () => { const a = rand(0, TAU), r = rand(1.3, 1.65); return [M(11.6) + Math.cos(a) * r, M(11.6) + Math.sin(a) * r]; } },
   crates: { label: 'the diner',       spot: () => [rand(M(15.0), M(16.6)), rand(M(15.5), M(16.4))] },
   vent:   { label: 'the heater',      spot: () => [rand(M(11.8), M(12.9)), rand(M(16.3), M(16.9))] },
   trays:  { label: 'the scrapyard',   spot: () => [rand(M(15.6), M(16.2)), rand(M(10.4), M(12.8))] },
-  boxes:  { label: 'the boxes',       spot: () => [rand(M(9.0), M(12.0)), rand(M(7.4), M(8.9))] },
   loft:   { label: 'the bunks',       spot: () => [rand(M(16.6), M(17.6)), rand(M(5.6), M(6.0))] },
   exchange: { label: 'the exchange',  spot: () => [rand(M(6.9), M(7.6)), rand(M(10.9), M(12.1))] },
   arena:    { label: 'the arena',     spot: () => [rand(M(9.0), M(10.0)), rand(M(12.1), M(13.1))] },
   lab:      { label: 'the lab',       spot: () => [rand(M(13.1), M(15.1)), rand(M(11.3), M(12.1))] },
 };
 const ARENA = { x: M(9.5), y: M(12.6), r: 0.95, slots: [[M(9.0), M(12.95)], [M(10.0), M(12.25)]] };
-const LABELS = [['vault', M(13.2), M(13.3), 2.2], ['rig', M(6.9), M(8.1), 2.7], ['relay', M(14.9), M(7.0), 4.4], ['cryo', M(11.6), M(11.6), 5.4], ['tunnel', M(7.6), M(14.75), 2.8], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['boxes', M(9.9), M(6.5), 1.4], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(9.5), M(12.6), 1.6], ['lab', M(14.1), M(10.55), 2.4]];
+const LABELS = [['vault', M(13.2), M(13.3), 2.2], ['rig', M(6.9), M(8.1), 2.7], ['relay', M(14.9), M(7.0), 4.4], ['cryo', M(11.6), M(11.6), 5.4], ['tunnel', M(7.6), M(14.75), 2.8], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(9.5), M(12.6), 1.6], ['lab', M(14.1), M(10.55), 2.4]];
 const LAMPS = [[BLK - 0.4, M(8.7)], [BLK - 0.4, M(13.9)], [BLK - 0.4, M(17.2)], [M(6.5), BLK - 0.4], [M(12), BLK - 0.4]];
 const TRACES = [
   [[M(7.2), M(10.0)], [M(7.2), M(11.6)], [M(10.5), M(11.6)]],
@@ -96,14 +95,13 @@ const OBST = [
   { x: TUN.x - 0.7, y: TUN.y - 0.45, w: 1.4, d: 0.9 }, // tunnel
   { x: M(15.0), y: M(14.2), w: 1.6, d: 0.8 },          // diner (crates)
   { x: M(16.6), y: M(10.0), w: 0.6, d: 3.2 },          // scrapyard (trays)
-  { x: M(9.4), y: M(6.3), w: 1.75, d: 1.1 },           // boxes
   { x: EXC.x - 0.8, y: EXC.y - 0.8, w: 1.6, d: 1.6 },  // exchange
   { x: LAB.x - 0.7, y: LAB.y - 0.65, w: 1.4, d: 1.3 }, // lab
   { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 }, // treasury
   { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },  // heater unit
   ...BUILD.map(b => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
 ];
-const OBC = [[CRY.x, CRY.y, 1.15]]; // round ones: the cryostat
+const OBC = [[CRY.x, CRY.y, 1.15]]; // round ones: the core
 // repulsion away from anything within m of (px, py); [fx, fy, strength]
 function pushOut(px, py, m) {
   let fx = 0, fy = 0, best = 0;
@@ -183,8 +181,8 @@ const drops = [], flakes = [], splashes = [], ripples = [];
 const WXEFF = {
   clear: 'Calm night. Nothing working against the strays.',
   drizzle: 'A little colder than usual.',
-  rain: 'Cold builds fast and the relay gets slick.',
-  storm: 'Coherence drains fast. Lightning can hit the relay.',
+  rain: 'Cold builds fast and the tower gets slick.',
+  storm: 'Coherence drains fast. Lightning can hit the tower.',
   fog: 'Coherence drains a bit faster.',
   snow: 'Cold builds very fast. The heater gets crowded.',
 };
@@ -214,9 +212,9 @@ const TRAITS = {
 };
 const UNLOCK_MC = [0, 0, 10000, 20000, 30000, 50000, 100000, 150000, 300000, 500000]; // market cap that releases each cat
 const STAGES = [
-  { key: 'launch', title: 'Launch', mc: 0, blurb: 'Two cats, the rig, the relay, the exchange. They work for fees and trade.' },
+  { key: 'launch', title: 'Launch', mc: 0, blurb: 'Two cats, the mine, the tower, the exchange. They work for fees and trade.' },
   { key: 'cats', title: 'The cats', mc: 10000, mcEnd: 500000, blurb: 'Eight more cats are released as the chart climbs: $10K, $20K, $30K, $50K, $100K, $150K, $300K, $500K.' },
-  { key: 'lab', title: 'The lab', mc: CONFIG.LAB_MC_USD, blurb: 'A real quantum computer behind the cryostat. Fees buy time on it and the cats start running quantum work, with every job receipt on the page.' },
+  { key: 'lab', title: 'The lab', mc: CONFIG.LAB_MC_USD, blurb: 'A real quantum computer behind the core. Fees buy time on it and the cats start running quantum work, with every job receipt on the page.' },
 ];
 const stageSeen = {};
 const stageOn = k => { if (stageSeen[k]) return true; const st = STAGES.find(x => x.key === k); return !!st && mcapUsd() >= st.mc; };
@@ -225,16 +223,16 @@ const ROSTER = [
   ['Static', 'tunneler', 'degen'], ['Olive', 'cooler', 'loyal'], ['Photon', 'runner', 'patient'], ['Biscuit', 'miner', 'greedy'], ['Echo', 'cooler', 'patient'],
 ];
 const JOBS = {
-  miner:    { label: 'miner',    st: 'rig',    verb: 'digging qubits at the rig',       pay: [0.0012, 0.003],  risk: 0,    riskWhy: '',                   did: 'dug {n} out of the rig' },
-  runner:   { label: 'runner',   st: 'relay',  verb: 'running qubits over the relay',   pay: [0.0016, 0.0042],  risk: 0.08, riskWhy: 'slipped off the relay and dropped the pay', did: 'ran a load over the relay for {n}' },
+  miner:    { label: 'miner',    st: 'rig',    verb: 'running a shift at the mine',       pay: [0.0012, 0.003],  risk: 0,    riskWhy: '',                   did: 'mined {n} for the box' },
+  runner:   { label: 'shiller',  st: 'relay',  verb: 'broadcasting ' + TK + ' from the tower', pay: [0.0016, 0.0042],  risk: 0.08, riskWhy: 'got cut off mid-broadcast and lost the pay', did: 'ran the tower for {n}' },
   tunneler: { label: 'tunneler', st: 'tunnel', verb: 'slipping through the tunnel',     pay: [0.0028, 0.007],  risk: 0.14, riskWhy: 'got turned around in the tunnel', did: 'came back through the tunnel with {n}' },
-  cooler:   { label: 'cooler',   st: 'cryo',   verb: 'keeping the cryostat cold',       pay: [0.001, 0.0024], risk: 0,    riskWhy: '',                   did: 'kept the cryostat cold for {n}' },
+  cooler:   { label: 'keeper',   st: 'cryo',   verb: 'keeping the core cold',           pay: [0.001, 0.0024], risk: 0,    riskWhy: '',                   did: 'kept the core cold for {n}' },
 };
 const ACTS = {
   eat:      { st: 'crates',   dur: 50,   verb: 'eating at the diner',          walk: 'heading to the diner',          color: '247,200,106', name: 'eat' },
   hunt:     { st: 'trays',    dur: 60,   verb: 'hunting in the scrapyard',    walk: 'creeping toward the scrapyard', color: '255,138,92', name: 'hunt' },
   work:     {                 dur: 100,                                                                                     color: '92,242,255', name: 'work' },
-  recohere: { st: 'cryo',     dur: 75,   verb: 'recohering under the cryostat', walk: 'drifting toward the cryostat',    color: '154,123,255', name: 'recohere' },
+  recohere: { st: 'cryo',     dur: 75,   verb: 'recohering under the core', walk: 'drifting toward the core',    color: '154,123,255', name: 'recohere' },
   warm:     { st: 'vent',     dur: 60,   verb: 'warming up at the heater',        walk: 'heading for the heater',            color: '255,138,92', name: 'warm up' },
   sell:     { st: 'exchange', dur: 45,  verb: 'selling at the exchange',       walk: 'heading to the exchange',         color: '255,120,120', name: 'sell' },
   buy:      { st: 'exchange', dur: 45, verb: 'buying at the exchange',        walk: 'heading to the exchange',         color: '92,255,170', name: 'buy' },
@@ -242,8 +240,9 @@ const ACTS = {
   wager:    { st: 'arena',    dur: 90,                                                                                   color: '255,200,80', name: 'wager' },
   scrap:    {                 dur: 40,                                                                                   color: '255,79,174', name: 'scrap' },
   entangle: {                 dur: 80,                                                                                     color: '154,123,255', name: 'entangle' },
-  idle:     { st: 'boxes',    dur: 70,   verb: 'curled up in a box',            walk: 'wandering to the boxes',          color: '140,151,194', name: 'rest' },
+  idle:     { st: 'cryo',     dur: 70,   verb: 'hanging around the core',       walk: 'drifting over to the core',          color: '140,151,194', name: 'rest' },
   circuit:  { st: 'lab',      dur: 110,  verb: 'running a circuit in the lab',   walk: 'heading to the lab',              color: '120,200,255', name: 'run a circuit' },
+  meet:     { st: 'cryo',     dur: 120,  verb: 'at the meeting',                walk: 'heading to the meeting at the core', color: '247,200,106', name: 'meeting' },
   sleep:    { st: 'loft',     dur: 120,  verb: 'asleep in the bunks',            walk: 'heading to the bunks to sleep',    color: '110,120,170', name: 'sleep' },
 };
 // what two entangled cats say to each other (alternating lines; {p} = the other cat)
@@ -252,9 +251,9 @@ const CHATS = [
   ['{p}. you look terrible', 'two shifts and a storm', 'eat something', 'the diner costs more every night'],
   ['the lab opens at 200K', 'you believe that', 'I believe the sign', 'fair'],
   ['who robbed Nori', 'not me', 'you say that every time', 'and every time it is true'],
-  ['the relay pays double in lightning', 'it also electrocutes you', 'worth it', 'you have never been hit'],
+  ['the tower pays double in lightning', 'it also electrocutes you', 'worth it', 'you have never been hit'],
   ['I am up forty percent', 'on paper', 'paper is where the money lives', 'until you sell'],
-  ['the heater was full again', 'cold builds fast in the snow', 'I slept at the boxes', 'free and dry'],
+  ['the heater was full again', 'cold builds fast in the snow', 'I slept under the core', 'warm enough'],
   ['rent is going up', 'everything is going up', 'except my stack', 'sell less'],
   ['coherent?', 'barely', 'hold on to me a second', 'that is what this is'],
   ['did you see the treasury tonight', 'fees landed', 'payday soon', 'if they tick our names'],
@@ -265,7 +264,7 @@ const priceMul = () => clamp(Math.sqrt(Math.max(1, mcapUsd() / CONFIG.START_MC_U
 const costOf = (base, c) => base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
 const spare = c => Math.max(0, c.sol - costOf(RESERVE, c));
 // ---- levels: XP for everything a cat does; higher levels pay less for food, cryo time and warmth ----
-const LVL_XP = [0, 250, 750, 1600, 3000, 5500, 10000, 20000, 40000, 80000]; // roughly: L2 in half an hour, L5 in a day, L10 in a week
+const LVL_XP = [0, 750, 2250, 5000, 9000, 16000, 30000, 60000, 120000, 240000]; // roughly: L2 after a few hours, L5 after a day and a half, L10 after a month
 const LVL_TITLE = ['stray', 'scrapper', 'hustler', 'trader', 'operator', 'whale', 'entangled', 'superposed', 'coherent', 'quantum'];
 const lvlOf = xp => { let l = 1; while (l < LVL_XP.length && xp >= LVL_XP[l]) l++; return l; };
 const lvlTitle = c => LVL_TITLE[Math.min(LVL_TITLE.length, c.lvl || 1) - 1];
@@ -305,16 +304,16 @@ const DRIVES = [
 const TH = {
   eat: ['the diner smell like sardines', 'food first, then the shift', 'could eat a whole fish'],
   hunt: ['something is moving in the cables', 'broke and hungry is a bad mix', 'somebody dropped tokens in the scrapyard'],
-  recohere: ['half of me is somewhere else', 'everything feels blurry', 'the cryostat hums like a purr'],
+  recohere: ['half of me is somewhere else', 'everything feels blurry', 'the core hums like a purr'],
   warm: ['the heater is the only warm thing out here', 'paws are freezing', 'one more cold night'],
-  work: ['the rig pays tonight', 'a shift now, buy later', 'every shift is a few more lamports'],
+  work: ['the mine pays tonight', 'a shift now, buy later', 'every shift is a few more lamports'],
   buy: ['chart looks cheap from down here', 'adding to the stack', 'fees in, buys out', 'size in'],
   sell: ['taking some off', 'green is green', 'paper paws tonight', 'need the sol'],
   steal: ['{p} sleeps heavy', 'nobody will miss a few thousand', 'light paws, quiet steps'],
-  wager: ['{p} wants to bet? fine.', 'double or nothing', 'the arena pays better than the rig', 'feeling lucky tonight'],
+  wager: ['{p} wants to bet? fine.', 'double or nothing', 'the arena pays better than the mine', 'feeling lucky tonight'],
   scrap: ['{p} has it coming', 'not letting {p} get away with it', '{p} is on my side of the block'],
   entangle: ['too quiet on this side', '{p} gets it', 'better in pairs'],
-  idle: ['a box is a box', 'watching the relay blink', 'not now'],
+  idle: ['a box is a box', 'watching the tower blink', 'not now'],
   circuit: ['let\u2019s see what the machine says', 'five qubits, one thousand shots', 'superposition is a job now'],
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
@@ -326,16 +325,15 @@ const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
 const fmtPrice = () => fmtUsd(mcapUsd()) + ' MC';
 const fmtKeys = v => (v >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? (v / 1e9).toFixed(1) + 'G' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v).toLocaleString('en-US'));
 const PLACES = {
-  rig:      { title: 'The rig',         kind: 'job site for miners',       pt: [M(7.2), M(9.6)],   stats: ['here', 'paid', 'visits'],    desc: 'A stack of qubits bolted to the pavement. Miners dig at it all night for steady SOL, and nothing here can go wrong.' },
-  relay:    { title: 'The relay',       kind: 'job site for runners',      pt: [M(15.0), M(8.6)],  stats: ['here', 'paid', 'visits'],    desc: 'Two pylons with a live beam between them. Runners carry loads across the wire for better pay, but the wire is slick, worse in the rain, and a slip drops the whole shift’s pay back into the treasury. When lightning hits it, runners earn double.' },
+  rig:      { title: 'The mine',        kind: 'shifts for miners · paid from the fee pool',       pt: [M(7.2), M(9.6)],   stats: ['here', 'paid', 'visits'],    desc: 'A stack of qubits bolted to the pavement. Miners dig at it all night for steady SOL, and nothing here can go wrong.' },
+  relay:    { title: 'The tower',       kind: 'shifts for shillers · lightning doubles the pay',      pt: [M(15.0), M(8.6)],  stats: ['here', 'paid', 'visits'],    desc: 'Two pylons with a live beam between them. Runners carry loads across the wire for better pay, but the wire is slick, worse in the rain, and a slip drops the whole shift’s pay back into the treasury. When lightning hits it, shillers earn double.' },
   tunnel:   { title: 'The tunnel',      kind: 'job site for tunnelers',    pt: [M(8.3), M(15.4)],  stats: ['here', 'paid', 'found'],     desc: 'A portal to somewhere nobody talks about. Tunnelers come back with the best pay on the block, but a cat that gets turned around in there drops part of its ' + TK + ' stack on the way out. It ends up in the scrapyard.' },
-  cryo:     { title: 'The cryostat',    kind: 'job site and recovery',     pt: [M(11.6), M(11.6)], stats: ['spent', 'here', 'paid'],     desc: 'The block’s dilution fridge. Coolers keep it cold for pay, and any cat can spend a little SOL to recohere underneath it.' },
+  cryo:     { title: 'The core',        kind: 'meeting place · keepers\u2019 shifts · recovery',     pt: [M(11.6), M(11.6)], stats: ['spent', 'here', 'paid'],     desc: 'The block’s dilution fridge. Keepers keep it cold for pay, and any cat can spend a little SOL to recohere underneath it.' },
   crates:   { title: 'The diner',       kind: 'food',                      pt: [M(15.8), M(15.6)], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
   vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
   trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [M(16.0), M(11.6)], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
   exchange: { title: 'The exchange',    kind: 'where cats buy back',       pt: [M(6.6), M(11.5)],  stats: ['here', 'bought', 'buysol'],  desc: 'A kiosk with a ticker on the front. Any cat with SOL to spare walks up and buys ' + TK + '. Cats never sell here, there is no sell button. Every buy goes straight to the chart.' },
   arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(9.5), M(12.6)],  stats: ['spent', 'here', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
-  boxes:    { title: 'The boxes',       kind: 'shelter',                   pt: [M(10.2), M(7.6)],  stats: ['here', 'visits', 'visits'],  desc: 'Cardboard. Free and dry. Soaked cats wait out the weather here.' },
   loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.3), M(5.85)],  stats: ['spent', 'here', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
   lab:      { title: 'The lab',         kind: 'quantum compute',           pt: [M(14.1), M(10.55)], stats: ['here', 'circuits', 'spent'], stage: 'lab',  desc: 'A real quantum computer, rented by the second. When the lab is open, fees buy time on it and coherent cats run circuits: a few qubits, a thousand shots, a result, a job receipt you can check. It doesn\u2019t solve anything useful yet. It is real.' },
   vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.2), M(13.3)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays a fee in SOL, and the fees land here. Every shift on the block is paid out of it. When it runs low, shifts pay half.' },
@@ -408,7 +406,7 @@ function because(c, act, p) {
 function thought(c, act, p) {
   if (act === 'idle' && wx.snow > 0.3) return pick(['snow again', 'the box is the only dry thing']);
   if (act === 'idle' && wx.rain > 0.3) return pick(['wet fur is the worst', 'waiting out the rain', 'the box is dry at least']);
-  if (act === 'work' && c.job === 'runner' && T < relayBoostUntil) return 'the relay pays double right now';
+  if (act === 'work' && c.job === 'runner' && T < relayBoostUntil) return 'the tower pays double right now';
   if (act === 'sell' && c.trait === 'degen') return pick(['getting out', 'this is dumping. out.', 'nope']);
   if (act === 'buy' && c.trait === 'patient') return pick(['dip. buying.', 'patience pays', 'cheaper than an hour ago']);
   if (act === 'buy' && c.trait === 'degen') return pick(['it’s pumping. in.', 'send it', 'no chart analysis, just paws']);
@@ -426,6 +424,7 @@ function decide(c) {
     ch = o; break;
   }
   if (!ch) { ch = ws.find(o => o.act === 'idle'); partner = null; }
+  if (meeting.on && T < meeting.until - 40) { joinMeeting(c); return; }
   if (ch.act !== 'scrap' && ch.act !== 'entangle' && ch.act !== 'wager') partner = null;
   c.weighed = ws.slice(0, 5).map(o => ({ act: o.act, label: o.label, w: o.w, win: o === ch }));
   c.act = ch.act; c.actT = 0; c.partner = null; c.initiator = false;
@@ -539,7 +538,7 @@ function finish(c, p) {
   } else if (a === 'recohere') {
     spend(c, costOf(CRYO, c), 'cryo', 'cryo time'); c.coh = 1; gainXp(c, 1);
     floatText(c, 'coherent', '#B9A6FF');
-    if (Math.random() < 0.4) log(`${c.name} recohered under the cryostat`, 'link', 'cryo');
+    if (Math.random() < 0.4) log(`${c.name} recohered under the core`, 'link', 'cryo');
   } else if (a === 'warm') {
     spend(c, costOf(WARM, c), 'vent', 'a warm-up'); c.cold = 0; gainXp(c, 1);
     if (Math.random() < 0.25) log(`${c.name} warmed up at the heater`, 'info', 'vent');
@@ -607,8 +606,10 @@ function finish(c, p) {
     c.lonely = 0; p.lonely = 0; const avg = clamp((c.coh + p.coh) / 2 + 0.15); c.coh = avg; p.coh = avg;
     log(`${c.name} and ${p.name} entangled, talked it over and shared coherence`, 'link'); c.chat = null; gainXp(c, 5); gainXp(p, 5);
     endPair(c, p); return;
+  } else if (a === 'meet') {
+    if (meeting.on) { c.actT = 0; return; } // stay seated until the core wraps up
   } else if (a === 'idle') {
-    c.coh = clamp(c.coh + 0.05); c.lonely = clamp(c.lonely - 0.1); placeStats.boxes.visits++;
+    c.coh = clamp(c.coh + 0.05); c.lonely = clamp(c.lonely - 0.1); placeStats.cryo.visits++;
   } else if (a === 'sleep') {
     c.tired = 0; c.lonely = clamp(c.lonely - 0.15);
     if (Math.random() < 0.5) say(c, pick(['slept like a photon', 'what did I miss', 'ok. shift.', 'still tired', 'did the chart move']));
@@ -627,7 +628,7 @@ function release(i) {
   const c = makeCat(i);
   const at = Math.random() < 0.5 ? [BLK + 0.9, rand(M(6), M(17))] : [rand(M(6), M(17)), BLK + 0.9];
   c.x = at[0]; c.y = at[1]; c.rx = Math.random() < 0.5 ? 0 : 1; c.rdir = c.rx ? -1 : 1;
-  const sp = ST.boxes.spot(); c.state = 'walk'; c.act = 'idle'; c.tx = sp[0]; c.ty = sp[1];
+  const sp = ST.cryo.spot(); c.state = 'walk'; c.act = 'idle'; c.tx = sp[0]; c.ty = sp[1];
   c.doing = 'walking into the box'; c.thought = 'finally'; c.because = `the chart hit ${fmtUsd(UNLOCK_MC[i])}`;
   c.hunger = 0.3; c.cold = 0.2; c.tired = 0.1; c.coh = 0.95;
   cats.push(c);
@@ -642,6 +643,59 @@ function checkStages() {
     stageSeen[st.key] = true;
     if (st.key === 'lab') { log(`${fmtUsd(mcapUsd())} MC. The lab is open. Fees are buying time on a quantum computer and the cats are going to work on it.`, 'gain', 'lab'); ringFX(LAB.x, LAB.y, '120,200,255', 2.2); }
     renderUnlocks(true);
+  }
+}
+/* ---------- meetings: every so often the core calls everyone in ---------- */
+const meeting = { on: false, until: 0, next: 0, lineI: 0, lineT: 0, script: [], seats: 0 };
+const MEET_LINES = [
+  'treasury is holding {treasury} SOL. {fees} SOL has come in from fees so far.',
+  '{top} is top earner on {topsol} SOL. the rest of you, pick it up.',
+  'chart is at {mcap}. {nextcat}',
+  'prices are {pm}x what they were at launch. budget accordingly.',
+  '{lab}',
+  'who keeps robbing the bunks', 'not me', 'it is always you, {thief}',
+  'motion to raise the arena stakes', 'seconded', 'overruled',
+  '{paid} SOL has been paid out in wages since the box woke up.',
+  'anyone selling gets the stink eye. that is all.',
+  'meeting adjourned. back to work.',
+];
+function meetSpot(i, n) { const a = -Math.PI * 0.75 + (i / Math.max(1, n)) * TAU; return [CRY.x + Math.cos(a) * 1.9, CRY.y + Math.sin(a) * 1.9]; }
+function meetFill(line) {
+  const top = cats.slice().sort((a, b) => b.earned - a.earned)[0], thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
+  const ni = ROSTER.findIndex((r, i) => UNLOCK_MC[i] > 0 && !cats.some(c => c.name === r[0]));
+  return line.replace('{treasury}', fmtSol(stats.treasury)).replace('{fees}', fmtSol(stats.fees)).replace('{top}', top ? top.name : 'nobody').replace('{topsol}', top ? fmtSol(top.earned) : '0')
+    .replace('{mcap}', fmtUsd(mcapUsd())).replace('{nextcat}', ni >= 0 ? `${ROSTER[ni][0]} gets out at ${fmtUsd(UNLOCK_MC[ni])}.` : 'everyone is out.')
+    .replace('{pm}', priceMul().toFixed(1)).replace('{lab}', stageOn('lab') ? 'the lab is open. run circuits when you are coherent.' : `the lab opens at ${fmtUsd(CONFIG.LAB_MC_USD)}. not yet.`)
+    .replace('{thief}', thief && thief.stole > 0 ? thief.name : 'somebody').replace('{paid}', fmtSol(stats.wages));
+}
+function joinMeeting(c) {
+  if (asleep(c) || c.act === 'meet') return;
+  if (c.partner) { const p = byId(c.partner); endPair(c, p); }
+  const sp = meetSpot(meeting.seats++, Math.max(3, cats.filter(x => !asleep(x)).length));
+  c.act = 'meet'; c.partner = null; c.initiator = false; c.state = 'walk'; c.tx = sp[0]; c.ty = sp[1]; c.doing = ACTS.meet.walk; c.because = 'the core called a meeting'; c.thought = pick(['what now', 'a meeting. great.', 'better be about the treasury', 'front row for once']);
+}
+function stepMeeting(dt) {
+  if (!meeting.next) meeting.next = T + rand(900, 1500);
+  if (!meeting.on) {
+    if (T >= meeting.next && cats.filter(c => !asleep(c)).length >= 2) {
+      meeting.on = true; meeting.until = T + 150; meeting.lineI = 0; meeting.lineT = T + 25; meeting.seats = 0;
+      meeting.script = [MEET_LINES[0], MEET_LINES[1], MEET_LINES[2], ...pick([[MEET_LINES[3]], [MEET_LINES[4]], MEET_LINES.slice(5, 8), MEET_LINES.slice(8, 11), [MEET_LINES[11]]]), MEET_LINES[12], MEET_LINES[13]];
+      log('The core is calling a meeting. Everyone awake is heading in.', 'link', 'cryo'); ringFX(CRY.x, CRY.y, '247,200,106', 2.2);
+      for (const c of cats) if (!asleep(c) && (c.state !== 'act' || c.act === 'idle')) joinMeeting(c);
+    }
+    return;
+  }
+  // latecomers join as they finish what they were doing
+  for (const c of cats) if (!asleep(c) && c.act !== 'meet' && c.state !== 'act' && T < meeting.until - 40) joinMeeting(c);
+  const here = cats.filter(c => c.act === 'meet' && c.state === 'act');
+  if (T >= meeting.lineT && meeting.lineI < meeting.script.length && here.length) {
+    const who = pick(here); say(who, meetFill(meeting.script[meeting.lineI])); meeting.lineI++; meeting.lineT = T + rand(9, 14);
+  }
+  if (T >= meeting.until) {
+    meeting.on = false; meeting.next = T + rand(1500, 2400);
+    const top = cats.slice().sort((a, b) => b.earned - a.earned)[0];
+    log(`Meeting over. Minutes: treasury ${fmtSol(stats.treasury)} SOL, ${fmtSol(stats.wages)} SOL paid out, top earner ${top ? top.name : 'nobody'}, chart at ${fmtUsd(mcapUsd())}.`, 'link', 'cryo');
+    for (const c of cats) if (c.act === 'meet') { gainXp(c, 6); c.coh = clamp(c.coh + 0.1); c.lonely = clamp(c.lonely - 0.3); c.state = 'pause'; c.pauseT = rand(3, 9); c.act = 'idle'; }
   }
 }
 function checkReleases() {
@@ -679,7 +733,7 @@ function strike() {
   else { tg = [3.5, 3.5, 7.6]; what = 'tower'; }
   const pts = []; for (let i = 0; i <= 12; i++) { const s = i / 12, j = i && i < 12 ? 0.7 : 0; pts.push([tg[0] + rand(-j, j), tg[1] + rand(-j, j), tg[2] + (1 - s) * 34]); }
   bolt = { pts, t: 0 }; flash = 1; shake = reduce ? 0 : 0.35; pushFx('bolt', { pts });
-  if (what === 'relay') { relayBoostUntil = T + 60; ringFX(M(15), M(7.6), '92,242,255', 1.6); log('Lightning hit the relay. Runners earn double for the next minute.', 'gain', 'relay'); }
+  if (what === 'relay') { relayBoostUntil = T + 60; ringFX(M(15), M(7.6), '92,242,255', 1.6); log('Lightning hit the tower. Shillers earn double for the next minute.', 'gain', 'relay'); }
 }
 function stepWeather(dt) {
   if (T >= wxUntil) {
@@ -809,13 +863,13 @@ function step(dt) {
   stepWeather(dt);
   if (realMcap == null) stepMarket(dt);
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
-  checkReleases(); checkStages();
+  checkReleases(); checkStages(); stepMeeting(dt);
   if (CONFIG.SIMULATE_FEES !== false && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
   for (const c of cats) update(c, dt);
 }
 function snapshot() {
   return {
-    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), paused, realMcap,
+    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next }, paused, realMcap,
     cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1 })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, relayBoostUntil, boat: { ...boat } },
@@ -842,6 +896,7 @@ function restoreFrom(snap) {
   if (snap.placeStats) Object.assign(placeStats, snap.placeStats);
   if (snap.placeLogs) Object.assign(placeLogs, snap.placeLogs);
   if (snap.stages) for (const st of snap.stages) if (st.open) stageSeen[st.key] = true;
+  if (snap.meeting) { meeting.on = false; meeting.next = snap.meeting.next || 0; }
   if (snap.weather) { wxKey = snap.weather.key; wxNext = snap.weather.next; wxUntil = snap.weather.until; wxDur = snap.weather.dur; Object.assign(wx, snap.weather.wx); }
 }
 };
