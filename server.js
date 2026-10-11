@@ -43,10 +43,17 @@ const simulateFees = () => !config.CA;
 // ---------- engine ----------
 const logs = [];
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
+let lastPairAt = 0;
 const hooks = {
   onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); },
   // the countdown just hit zero: ask the model for a meeting written for the cats that showed up; the box keeps its stock lines if that fails
   onMeeting: ctx => { if (!llm.enabled()) return; llm.meetingScript(ctx).then(lines => { if (lines) engine.setMeetingScript(lines); }).catch(e => console.error('meeting script', e.message)); },
+  // when a meeting ends every cat that was there takes something from it, and carries it into the next days
+  onMeetingEnd: (ctx, lines) => { if (!llm.enabled()) return; llm.takeaways(ctx, lines).then(ts => { for (const t of ts) engine.setMemory(t.name, t.text); }).catch(e => console.error('takeaways', e.message)); },
+  // two cats sitting down together get their own exchange (at most one AI chat every three minutes; the rest use the built-in lines)
+  onPair: (ctx, a, b) => { if (!llm.enabled() || Date.now() - lastPairAt < 180000) return; lastPairAt = Date.now(); llm.pairChat(ctx, a, b).then(lines => { if (lines) engine.setChat(a, b, lines); }).catch(e => console.error('pair chat', e.message)); },
+  // the day's lesson, written at the end of each day and read back into every later meeting
+  onDayEnd: (recap, ctx) => { if (!llm.enabled()) { engine.setLesson(`day ${recap.day}: ${recap.fees.toFixed ? recap.fees.toFixed(4) : recap.fees} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); return; } llm.daySummary(ctx, recap).then(line => { if (line) engine.setLesson(line); }).catch(e => console.error('day summary', e.message)); },
 };
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();

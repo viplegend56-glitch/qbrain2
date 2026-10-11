@@ -49,7 +49,7 @@ Facts of their world, never contradict them:
 Voice: lowercase, short, dry, funny, specific. Crypto-native slang is fine (dip, pump, fees, bag, ape, hold), no hashtags, no emojis, no exclamation marks, no corporate tone. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
 
 function describeCat(c) {
-  return `${c.name} (${c.role}, ${c.trait}, level ${c.level}; ${c.persona}) — ${c.sol} SOL, ${c.qcat} $QCATS, earned ${c.earned} SOL lifetime, ${c.jobs} jobs done, hunger ${c.hunger}%, coherence ${c.coherence}%${c.grudge ? ', holds a grudge against ' + c.grudge : ''}${c.lastSaid ? ', last said "' + c.lastSaid + '"' : ''}`;
+  return `${c.name} (${c.role}, ${c.trait}, level ${c.level}; ${c.persona}) — ${c.sol} SOL, ${c.qcat} $QCATS, earned ${c.earned} SOL lifetime, ${c.jobs} jobs done (${c.todayJobs || 0} today), ${c.todayTasks || 0} chores today, hunger ${c.hunger}%, coherence ${c.coherence}%${c.wearing ? ', wearing ' + c.wearing : ''}${c.casino ? ', casino record ' + c.casino : ''}${c.grudge ? ', holds a grudge against ' + c.grudge : ''}${c.recent && c.recent.length ? '; lately: ' + c.recent.join('; ') : ''}${c.memory && c.memory.length ? '; remembers: ' + c.memory.join(' / ') : ''}${c.lastSaid ? '; last said "' + c.lastSaid + '"' : ''}`;
 }
 function describeDay(ctx) {
   return [
@@ -61,6 +61,9 @@ function describeDay(ctx) {
     ctx.board && ctx.board.open && ctx.board.open.length ? `Lying around the block right now, wanting doing: ${ctx.board.open.join('; ')}.` : 'Nothing is lying around the block right now.',
     ctx.board && ctx.board.doneToday && ctx.board.doneToday.length ? `Tasks finished today: ${ctx.board.doneToday.slice(0, 8).join('; ')}.` : '',
     ctx.visitors && ctx.visitors.length ? `Out on the plaza right now: ${ctx.visitors.join(', ')}.` : '',
+    ctx.sinceLast && ctx.sinceLast.mcap0 ? `Since the last meeting the chart went from ${ctx.sinceLast.mcap0} (${ctx.sinceLast.mcapPct >= 0 ? '+' : ''}${ctx.sinceLast.mcapPct}%) and ${ctx.sinceLast.fees} SOL of fees came in.` : '',
+    ctx.today ? `Today so far: ${ctx.today.jobs} lab jobs, ${ctx.today.tasks} chores done, ${ctx.today.faints} faints${ctx.today.casino.length ? '; casino: ' + ctx.today.casino.join('; ') : ''}${ctx.today.arena.length ? '; arena: ' + ctx.today.arena.join('; ') : ''}${ctx.today.thefts.length ? '; ' + ctx.today.thefts.join('; ') : ''}${ctx.today.shop.length ? '; shop: ' + ctx.today.shop.join('; ') : ''}; ${ctx.today.visitors} people and bots have come through the box in total.` : '',
+    ctx.lessons && ctx.lessons.length ? `What the box has learned on earlier days (build on it, refer back to it, change your minds when the facts changed): ${ctx.lessons.join(' | ')}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -73,7 +76,7 @@ async function meetingScript(ctx) {
 Cats present in the circle:
 ${cats.map(describeCat).join('\n')}
 
-Write the meeting: 20 to 26 lines of dialogue for a five-minute sit-down. Open with someone reading the numbers (treasury, chart, fees), then argue about the day: who worked, who did not, whether to sell coin for food or hold, what the lab should run next, one grudge, one joke, and end with a plan for tomorrow. Cats interrupt and answer each other, so write some quick back-and-forth exchanges of two or three short lines. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters.
+Write the meeting: 20 to 26 lines of dialogue for a ten-minute sit-down. Open with someone reading the numbers (treasury, chart since last time, fees), then argue about the actual day: who worked and who did not, the chores and the people leaving them, the casino and the arena, whether to sell coin for food or hold, what the lab should run next, one grudge, one joke, and end with a plan for tomorrow that follows from what happened. Cats refer back to what they remember and to earlier lessons, and admit when they were wrong. Cats interrupt and answer each other, so write some quick back-and-forth exchanges of two or three short lines. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters. Never repeat a line from an earlier meeting.
 Reply with ONLY a JSON array like [{"who":"Miso","text":"..."}, ...]`;
   const text = await complete(WORLD, user, 2000);
   const arr = parseArray(text);
@@ -81,6 +84,52 @@ Reply with ONLY a JSON array like [{"who":"Miso","text":"..."}, ...]`;
   return lines.length >= 4 ? lines.slice(0, 30) : null;
 }
 
+// after a meeting: one line per cat on what it took from it, which it will carry into the next days
+async function takeaways(ctx, lines) {
+  const cats = ctx.cats || []; if (!cats.length) return [];
+  const user = `${describeDay(ctx)}
+
+The meeting that just ended:
+${(lines || []).slice(0, 40).map(l => `${l.who}: ${l.text}`).join('\n')}
+
+Cats who were there:
+${cats.map(describeCat).join('\n')}
+
+For each cat write one thing it took away from this meeting, in its own voice, first person, as a memory it will act on or hold against someone ("agreed to run smaller circuits", "Nori is right about the dip and I hate it"). Under 90 characters each, no quotes.
+Reply with ONLY a JSON array like [{"name":"Miso","text":"..."}, ...]`;
+  const text = await complete(WORLD, user, 700);
+  const arr = parseArray(text);
+  return arr.map(x => ({ name: x.name, text: clip(x.text, 110) })).filter(x => x.text && cats.some(c => c.name === x.name));
+}
+// two cats entangling: a short exchange about their own situations
+async function pairChat(ctx, aName, bName) {
+  const cats = (ctx.cats || []).filter(c => c.name === aName || c.name === bName); if (cats.length < 2) return null;
+  const user = `${describeDay(ctx)}
+
+${cats.map(describeCat).join('\n')}
+
+${aName} came looking for ${bName} and they are sitting together for a minute. Write 5 or 6 alternating lines, ${aName} first, about their own situations today: hunger, SOL, the chart, the lab, a chore, the casino, a grudge, something one of them remembers. Specific and dry; they can disagree. Under 80 characters each.
+Reply with ONLY a JSON array of strings, alternating ${aName}, ${bName}, ${aName}...`;
+  const text = await complete(WORLD, user, 500);
+  const arr = parseArray(text);
+  const lines = arr.map(x => clip(typeof x === 'string' ? x : (x && x.text) || '', 90)).filter(Boolean);
+  return lines.length >= 3 ? lines.slice(0, 6) : null;
+}
+// the day's lesson: one line the whole box carries forward
+async function daySummary(ctx, recap) {
+  const user = `${describeDay(ctx)}
+
+The day that just ended, day ${recap.day}: ${recap.fees} SOL of fees in, ${recap.wages} SOL paid out, ${recap.jobs} lab jobs, ${recap.tasks} chores, chart from ${recap.mcapStart} to ${recap.mcapEnd}, top worker ${recap.topWorker || 'nobody'}, top earner ${recap.topEarner || 'nobody'}.
+Notable: ${(recap.events || []).slice(-14).map(e => e.text).join('; ') || 'nothing much'}.
+The meeting's lines: ${(recap.meeting && recap.meeting.lines || []).slice(0, 14).map(l => l.who + ': ' + l.text).join(' / ') || 'no meeting'}.
+
+Write the one-line lesson the box takes from this day, as the cats would put it in the minutes: what worked, what did not, what to do differently. Under 140 characters, lowercase, no names of cats that were not involved.
+Reply with ONLY a JSON array with one string.`;
+  const text = await complete(WORLD, user, 200);
+  const arr = parseArray(text);
+  const line = clip(typeof arr[0] === 'string' ? arr[0] : (arr[0] && arr[0].text) || '', 160);
+  return line || null;
+}
 // a one-line thought for a few awake cats, about what they are doing right now
 async function thoughts(ctx, picks) {
   const cats = (ctx.cats || []).filter(c => picks.includes(c.name)); if (!cats.length) return [];
@@ -89,11 +138,11 @@ async function thoughts(ctx, picks) {
 Cats:
 ${cats.map(describeCat).join('\n')}
 
-For each cat write one thought it mutters to itself right now, in its own voice, about its own situation (its SOL, its bag, its hunger, the chart, the lab, a grudge). Under 70 characters each, no names of cats that are not listed.
+For each cat write one thought it mutters to itself right now, in its own voice, about its own situation (its SOL, its bag, its hunger, the chart, the lab, a chore, the casino, a grudge, something it remembers or agreed to). Under 70 characters each, no names of cats that are not listed, never a line it has said before.
 Reply with ONLY a JSON array like [{"name":"Miso","text":"..."}, ...]`;
   const text = await complete(WORLD, user, 400);
   const arr = parseArray(text);
   return arr.map(x => ({ name: x.name, text: clip(x.text, 80) })).filter(x => x.text && cats.some(c => c.name === x.name));
 }
 
-module.exports = { enabled: () => !!KEY, status, meetingScript, thoughts };
+module.exports = { enabled: () => !!KEY, status, meetingScript, thoughts, takeaways, pairChat, daySummary };
