@@ -146,4 +146,18 @@ Reply with ONLY a JSON array like [{"name":"Miso","text":"..."}, ...]`;
   return arr.map(x => ({ name: x.name, text: clip(x.text, 80) })).filter(x => x.text && cats.some(c => c.name === x.name));
 }
 
-module.exports = { enabled: () => !!KEY, status, meetingScript, thoughts, takeaways, pairChat, daySummary };
+// a study note: the cat just ran a circuit and worked through the next topic on its ladder. One line, in its voice, physics correct.
+async function studyNote(ctx, name, info) {
+  const c = (ctx.cats || []).find(x => x.name === name); if (!c) return null;
+  const user = `${describeCat(c)}
+
+It just finished a lab job: a ${info.nq}-qubit ${info.kind} circuit on the simulator, 1,024 shots, most common readout |${info.bits}>. Its study topic for this session was "${info.title}"${info.depth ? ` (its ${info.depth + 1}${['st', 'nd', 'rd'][info.depth] || 'th'} time round the ladder, so go a step deeper)` : ' (first time)'}.
+${info.previous && info.previous.length ? 'Its last notes were: ' + info.previous.map(t => '"' + t + '"').join(' ') + ' — build on them, do not repeat them.' : ''}
+Write the one note it writes in its notebook about what it learned about ${info.title}: under 32 words, first person, in its own voice, physically correct, concrete, and it may mention the circuit result if that fits. No hype, no claims of discoveries, no chart talk, no emoji.
+Reply with ONLY the note text.`;
+  const text = await complete(WORLD, user, 120);
+  const t = String(text || '').trim().replace(/^["“]|["”]$/g, '').trim();
+  return t ? clip(t, 240) : null;
+}
+
+module.exports = { enabled: () => !!KEY, status, meetingScript, thoughts, takeaways, pairChat, daySummary, studyNote };

@@ -653,7 +653,7 @@ const TH = {
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
 
-const fmtSol = v => (v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v >= 0.001 ? v.toFixed(4) : v.toFixed(5));
+const fmtSol = v => (!(v > 0) ? '0.00' : v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v < 0.00005 ? '<0.0001' : v.toFixed(4));
 const fmtQ = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'K' : Math.round(v).toLocaleString('en-US'));
 const fmtUsd = v => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? '$' + Math.round(v / 1e3) + 'K' : v >= 1e4 ? '$' + (v / 1e3).toFixed(1) + 'K' : v >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + Math.round(v));
 const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
@@ -881,6 +881,7 @@ function finish(c, p) {
       c.qjobs++; c.qwork += diff; c.qnq += nq; c.qmax = Math.max(c.qmax || 0, nq); learn(c, j.kind, 1); if (st === 'lab') { placeStats.lab.circuits++; stats.circuits++; stats.lastJob = { name: c.name, nq, bits, job, kind: j.kind, t: T }; }
       did(c, `ran a ${nq}-qubit ${j.kind} job (${job}) → |${bits}⟩`);
       gainXp(c, 3 + nq * 1.5);
+      if (st === 'lab') studySession(c, { kind: j.kind, nq, bits, job });
       const receipt = `${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): 1,024 shots, most common result |${bits}\u27E9.`;
       if (pay > 0) {
         stats.qiPool -= pay; c.qi += pay; c.qiEarned += pay; stats.qiPaid += pay; placeStats[st].qi = (placeStats[st].qi || 0) + pay;
@@ -1078,6 +1079,7 @@ function checkStages() {
 }
 /* ---------- meetings: every so often the circle calls everyone in ---------- */
 const meeting = { on: false, until: 0, next: 0, lineI: 0, lineT: 0, script: [], seats: 0, n: 0, mcap0: 0, fees0: 0 };
+let studyHook = null; // the brain can write a cat's study note with AI; the box keeps its own if not
 let meetingHook = null, meetingEndHook = null, pairHook = null, dayEndHook = null; // the brain sets these: it is told when a meeting starts (and can hand back a script), when one ends, when two cats start talking, when a day ends
 const lessons = []; // what the box as a whole has learned, a line a day
 function remember(c, text) { if (!c || !text) return; if (!c.memory) c.memory = []; c.memory.unshift({ day: dayNo(), text: String(text).slice(0, 140) }); if (c.memory.length > 8) c.memory.pop(); }
@@ -1224,6 +1226,79 @@ function stepMeeting(dt) {
   }
 }
 const benched = new Set(); // cats an admin took out stay out until they are put back
+// ---------- the research lab: every finished job is a study session on the cat's next topic, and now and then a problem the box can check ----------
+const CURRICULUM = [
+  ['qubits', 'what a qubit is', ['a qubit is a 0 and a 1 at the same time until somebody looks. ran {nq} of them, 1,024 shots, |{bits}⟩ came up most.', 'a bit is a switch. a qubit is a switch that has not decided yet. {nq} undecided switches tonight.']],
+  ['superposition', 'superposition', ['superposition is not "both". it is a weighted mix, and the weights are what you compute with. my {kind} run was all weights until the readout.', 'put a qubit in superposition and every outcome is live at once. {nq} qubits, 2^{nq} outcomes, one of them wins: |{bits}⟩.']],
+  ['measurement', 'measurement', ['measuring picks one answer and throws the rest away. that is why it is 1,024 shots and not one. tonight the mode was |{bits}⟩.', 'you never see the state. you see samples of it. {nq} qubits, 1,024 samples, a histogram, and |{bits}⟩ on top.']],
+  ['gates', 'gates: X, Z and H', ['X flips. Z flips the sign. H turns a 0 into half-and-half. everything in the lab is stacks of those three.', 'H twice is nothing. did it on purpose today to check. it was nothing.']],
+  ['bloch', 'the Bloch sphere', ['one qubit is a point on a sphere. gates are rotations. |0⟩ is the top, |1⟩ the bottom, the equator is where the superpositions live.', 'thought of the Bloch sphere as a globe. the {kind} job just spun it around a few times and read the latitude.']],
+  ['entanglement', 'entanglement', ['two entangled qubits do not have their own states anymore. only the pair does. measured one, the other was already decided.', 'H on the first, CNOT to the second, and now they move together. {nq} qubits, and the first two were a pair.']],
+  ['bell', 'Bell states', ['the Bell pair reads 00 or 11, never 01 or 10. ran it: the 01 and 10 counts were just noise.', 'four Bell states, all maximally entangled, all different in a way you only see with the right measurement. learned the names today.']],
+  ['interference', 'interference', ['amplitudes can cancel. that is the whole trick: make the wrong answers cancel and the right one add up. {kind} does exactly that.', 'two paths to the same outcome can erase each other. in a classical machine they would just add. this is the part that is not a faster computer, it is a different one.']],
+  ['decoherence', 'decoherence', ['T1 is how long a qubit remembers it is excited. T2 is how long it remembers its phase. ours forget fast, which is why the box pays for coherence.', 'noise is not a bug in the simulator, it is the whole problem. a real {nq}-qubit run would have lost a few shots to decoherence.']],
+  ['calibration', 'noise and calibration', ['every gate is a little wrong. calibration measures how wrong. {kind} on {nq} qubits, and the error adds up with every gate.', 'learned what a readout error is: the qubit was |1⟩ and the detector said 0. ran the same thing 1,024 times to average it out.']],
+  ['grover', 'Grover search', ['Grover finds one item in N with about √N tries. for 1,024 items that is roughly 25, not 512.', 'the oracle marks the answer, the diffusion step amplifies it, repeat about π/4·√N times. do it one time too many and the answer starts to shrink again.']],
+  ['amplification', 'amplitude amplification', ['Grover is one case of a bigger trick: anything that makes a good state a little more likely can be pumped up quadratically.', 'you do not amplify probability directly, you amplify amplitude, and probability is amplitude squared. that is why the speed-up is a square root.']],
+  ['qft', 'the quantum Fourier transform', ['the QFT turns a pattern that repeats into a spike you can read. it is the engine inside Shor.', 'learned the QFT on {nq} qubits: a ladder of H gates and controlled rotations, and the rotations get tinier every step.']],
+  ['phase', 'phase estimation', ['phase estimation reads the angle a gate rotates by, as a binary fraction. more qubits, more digits. {nq} tonight.', 'the eigenvalue sits in the phase, the QFT pulls it out. half of quantum chemistry is this one circuit.']],
+  ['shor', 'Shor’s algorithm', ['factoring 15: pick 7, find the order of 7 mod 15 (it is 4), and gcd(7²±1, 15) hands you 3 and 5. the quantum part is the order-finding.', 'Shor on {nq} qubits is a toy, and a real one needs thousands with error correction. but the toy works, and I ran it.']],
+  ['errors', 'error correction', ['you cannot copy a qubit, so you spread one across three and vote. the repetition code fixes one bit flip. one.', 'errors in a quantum machine are continuous, not just flips, but measuring a syndrome snaps them back to a flip or a phase flip you can fix.']],
+  ['surface', 'surface codes', ['a logical qubit is a grid of physical ones with stabilizers measured over and over. the grid gets better as it gets bigger. that is the whole bet.', 'learned the distance of a code: the number of errors it takes to fool it. distance 3 fixes one. the big machines want 25 or more.']],
+  ['qaoa', 'QAOA', ['QAOA is a quantum circuit tuned by a classical loop to find a decent answer to a hard optimisation. not the best answer. a decent one, fast.', 'alternate a problem layer and a mixing layer, tune two angles per layer, measure. {kind} work sits right next to this.']],
+  ['vqe', 'VQE', ['VQE guesses a wavefunction, measures its energy, and a classical optimiser nudges the guess. chemists like it because small molecules fit on small chips.', 'the energy you measure is an average over shots, and the noise in the average is the real limit. 1,024 shots is not many.']],
+  ['volume', 'quantum volume', ['quantum volume is one number for how big a square circuit a machine can run and still get the heavy outputs more often than chance.', 'ran the heavy-output test on {nq} qubits. passing means the machine is not just making noise. the box passes because it is a simulator; the real ones work for it.']],
+  ['rb', 'randomized benchmarking', ['run random gate sequences that should undo themselves, see how often they do, and you get the error per gate. no state tomography needed.', 'the decay curve from randomized benchmarking is the honest number. everything else about a chip is marketing.']],
+  ['teleport', 'teleportation', ['teleportation moves a state, not matter: a Bell pair, two measurements, two classical bits, two corrections. the original is destroyed on the way.', 'it does not beat light speed. the two classical bits have to travel the normal way. learned that twice today.']],
+  ['qkd', 'quantum key distribution', ['send qubits in random bases; anyone listening disturbs them and the error rate gives them away. the key is the shots that matched.', 'no-cloning is what makes QKD work. you cannot copy the qubit to read it later.']],
+  ['nocloning', 'the no-cloning theorem', ['you cannot copy an unknown qubit. it falls straight out of linearity. no backups in the lab.', 'the no-cloning theorem is why error correction looks nothing like a RAID array. you spread, you do not copy.']],
+];
+const PROBLEMS = [
+  () => { const N = pick([16, 64, 256, 1024]); const a = Math.round(Math.PI / 4 * Math.sqrt(N)); return { topic: 'grover', q: `how many Grover iterations to find one item in ${N}?`, a: String(a), wrong: String(a + pick([-2, -1, 1, 3])) }; },
+  () => { const n = pick([3, 4, 5, 6, 8, 10]); return { topic: 'qubits', q: `how many basis states do ${n} qubits have?`, a: String(2 ** n), wrong: String(pick([2 * n, 2 ** n / 2, 2 ** (n + 1)])) }; },
+  () => ({ topic: 'bell', q: 'a Bell pair |Φ+⟩: the first qubit reads 0. what does the second read?', a: '0', wrong: '1' }),
+  () => ({ topic: 'gates', q: 'H, then H again, on |0⟩. what do you get?', a: '|0⟩', wrong: pick(['|1⟩', '|+⟩']) }),
+  () => { const n = pick([10, 12, 16]); return { topic: 'qubits', q: `how many qubits hold ${2 ** n} basis states?`, a: String(n), wrong: String(n + pick([-2, 1, 2])) }; },
+  () => ({ topic: 'shor', q: 'what is the order of 7 mod 15?', a: '4', wrong: pick(['2', '3', '8']) }),
+  () => ({ topic: 'shor', q: 'the order of 7 mod 15 is 4. which factors of 15 fall out of gcd(7²±1, 15)?', a: '3 and 5', wrong: pick(['5 and 7', '3 and 7']) }),
+  () => ({ topic: 'gates', q: 'X on |1⟩ gives?', a: '|0⟩', wrong: '|1⟩' }),
+  () => ({ topic: 'entanglement', q: 'CNOT with control 1 and target 0. the target becomes?', a: '1', wrong: '0' }),
+  () => ({ topic: 'superposition', q: 'H on |0⟩, then measure. chance of reading 0?', a: '50%', wrong: pick(['100%', '25%', '0%']) }),
+  () => ({ topic: 'entanglement', q: 'a 3-qubit GHZ state from |000⟩: one H, then how many CNOTs?', a: '2', wrong: pick(['1', '3']) }),
+  () => ({ topic: 'decoherence', q: 'which time tells you how long a qubit stays excited: T1 or T2?', a: 'T1', wrong: 'T2' }),
+  () => ({ topic: 'errors', q: 'the 3-qubit repetition code corrects how many bit flips?', a: '1', wrong: pick(['2', '3']) }),
+  () => ({ topic: 'nocloning', q: 'can you copy an unknown qubit state?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'gates', q: 'Z on |+⟩ gives?', a: '|−⟩', wrong: pick(['|+⟩', '|1⟩']) }),
+  () => ({ topic: 'measurement', q: 'two identical runs of the same circuit on a real chip. same readout?', a: 'not necessarily', wrong: 'always' }),
+];
+const research = []; let researchSeq = 0; // latest first: study notes and problems, what the lab actually produces
+const topicIdx = c => ((c.study && c.study.i) || 0) % CURRICULUM.length, topicDepth = c => Math.floor(((c.study && c.study.i) || 0) / CURRICULUM.length);
+function pushResearch(e) { e.id = ++researchSeq; e.t = clock(simMin); e.day = dayNo(); research.unshift(e); if (research.length > 150) research.pop(); return e; }
+function studySession(c, r) {
+  // r: { kind, nq, bits, job } — the circuit it just ran. The note is the box's own line about the topic; the brain may overwrite it with an AI one.
+  if (!c.study) c.study = { i: 0 }; if (!c.notes) c.notes = [];
+  const idx = topicIdx(c), depth = topicDepth(c), [key, title, lines] = CURRICULUM[idx];
+  const text = pick(lines).replace(/\{nq\}/g, r.nq).replace(/\{bits\}/g, r.bits).replace(/\{kind\}/g, r.kind);
+  const e = pushResearch({ kind: 'note', cat: c.name, topic: key, title, depth, text, job: r });
+  c.notes.unshift({ t: e.t, day: e.day, topic: key, title, text, id: e.id }); if (c.notes.length > 40) c.notes.pop();
+  c.study.i++; stats.sessions = (stats.sessions || 0) + 1; learn(c, 'research', 1);
+  did(c, `studied ${title}: ${text}`);
+  if (studyHook) { try { studyHook(c, { key, title, depth, nq: r.nq, bits: r.bits, kind: r.kind, noteId: e.id, previous: c.notes.slice(1, 4).map(n => n.text) }); } catch (_) {} }
+  // every few sessions the box sets a problem it can check for itself
+  if (Math.random() < 0.3) problemFor(c);
+}
+function problemFor(c) {
+  const pr = pick(PROBLEMS)(); const sk = skillLvl(skillOf(c, 'research'));
+  const covered = (c.notes || []).some(n => n.topic === pr.topic);
+  const p = clamp(0.3 + sk * 0.06 + (covered ? 0.25 : 0) + 0.04 * ((c.lvl || 1) - 1), 0.2, 0.95), ok = Math.random() < p;
+  let bonus = 0;
+  if (ok) { bonus = qiLive() ? 0 : Math.min(stats.qiPool, Math.round(qiPerJob() * 0.6)); if (bonus > 0) { stats.qiPool -= bonus; c.qi += bonus; c.qiEarned += bonus; stats.qiPaid += bonus; floatText(c, '+' + fmtQi(bonus) + ' ' + QI + ' bonus', '#C4B2FF'); } c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
+  else { c.coh = clamp(c.coh - 0.08); c.failed = (c.failed || 0) + 1; stats.failed = (stats.failed || 0) + 1; }
+  const e = pushResearch({ kind: 'problem', cat: c.name, topic: pr.topic, q: pr.q, a: pr.a, given: ok ? pr.a : pr.wrong, ok, bonus });
+  log(`${c.name} was set a problem in the lab: ${pr.q} It said ${e.given}. ${ok ? 'Right' + (bonus ? ', +' + fmtQi(bonus) + ' ' + QI : '') + '.' : 'Wrong; the answer was ' + pr.a + '.'}`, ok ? 'gain' : 'loss', 'lab');
+  did(c, `${ok ? 'solved' : 'missed'}: ${pr.q} (${e.given})`); if (ok) remember(c, `got one right in the lab: ${pr.q} ${pr.a}`); else remember(c, `missed one in the lab: ${pr.q} it is ${pr.a}`);
+}
+function setNote(id, text) { const e = research.find(x => x.id === id); if (!e || !text) return false; e.text = text; e.ai = true; const c = cats.find(x => x.name === e.cat); if (c && c.notes) { const n = c.notes.find(x => x.id === id); if (n) n.text = text; } return true; }
 function stepGas() {
   // a cat whose gas reserve has run low gets it refilled from the treasury: the box does it itself while it runs on its own; the server does the real transfer once the wallets are live
   if (!feePool()) return;
@@ -1324,7 +1399,7 @@ function update(c, dt) {
     const reach = (c.partner && c.initiator) ? 0.6 : 0.04;
     const seatBound = c.act === 'meet' || c.act === 'eat' || c.act === 'work' || c.act === 'task' || c.act === 'shop'; // a cat with its own seat goes all the way
     if (d <= reach || (!seatBound && d < 0.5 && !c.partner && cats.some(o => o !== c && o.state === 'act' && Math.hypot(o.x - c.tx, o.y - c.ty) < 0.35))) { c.nearT = 0; arrive(c, p); return; } // close enough if someone is already standing on the spot
-    if (d < 0.6) { if (!c.nearT) c.nearT = T; else if (T - c.nearT > (seatBound ? 6 : 2.5)) { c.nearT = 0; arrive(c, p); return; } } else c.nearT = 0; // nearly there but held off by other cats for a while: that will do
+    if (d < 0.6 || (!seatBound && d < 1.3)) { if (!c.nearT) c.nearT = T; else if (T - c.nearT > (seatBound ? 6 : d < 0.6 ? 2.5 : 7)) { c.nearT = 0; arrive(c, p); return; } } else c.nearT = 0; // nearly there but held off by other cats for a while: that will do (a crowd round the heater counts from further out) // nearly there but held off by other cats for a while: that will do
     const [nx, ny, vx, vy] = steerStep(c.x, c.y, c.tx, c.ty, sp, dt, c);
     // not getting anywhere for a few seconds: try going round the other way
     if (!c.stuckP || T - c.stuckP[2] > 3) {
@@ -1464,6 +1539,7 @@ function noteBuy(name, qcat, sol, sig) {
 meetingHook = ctx => { if (hooks.onMeeting) hooks.onMeeting(ctx); };
 meetingEndHook = (ctx, lines) => { if (hooks.onMeetingEnd) hooks.onMeetingEnd(ctx, lines); else if (ctx.cats.length) { /* no AI: the box notes the meeting itself */ } };
 pairHook = (ctx, a, b) => { if (hooks.onPair) hooks.onPair(ctx, a, b); };
+studyHook = (c, info) => { if (hooks.onStudy) hooks.onStudy(meetingContext(), c.name, info); };
 dayEndHook = (recap, ctx) => { if (hooks.onDayEnd) hooks.onDayEnd(recap, ctx); else setLesson(`day ${recap.day}: ${fmtSol(recap.fees)} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); };
 function setTreasury(sol) { if (CONFIG.SIMULATE_FEES === false && typeof sol === 'number' && sol >= 0) stats.treasury = sol; } // the box shows the real treasury wallet once the coin is live
 function step(dt) {
@@ -1479,7 +1555,7 @@ function step(dt) {
 function snapshot() {
   return {
     v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next }, paused, realMcap,
-    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
+    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 8), solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),
@@ -1487,7 +1563,7 @@ function snapshot() {
     board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool },
     deliveries: deliveries.map(d => ({ id: d.id, kind: d.kind, x: +d.x.toFixed(3), y: +d.y.toFixed(3), z: +d.z.toFixed(3), tx: +d.tx.toFixed(3), ty: +d.ty.toFixed(3), state: d.state })),
     bots: bots.map(b => ({ id: b.id, x: +b.x.toFixed(3), y: +b.y.toFixed(3), tx: +b.tx.toFixed(3), ty: +b.ty.toFixed(3), state: b.state, face: b.face, pauseT: b.pauseT > 0 ? +b.pauseT.toFixed(2) : 0 })),
-    days, today: dayCur, lessons: lessons.slice(0, 12),
+    days, today: dayCur, lessons: lessons.slice(0, 12), research: research.slice(0, 80),
     txs: txs.slice(0, 60), talk: talk.slice(0, 80), placeStats, placeLogs, fx: fx.splice(0, fx.length),
   };
 }
@@ -1496,7 +1572,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, get research() { return research; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
@@ -1506,6 +1582,7 @@ function restoreFrom(snap) {
   if (snap.mkt) { mkt.price = snap.mkt.price; mkt.p0 = snap.mkt.p0; mkt.mom = snap.mkt.mom || 0; mkt.hist = snap.mkt.hist || []; }
   if (snap.txs) { txs.length = 0; txs.push(...snap.txs); }
   if (snap.talk) { talk.length = 0; talk.push(...snap.talk); talkSeq = Math.max(0, ...talk.map(m => m.id || 0)); }
+  if (snap.research) { research.length = 0; research.push(...snap.research); researchSeq = Math.max(0, ...research.map(e => e.id || 0)); }
   if (snap.placeStats) Object.assign(placeStats, snap.placeStats);
   if (snap.placeLogs) Object.assign(placeLogs, snap.placeLogs);
   if (snap.stages) for (const st of snap.stages) if (st.open) stageSeen[st.key] = true;

@@ -47,7 +47,7 @@ const simulateFees = () => !config.CA;
 // ---------- engine ----------
 const logs = [];
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
-let lastPairAt = 0;
+let lastPairAt = 0, lastStudyAt = 0;
 const hooks = {
   onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); },
   // the countdown just hit zero: ask the model for a meeting written for the cats that showed up; the box keeps its stock lines if that fails
@@ -56,6 +56,8 @@ const hooks = {
   onMeetingEnd: (ctx, lines) => { if (!llm.enabled()) return; llm.takeaways(ctx, lines).then(ts => { for (const t of ts) engine.setMemory(t.name, t.text); }).catch(e => console.error('takeaways', e.message)); },
   // two cats sitting down together get their own exchange (at most one AI chat every three minutes; the rest use the built-in lines)
   onPair: (ctx, a, b) => { if (!llm.enabled() || Date.now() - lastPairAt < 180000) return; lastPairAt = Date.now(); llm.pairChat(ctx, a, b).then(lines => { if (lines) engine.setChat(a, b, lines); }).catch(e => console.error('pair chat', e.message)); },
+  // a cat finished a study session in the lab: the model writes its note (at most one every 90 seconds; the box's own line stands otherwise)
+  onStudy: (ctx, name, info) => { if (!llm.enabled() || Date.now() - lastStudyAt < 90000) return; lastStudyAt = Date.now(); llm.studyNote(ctx, name, info).then(t => { if (t) engine.setNote(info.noteId, t); }).catch(e => console.error('study note', e.message)); },
   // the day's lesson, written at the end of each day and read back into every later meeting
   onDayEnd: (recap, ctx) => { if (!llm.enabled()) { engine.setLesson(`day ${recap.day}: ${recap.fees.toFixed ? recap.fees.toFixed(4) : recap.fees} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); return; } llm.daySummary(ctx, recap).then(line => { if (line) engine.setLesson(line); }).catch(e => console.error('day summary', e.message)); },
 };
