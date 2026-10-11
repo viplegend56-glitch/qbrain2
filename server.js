@@ -22,7 +22,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 // ---------- config (editable from /admin, saved to disk) ----------
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const DEFAULTS = {
-  NAME: 'Quantum Cats', TICKER: 'QCAT',
+  NAME: 'Quantum Cats', TICKER: 'QCATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   SOL_USD: 150, START_MC_USD: 3100,
   sellCapPct: 5,          // max % of its stack a cat may sell per day (enforced once the cats trade for real)
@@ -35,6 +35,7 @@ const DEFAULTS = {
 };
 let config = { ...DEFAULTS };
 try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) } }; } catch (_) {}
+config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; // the name and ticker come from the code, not from an old saved config
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
 const simulateFees = () => !config.CA;

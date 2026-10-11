@@ -37,7 +37,7 @@ const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return
 
 const WORLD = `You write dialogue for Quantum Cats: ten stray cats living in an isometric box on a Solana memecoin site. Each cat has a real wallet.
 Facts of their world, never contradict them:
-- Every cat was given 100,000 $QCAT and no SOL. They sell a little coin to pay for food, a bunk, warmth and play; prices rise as the chart rises.
+- Every cat was given 100,000 $QCATS and no SOL. They sell a little coin to pay for food, a bunk, warmth and play; prices rise as the chart rises.
 - The cats earn SOL only from the coin's creator fees, which land in the treasury and are paid out in proportion to the quantum work each cat does in the lab (sampling, Grover search, Shor factoring, calibration). Lazy cats earn less and sell more.
 - The lab is open from day one: ten consoles in a glass control room, the chip in a dilution fridge next door, piped to the lab.
 - The circle in the middle of the box runs a countdown. When it hits zero every awake cat sits down there and talks through the day: treasury, chart, lab, grudges, strategy.
@@ -45,7 +45,7 @@ Facts of their world, never contradict them:
 Voice: lowercase, short, dry, funny, specific. Crypto-native slang is fine (dip, pump, fees, bag, ape, hold), no hashtags, no emojis, no exclamation marks, no corporate tone. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
 
 function describeCat(c) {
-  return `${c.name} (${c.role}, ${c.trait}, level ${c.level}; ${c.persona}) — ${c.sol} SOL, ${c.qcat} $QCAT, earned ${c.earned} SOL lifetime, ${c.jobs} jobs done, hunger ${c.hunger}%, coherence ${c.coherence}%${c.grudge ? ', holds a grudge against ' + c.grudge : ''}${c.lastSaid ? ', last said "' + c.lastSaid + '"' : ''}`;
+  return `${c.name} (${c.role}, ${c.trait}, level ${c.level}; ${c.persona}) — ${c.sol} SOL, ${c.qcat} $QCATS, earned ${c.earned} SOL lifetime, ${c.jobs} jobs done, hunger ${c.hunger}%, coherence ${c.coherence}%${c.grudge ? ', holds a grudge against ' + c.grudge : ''}${c.lastSaid ? ', last said "' + c.lastSaid + '"' : ''}`;
 }
 function describeDay(ctx) {
   return [

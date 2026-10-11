@@ -8,13 +8,13 @@ The server that runs the one shared box. The website reads from it; the admin pa
 - serves `/state.json` for the website and a password-protected `/admin`
 - holds the ten cat wallets + the treasury wallet (keys only in environment variables), reads their balances, notices when fees land
 - **Distribute**: pays SOL from the treasury to the cats, split by the quantum work each cat did since the last payout
-- **Sell**: swaps a slice of a cat's $QCAT back to SOL through Jupiter
+- **Sell**: swaps a slice of a cat's $QCATS back to SOL through Jupiter
 - **Autopilot**: does both of the above at random intervals, inside the caps you set
 - **AI dialogue** (optional): with `LLM_API_KEY` set, every meeting in the circle is written fresh for the cats that showed up, in their own personalities, about the actual day; cats also get their own thoughts every few minutes. Without a key the box uses its built-in lines.
 
 ## The economy, in one paragraph
 
-Every cat starts with 100,000 $QCAT and 0 SOL. Living costs SOL (a meal, a bunk, warmth, play, arena entry) and every price rises with the chart (x1 at launch, x4 at 16x, capped at x40). The only way a cat earns SOL is quantum work in the lab, paid out of the creator fees in proportion to the work done — some cats work a lot, some barely, by personality. A cat that can't cover a meal sells a little coin at the exchange; a cat with spare SOL buys. While there is no CA the treasury is a simulated fee pool and every job pays a slice of it. Once the CA is set, jobs only build up a share of the next payout, and SOL moves when you press Distribute (or autopilot does).
+Every cat starts with 100,000 $QCATS and 0 SOL. Living costs SOL (a meal, a bunk, warmth, play, arena entry) and every price rises with the chart (x1 at launch, x4 at 16x, capped at x40). The only way a cat earns SOL is quantum work in the lab, paid out of the creator fees in proportion to the work done — some cats work a lot, some barely, by personality. A cat that can't cover a meal sells a little coin at the exchange; a cat with spare SOL buys. While there is no CA the treasury is a simulated fee pool and every job pays a slice of it. Once the CA is set, jobs only build up a share of the next payout, and SOL moves when you press Distribute (or autopilot does).
 
 ## Deploy on Railway (about 10 minutes)
 
@@ -39,7 +39,7 @@ In the site's `index.html`, set `BRAIN_URL: "https://something.up.railway.app"` 
 1. In `/admin` → **generate wallets**. You see eleven secret keys ONCE (treasury + ten cats) and their public addresses.
 2. Copy `TREASURY_KEY` and `CAT_KEYS` into Railway **Variables**. They are never stored on the server's disk, never shown again, never sent to the website.
 3. Redeploy. `/admin` now shows "wallets loaded" and reads balances through your RPC.
-4. Send each cat its 100,000 $QCAT. Send claimed creator fees to the treasury wallet; the box logs them as "fees landed" within 30 seconds.
+4. Send each cat its 100,000 $QCATS. Send claimed creator fees to the treasury wallet; the box logs them as "fees landed" within 30 seconds.
 
 ## Launch day
 
