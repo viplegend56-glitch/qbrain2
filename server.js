@@ -11,6 +11,7 @@ const createEngine = require('./engine');
 const market = require('./market');
 const wallets = require('./wallets');
 const { renderAdmin } = require('./page');
+const llm = require('./llm');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -41,7 +42,12 @@ const simulateFees = () => !config.CA;
 // ---------- engine ----------
 const logs = [];
 const STATE_PATH = path.join(DATA_DIR, 'state.json');
-const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, { onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); } });
+const hooks = {
+  onLog: e => { logs.unshift({ ...e, at: Date.now() }); if (logs.length > 300) logs.pop(); },
+  // the countdown just hit zero: ask the model for a meeting written for the cats that showed up; the box keeps its stock lines if that fails
+  onMeeting: ctx => { if (!llm.enabled()) return; llm.meetingScript(ctx).then(lines => { if (lines) engine.setMeetingScript(lines); }).catch(e => console.error('meeting script', e.message)); },
+};
+const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
 engine.setPaused(config.paused);
@@ -87,6 +93,7 @@ async function pollBalances() {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA)) };
     const t = balances.treasury && balances.treasury.sol;
     if (typeof t === 'number') {
+      engine.setTreasury(t);
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005) {
         const d = t - config.lastTreasurySol; config.feesSeenSol += d; engine.noteFees(d);
       }
@@ -98,6 +105,15 @@ setInterval(pollBalances, 30000); pollBalances();
 
 // ---------- persistence ----------
 setInterval(saveState, 30000);
+
+// ---------- thoughts: every few minutes a few awake cats get a line of their own ----------
+async function thoughtTick() {
+  if (!llm.enabled()) return;
+  const ctx = engine.meetingContext(); if (!ctx.cats.length) return;
+  const pool = ctx.cats.map(c => c.name).sort(() => Math.random() - 0.5).slice(0, 3);
+  try { for (const t of await llm.thoughts(ctx, pool)) engine.setThought(t.name, t.text); } catch (e) { console.error('thoughts', e.message); }
+}
+setInterval(thoughtTick, 300000 + Math.random() * 120000); setTimeout(thoughtTick, 90000);
 
 // ---------- http (no framework: Node's built-in server) ----------
 function send(res, status, body, type = 'application/json', extra = {}) {
@@ -114,7 +130,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees() }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -219,6 +235,7 @@ const server = http.createServer(async (req, res) => {
         market: mkt,
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
+        ai: llm.enabled(),
       });
     }
     if (p.startsWith('/admin')) {

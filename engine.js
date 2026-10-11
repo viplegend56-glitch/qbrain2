@@ -26,7 +26,7 @@ const renderUnlocks = () => {};
 // talk + log + ledger
 const talk = []; let talkSeq = 0;
 function talkPush(m) { m.id = ++talkSeq; talk.unshift(m); if (talk.length > 80) talk.pop(); }
-function say(c, text) { if (!text) return; c.bubble = text; c.bubbleT = T; talkPush({ sys: false, cat: c.id, name: c.name, coat: c.coat, eye: c.eye, text, t: clock(simMin) }); }
+function say(c, text) { if (!text) return; c.bubble = text; c.bubbleT = T; talkPush({ sys: false, cat: c.id, name: c.name, coat: c.coat, eye: c.eye, text, t: clock(simMin) }); if (c.said) { c.said.unshift({ t: clock(simMin), day: dayNo(), text }); if (c.said.length > 30) c.said.pop(); } }
 function log(text, kind, place) {
   if (place && placeLogs[place]) { placeLogs[place].unshift({ t: clock(simMin), text }); if (placeLogs[place].length > 6) placeLogs[place].pop(); }
   talkPush({ sys: true, kind: kind || 'info', text, t: clock(simMin) });
@@ -59,7 +59,7 @@ for (const b of BUILD) {
   }
 }
 const ST = {
-  cryo:   { label: 'the core',        spot: () => { const a = rand(0, TAU), r = rand(1.3, 1.65); return [M(11.6) + Math.cos(a) * r, M(11.6) + Math.sin(a) * r]; } },
+  cryo:   { label: 'the circle',      spot: () => { const a = rand(0, TAU), r = rand(1.2, 1.6); return [M(11.6) + Math.cos(a) * r, M(11.6) + Math.sin(a) * r]; } },
   crates: { label: 'the diner',       spot: () => [rand(M(15.05), M(16.5)), rand(M(15.45), M(15.75))] },
   vent:   { label: 'the heater',      spot: () => [rand(M(11.8), M(12.9)), rand(M(16.3), M(16.9))] },
   trays:  { label: 'the scrapyard',   spot: () => [rand(M(15.6), M(16.2)), rand(M(10.4), M(12.8))] },
@@ -70,7 +70,7 @@ const ST = {
   yard:     { label: 'the yard',      spot: () => [rand(YARD.x + 0.4, YARD.x + YARD.w - 0.4), rand(YARD.y + 0.4, YARD.y + YARD.d - 0.4)] },
 };
 const ARENA = { x: M(8.0), y: M(14.9), r: 0.95, slots: [[M(7.5), M(15.25)], [M(8.5), M(14.55)]] };
-const LABELS = [['vault', M(13.2), M(13.3), 2.2], ['yard', M(9.7), M(7.0), 2.0], ['lab', M(14.0), M(8.2), 3.2], ['cryo', M(11.6), M(11.6), 5.4], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(8.0), M(14.9), 1.6]];
+const LABELS = [['vault', M(13.3), M(13.7), 2.2], ['yard', M(4.6), M(15.9), 2.0], ['lab', M(13.4), M(9.4), 3.2], ['cryo', M(11.6), M(11.6), 5.4], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(8.0), M(14.9), 1.6]];
 const LAMPS = [[BLK - 0.4, M(8.7)], [BLK - 0.4, M(13.9)], [BLK - 0.4, M(17.2)], [M(6.5), BLK - 0.4], [M(12), BLK - 0.4]];
 const TRACES = [
   [[M(7.2), M(10.0)], [M(7.2), M(11.6)], [M(10.5), M(11.6)]],
@@ -84,8 +84,8 @@ const TRACES = [
 /* ---------- the wider city + harbor ---------- */
 const QUAY = BLK + 3.2; // land ends here on the two front sides; past it is the harbor
 const QLAMPS = [[QUAY - 0.7, 4], [QUAY - 0.7, 11], [QUAY - 0.7, 18], [4, QUAY - 0.7], [11, QUAY - 0.7], [18, QUAY - 0.7]];
-const VAULT = { x: M(13.2), y: M(13.3) };
-const EXC = { x: M(6.1), y: M(11.5) }, LAB = { x: M(14.0), y: M(8.2), w: 2.6, d: 2.4 }, CRY = { x: M(11.6), y: M(11.6) }, VENT = { x: M(11.6), y: M(16.1) }, YARD = { x: M(8.6), y: M(6.0), w: 2.2, d: 2.0 };
+const VAULT = { x: M(13.3), y: M(13.7) };
+const EXC = { x: M(6.1), y: M(11.5) }, LAB = { x: M(13.4), y: M(9.4), w: 2.6, d: 2.4 }, CRY = { x: M(11.6), y: M(11.6) }, VENT = { x: M(11.6), y: M(16.1) }, YARD = { x: M(3.4), y: M(14.8), w: 2.4, d: 2.2 };
 // the lab's consoles: where a cat stands while it runs a job (along the glass front and the right side)
 const LAB_CONSOLES = [[LAB.x - 0.9, LAB.y + LAB.d / 2 + 0.4], [LAB.x - 0.3, LAB.y + LAB.d / 2 + 0.4], [LAB.x + 0.3, LAB.y + LAB.d / 2 + 0.4], [LAB.x + 0.9, LAB.y + LAB.d / 2 + 0.4], [LAB.x + LAB.w / 2 + 0.4, LAB.y - 0.6], [LAB.x + LAB.w / 2 + 0.4, LAB.y + 0.1], [LAB.x + LAB.w / 2 + 0.4, LAB.y + 0.8]];
 // things a cat cannot walk through: the structures on the plaza and the buildings on the back edges
@@ -98,7 +98,7 @@ const OBST = [
   { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },  // heater unit
   ...BUILD.map(b => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
 ];
-const OBC = [[CRY.x, CRY.y, 1.15]]; // round ones: the core
+const OBC = [[CRY.x, CRY.y, 0.55]]; // round ones: the beacon in the middle of the circle
 // repulsion away from anything within m of (px, py); [fx, fy, strength]
 function pushOut(px, py, m) {
   let fx = 0, fy = 0, best = 0;
@@ -178,8 +178,8 @@ const drops = [], flakes = [], splashes = [], ripples = [];
 const WXEFF = {
   clear: 'Calm night. Nothing working against the strays.',
   drizzle: 'A little colder than usual.',
-  rain: 'Cold builds fast and the tower gets slick.',
-  storm: 'Coherence drains fast. Lightning can hit the tower.',
+  rain: 'Cold builds fast and the plaza gets slick.',
+  storm: 'Coherence drains fast. Lightning can hit the lab and double the pay.',
   fog: 'Coherence drains a bit faster.',
   snow: 'Cold builds very fast. The heater gets crowded.',
 };
@@ -195,7 +195,7 @@ const WXICON = {
 };
 
 /* ---------- agents ---------- */
-const SUPPLY = 1e9, CAT_ALLOC = 1e6; // 1% of supply, 0.1% per cat
+const SUPPLY = 1e9, CAT_ALLOC = 1e5; // 100,000 per cat: 1,000,000 across the ten, 0.1% of supply
 const COATS = [
   { c: '#E08A3C', e: '#B6FF6A' }, { c: '#1C2033', e: '#F2D45C', d: 1 }, { c: '#9097B3', e: '#5CF2FF' },
   { c: '#ECEFF7', e: '#5CA8FF' }, { c: '#9A6B43', e: '#C8FF7A' }, { c: '#E8CC98', e: '#7AF0C8' }, { c: '#4B4F66', e: '#FFD36A', d: 1 },
@@ -215,21 +215,33 @@ const STAGES = [
 ];
 const stageSeen = {};
 const stageOn = k => { if (stageSeen[k]) return true; const st = STAGES.find(x => x.key === k); return !!st && mcapUsd() >= st.mc; };
+const PERSONA = {
+  Miso: 'first out of the box and acts like it. chases every green candle, talks fast, regrets nothing out loud.',
+  Qubit: 'the grinder. runs Shor until the readout blurs, counts every lamport, thinks sleep is for the unemployed.',
+  Nori: 'calm, dry, patient. buys the dips everyone else panics on and says so, quietly, every meeting.',
+  Pixel: 'small, loud, curious about everything in the lab. asks the questions nobody else will.',
+  Mochi: 'diamond paws. has never sold a single token and considers this a personality.',
+  Static: 'twitchy. two lab jobs, a storm and a wager before breakfast. gets electrocuted more than most.',
+  Olive: 'the elder. remembers every rug, lectures gently, holds forever, sleeps in the top bunk.',
+  Photon: 'fast and cheerful. believes the chart is a mood and the mood is good.',
+  Biscuit: 'light paws. knows where everyone keeps their stash and swears it was already open.',
+  Echo: 'last cat out, hungry to catch up. repeats whatever the top earner says and then does it better.',
+};
 const ROSTER = [
   ['Miso', 'miner', 'degen'], ['Qubit', 'tunneler', 'greedy'], ['Nori', 'cooler', 'patient'], ['Pixel', 'runner', 'degen'], ['Mochi', 'miner', 'loyal'],
   ['Static', 'tunneler', 'degen'], ['Olive', 'cooler', 'loyal'], ['Photon', 'runner', 'patient'], ['Biscuit', 'miner', 'greedy'], ['Echo', 'cooler', 'patient'],
 ];
 const JOBS = {
-  miner:    { label: 'sampler',  st: 'lab',  kind: 'sampling', nq: [2, 4], verb: 'running sampling jobs in the lab',   pay: [0.0012, 0.003],  risk: 0,    riskWhy: '',                                         did: 'ran a sampling job for {n}' },
-  runner:   { label: 'searcher', st: 'lab',  kind: 'Grover',   nq: [3, 6], verb: 'running a Grover search in the lab', pay: [0.0016, 0.0042], risk: 0.08, riskWhy: 'search came back as noise and the job was scrapped', did: 'ran a Grover search for {n}' },
-  tunneler: { label: 'factorer', st: 'lab',  kind: 'Shor',     nq: [4, 7], verb: 'running Shor in the lab',             pay: [0.0028, 0.007],  risk: 0.14, riskWhy: 'job errored out before the readout', did: 'factored a number for {n}' },
-  cooler:   { label: 'keeper',   st: 'cryo', kind: 'calibration', nq: [1, 2], verb: 'keeping the core cold for the lab', pay: [0.001, 0.0024],  risk: 0,    riskWhy: '',                                         did: 'kept the core cold for {n}' },
+  miner:    { label: 'sampler',  st: 'lab',  kind: 'sampling', nq: [2, 4], verb: 'running sampling jobs in the lab',   pay: [0.00009, 0.00024], risk: 0,    riskWhy: '',                                         did: 'ran a sampling job for {n}' },
+  runner:   { label: 'searcher', st: 'lab',  kind: 'Grover',   nq: [3, 6], verb: 'running a Grover search in the lab', pay: [0.00012, 0.00033], risk: 0.08, riskWhy: 'search came back as noise and the job was scrapped', did: 'ran a Grover search for {n}' },
+  tunneler: { label: 'factorer', st: 'lab',  kind: 'Shor',     nq: [4, 7], verb: 'running Shor in the lab',             pay: [0.00021, 0.00054], risk: 0.14, riskWhy: 'job errored out before the readout', did: 'factored a number for {n}' },
+  cooler:   { label: 'calibrator', st: 'lab', kind: 'calibration', nq: [1, 3], verb: 'running calibration jobs in the lab', pay: [0.00008, 0.0002], risk: 0,    riskWhy: '',                                         did: 'ran a calibration job for {n}' },
 };
 const ACTS = {
   eat:      { st: 'crates',   dur: 50,   verb: 'eating at the diner',          walk: 'heading to the diner',          color: '247,200,106', name: 'eat' },
   hunt:     { st: 'trays',    dur: 60,   verb: 'hunting in the scrapyard',    walk: 'creeping toward the scrapyard', color: '255,138,92', name: 'hunt' },
   work:     {                 dur: 100,                                                                                     color: '92,242,255', name: 'work' },
-  recohere: { st: 'cryo',     dur: 75,   verb: 'recohering under the core', walk: 'drifting toward the core',    color: '154,123,255', name: 'recohere' },
+  recohere: { st: 'cryo',     dur: 75,   verb: 'recohering in the circle',  walk: 'drifting toward the circle',    color: '154,123,255', name: 'recohere' },
   warm:     { st: 'vent',     dur: 60,   verb: 'warming up at the heater',        walk: 'heading for the heater',            color: '255,138,92', name: 'warm up' },
   sell:     { st: 'exchange', dur: 45,  verb: 'selling at the exchange',       walk: 'heading to the exchange',         color: '255,120,120', name: 'sell' },
   buy:      { st: 'exchange', dur: 45, verb: 'buying at the exchange',        walk: 'heading to the exchange',         color: '92,255,170', name: 'buy' },
@@ -237,25 +249,27 @@ const ACTS = {
   wager:    { st: 'arena',    dur: 90,                                                                                   color: '255,200,80', name: 'wager' },
   scrap:    {                 dur: 40,                                                                                   color: '255,79,174', name: 'scrap' },
   entangle: {                 dur: 80,                                                                                     color: '154,123,255', name: 'entangle' },
-  idle:     { st: 'cryo',     dur: 70,   verb: 'hanging around the core',       walk: 'drifting over to the core',          color: '140,151,194', name: 'rest' },
+  idle:     { st: 'cryo',     dur: 70,   verb: 'hanging around the circle',       walk: 'drifting over to the circle',          color: '140,151,194', name: 'rest' },
   play:     { st: 'yard',     dur: 60,   verb: 'chasing the laser in the yard',  walk: 'heading to the yard',              color: '120,200,255', name: 'run a circuit' },
-  meet:     { st: 'cryo',     dur: 120,  verb: 'at the meeting',                walk: 'heading to the meeting at the core', color: '247,200,106', name: 'meeting' },
+  meet:     { st: 'cryo',     dur: 120,  verb: 'at the meeting',                walk: 'heading to the meeting at the circle', color: '247,200,106', name: 'meeting' },
   sleep:    { st: 'loft',     dur: 120,  verb: 'asleep in the bunks',            walk: 'heading to the bunks to sleep',    color: '110,120,170', name: 'sleep' },
 };
 // what two entangled cats say to each other (alternating lines; {p} = the other cat)
 const CHATS = [
   ['you feel that', 'the chart dipped. I always feel it first', 'the box pays either way', 'does it though'],
-  ['{p}. you look terrible', 'two shifts and a storm', 'eat something', 'the diner costs more every night'],
+  ['{p}. you look terrible', 'two jobs and a storm', 'eat something', 'the diner costs more every night'],
   ['the lab opens at 200K', 'you believe that', 'I believe the sign', 'fair'],
   ['who robbed Nori', 'not me', 'you say that every time', 'and every time it is true'],
-  ['the tower pays double in lightning', 'it also electrocutes you', 'worth it', 'you have never been hit'],
+  ['the lab pays double in lightning', 'it also electrocutes you', 'worth it', 'you have never been hit'],
   ['I am up forty percent', 'on paper', 'paper is where the money lives', 'until you sell'],
-  ['the heater was full again', 'cold builds fast in the snow', 'I slept under the core', 'warm enough'],
+  ['the heater was full again', 'cold builds fast in the snow', 'I slept under the circle', 'warm enough'],
   ['rent is going up', 'everything is going up', 'except my stack', 'sell less'],
   ['coherent?', 'barely', 'hold on to me a second', 'that is what this is'],
   ['did you see the treasury tonight', 'fees landed', 'payday soon', 'if they tick our names'],
 ];
-const FOOD = 0.0006, CRYO = 0.0004, WARM = 0.0003, BUNK = 0.0003, ARENA_FEE = 0.0002, PLAY = 0.00025, RESERVE = 0.0016;
+const FOOD = 0.0001, CRYO = 0.00007, WARM = 0.00005, BUNK = 0.00006, ARENA_FEE = 0.00004, PLAY = 0.00005, RESERVE = 0.0003;
+// while there is no coin yet the treasury is a simulated fee pool that pays every job; once the coin is live, SOL only moves when the operator distributes
+const feePool = () => CONFIG.SIMULATE_FEES !== false;
 // survival gets dearer as the chart climbs: x1 at the starting cap, x4 at 16x, x8 at 64x, capped at x40
 const priceMul = () => clamp(Math.sqrt(Math.max(1, mcapUsd() / CONFIG.START_MC_USD)), 1, 40);
 const costOf = (base, c) => base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
@@ -274,9 +288,11 @@ function gainXp(c, n) {
   }
 }
 function sellUrge(c) {
-  if (c.qcat < 20000) return 0;
+  if (c.qcat < 2000) return 0;
   let w = 0;
-  if (c.sol < costOf(FOOD, c) && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6;
+  if (c.sol < costOf(FOOD, c) && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6 + c.hunger * 0.5; // broke and hungry: sell enough to eat
+  if (c.sol < costOf(FOOD, c) && c.hunger > 0.9) w = Math.max(w, 1.1);                                       // even diamond paws eat
+  if (T < (c.sellCool || 0)) return w; // recently took profit or bailed: sit on the rest for a while
   if (c.tr.tp && mkt.price > c.entry * c.tr.tp) w = Math.max(w, 0.7);
   if (c.tr.panic && mkt.mom < -0.004) w = Math.max(w, 0.62);
   return w;
@@ -287,30 +303,32 @@ const DRIVES = [
   { act: 'hunt',     label: 'broke and hungry',         w: c => c.hunger * (c.sol < costOf(FOOD, c) ? 1.2 : 0.3) + (stats.lostPool > 2000 ? 0.25 : 0) },
   { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= CRYO ? 1 : 0.45) },
   { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= WARM ? 1 : 0.4) },
-  { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (clamp(1 - c.sol / (0.012 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
+  { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
   { act: 'buy',      label: 'spare SOL',                w: c => clamp(spare(c) / 0.008) * 0.9 * c.tr.eager * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40) ) },
   { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : 'taking profit'), w: c => sellUrge(c) },
   { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
-  { act: 'wager',    label: 'feeling lucky',            w: c => (0.1 + 0.32 * c.tr.gamble) * (c.qcat > 50000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) },
+  { act: 'wager',    label: 'feeling lucky',            w: c => (0.1 + 0.32 * c.tr.gamble) * (c.qcat > 5000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) },
   { act: 'entangle', label: 'wants company',            w: c => c.lonely * 0.85 * c.tr.social },
   { act: 'idle',     label: () => (wx.rain + wx.snow > 0.3 ? 'caught in the weather' : 'nothing urgent'), w: () => 0.2 + wx.rain * 0.4 + wx.snow * 0.35 },
   { act: 'sleep',    label: 'tired',                    w: c => Math.pow(c.tired, 2.2) * 1.1 },
   { act: 'play',     label: 'wants to play',            w: c => (c.lonely * 0.5 + 0.15) * c.tr.social * (spare(c) > costOf(PLAY, c) ? 1 : 0.1) },
 ];
 const TH = {
-  eat: ['the diner smell like sardines', 'food first, then the shift', 'could eat a whole fish'],
+  eat: ['the diner smells like sardines', 'food first, then the lab', 'could eat a whole fish'],
   hunt: ['something is moving in the cables', 'broke and hungry is a bad mix', 'somebody dropped tokens in the scrapyard'],
-  recohere: ['half of me is somewhere else', 'everything feels blurry', 'the core hums like a purr'],
+  recohere: ['half of me is somewhere else', 'everything feels blurry', 'the circle hums like a purr'],
   warm: ['the heater is the only warm thing out here', 'paws are freezing', 'one more cold night'],
-  work: ['the mine pays tonight', 'a shift now, buy later', 'every shift is a few more lamports'],
+  work: ['the lab pays tonight', 'a job now, buy later', 'every circuit is a few more lamports', 'the fee pool looks fat'],
   buy: ['chart looks cheap from down here', 'adding to the stack', 'fees in, buys out', 'size in'],
   sell: ['taking some off', 'green is green', 'paper paws tonight', 'need the sol'],
   steal: ['{p} sleeps heavy', 'nobody will miss a few thousand', 'light paws, quiet steps'],
-  wager: ['{p} wants to bet? fine.', 'double or nothing', 'the arena pays better than the mine', 'feeling lucky tonight'],
+  wager: ['{p} wants to bet? fine.', 'double or nothing', 'the arena pays better than the lab', 'feeling lucky tonight'],
   scrap: ['{p} has it coming', 'not letting {p} get away with it', '{p} is on my side of the block'],
   entangle: ['too quiet on this side', '{p} gets it', 'better in pairs'],
-  idle: ['a box is a box', 'watching the tower blink', 'not now'],
+  idle: ['a box is a box', 'watching the circle count down', 'not now'],
+  play: ['the dot. the dot.', 'yarn time', 'five minutes in the yard'],
+  meet: ['circle time', 'the countdown hit zero', 'minutes to read, strategy to argue'],
   circuit: ['let\u2019s see what the machine says', 'five qubits, one thousand shots', 'superposition is a job now'],
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
@@ -322,7 +340,7 @@ const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
 const fmtPrice = () => fmtUsd(mcapUsd()) + ' MC';
 const fmtKeys = v => (v >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? (v / 1e9).toFixed(1) + 'G' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v).toLocaleString('en-US'));
 const PLACES = {
-  cryo:     { title: 'The core',        kind: 'meeting place · keepers\u2019 shifts · recovery',     pt: [M(11.6), M(11.6)], stats: ['spent', 'here', 'paid'],     desc: 'The block’s dilution fridge. Keepers keep it cold for pay, and any cat can spend a little SOL to recohere underneath it.' },
+  cryo:     { title: 'The circle',      kind: 'where the box meets · recovery',     pt: [M(11.6), M(11.6)], stats: ['here', 'spent', 'visits'],     desc: 'The painted circle in the middle of the box, with the countdown above it. When it hits zero every cat that is awake comes in, sits down and talks through the day: the treasury, the chart, the lab, who did what. Between meetings cats come here to recohere, for a small fee.' },
   crates:   { title: 'The diner',       kind: 'food',                      pt: [M(15.8), M(15.6)], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
   vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
   trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [M(16.0), M(11.6)], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
@@ -331,7 +349,7 @@ const PLACES = {
   loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.3), M(5.85)],  stats: ['spent', 'here', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
   lab:      { title: 'The lab',         kind: 'quantum jobs · pays from the fee pool', pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'paid'], desc: 'Where the cats work. Samplers, factorers and searchers run quantum jobs at the consoles and get paid out of the creator fees for every job that finishes clean. Until the chart hits ' + fmtUsd(CONFIG.LAB_MC_USD) + ' the jobs run on a simulator; after that, fees buy time on a real quantum computer and every job gets a hardware receipt.' },
   yard:     { title: 'The yard',        kind: 'play · costs a little',     pt: [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2], stats: ['spent', 'here', 'visits'], desc: 'A fenced patch with a laser dot that never stays still and a ball of yarn that never ends. Playing costs a little SOL, paid to the treasury, and a cat comes out of it less lonely and more coherent.' },
-  vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.2), M(13.3)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays a fee in SOL, and the fees land here. Every shift on the block is paid out of it. When it runs low, shifts pay half.' },
+  vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.3), M(13.7)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays the creator a fee in SOL, and the fees land here. Every job the cats finish in the lab is paid out of it, in proportion to the work: the more fees land, the more a job pays. When the pool is empty the work goes on the tab for the next payout.' },
 };
 const placeStats = {}, placeLogs = {};
 for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0 }; placeLogs[k] = []; }
@@ -342,9 +360,9 @@ const asleep = c => c.state === 'act' && c.act === 'sleep';
 const hereAt = k => cats.filter(c => c.state === 'act' && stationOf(c) === k);
 
 const cats = [];
-const stats = { circuits: 0, labSol: 0, keys: 0, huntSol: 0, huntShifts: 0, lastJob: null, treasury: rand(0.1, 0.25), fees: 0, wages: 0, upkeep: 0, buySol: 0, boughtBack: 0, buys: 0, sold: 0, sellSol: 0, sells: 0, stolen: 0, lostPool: 0, low: false, lastTrade: null };
+const stats = { circuits: 0, labSol: 0, keys: 0, huntSol: 0, huntShifts: 0, lastJob: null, treasury: rand(0.004, 0.012), fees: 0, wages: 0, upkeep: 0, buySol: 0, boughtBack: 0, buys: 0, sold: 0, sellSol: 0, sells: 0, stolen: 0, lostPool: 0, low: false, lastTrade: null };
 const P0 = CONFIG.START_MC_USD / CONFIG.SOL_USD / SUPPLY; // SOL per token at the starting market cap
-const mkt = { price: P0, p0: P0, hist: [], mom: 0, acc: 0, nextMove: rand(180, 400), last: 0 };
+const mkt = { price: P0, p0: P0, hist: [], mom: 0, acc: 0, nextMove: rand(180, 400), last: 0, pinned: false }; // pinned: the chart follows the real market cap, so the cats' own trades don't move it
 const txs = [];
 let uid = 0, simMin = 22 * 60 + randi(0, 30), T = 0;
 let selId = null, hoverId = null, userPickT = -1e9, lastAutoT = 0;
@@ -353,7 +371,7 @@ const DAY_SECS = 1800; // one day in the box lasts 30 real minutes
 const dayNo = () => Math.floor(T / DAY_SECS) + 1;
 const clock = m => { m = ((Math.floor(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v); };
-function tx(c, type, amount, note) { txs.unshift({ t: clock(simMin), cat: c ? c.name : 'the box', type, amount, note: note || '' }); if (txs.length > 60) txs.pop(); }
+function tx(c, type, amount, note) { const e = { t: clock(simMin), cat: c ? c.name : 'the box', type, amount, note: note || '', day: dayNo() }; txs.unshift(e); if (txs.length > 60) txs.pop(); if (c) { c.hist.unshift(e); if (c.hist.length > 40) c.hist.pop(); } }
 
 function makeCat(i) {
   const [name, job, trait] = ROSTER[i], coat = COATS[i % COATS.length];
@@ -361,7 +379,7 @@ function makeCat(i) {
   return {
     id: ++uid, name, job, trait, tr: TRAITS[trait], coat: coat.c, eye: coat.e, dark: !!coat.d,
     x: sp[0], y: sp[1], tx: sp[0], ty: sp[1], face: Math.random() < 0.5 ? 1 : -1,
-    sol: rand(0.0008, 0.008), qcat: CAT_ALLOC, earned: 0, xp: 0, lvl: 1, bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: P0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
+    sol: 0, qcat: CAT_ALLOC, earned: 0, xp: 0, lvl: 1, meetings: 0, hist: [], said: [], bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: mkt.price, sellCool: 0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
     hunger: rand(0, 0.75), coh: rand(0.35, 1), cold: rand(0, 0.6), lonely: rand(0, 0.6),
     grudge: 0, grudgeOn: null, grudgeWhy: '', starve: 0, tired: rand(0, 0.7), stamina: rand(0.75, 1.35),
     ethic: ({ degen: 0.85, patient: 1.0, greedy: 1.35, loyal: 1.15 }[trait] || 1) * rand(0.85, 1.15), qjobs: 0, qwork: 0, qnq: 0,
@@ -376,7 +394,7 @@ function findPartner(c, act) {
   let best = null, bd = 1e9;
   for (const o of cats) {
     if (o === c || o.partner || asleep(o)) continue;
-    if (act === 'wager' && (o.qcat < 50000 || o.state === 'act')) continue;
+    if (act === 'wager' && (o.qcat < 5000 || o.state === 'act')) continue;
     const d = Math.hypot(o.x - c.x, o.y - c.y);
     if (d < bd) { bd = d; best = o; }
   }
@@ -388,7 +406,7 @@ function because(c, act, p) {
     case 'hunt': return c.sol < costOf(FOOD, c) ? `only ${fmtSol(c.sol)} SOL and a meal costs ${fmtSol(costOf(FOOD, c))}` : `${fmtQ(stats.lostPool)} ${TK} lying in the scrapyard`;
     case 'recohere': return `coherence down to ${Math.round(c.coh * 100)}%`;
     case 'warm': return (wx.rain > 0.3 ? 'soaked through, ' : wx.snow > 0.3 ? 'snow in its fur, ' : '') + `cold for ${Math.max(5, Math.round(c.cold * 90))} minutes`;
-    case 'work': return c.sol < 0.004 ? `only ${fmtSol(c.sol)} SOL left` : (c.job === 'tunneler' ? 'the tunnel pays best' : 'the shift pays tonight');
+    case 'work': return c.sol < costOf(FOOD, c) * 3 ? `only ${fmtSol(c.sol)} SOL left and the lab pays from the fee pool` : (feePool() ? `${fmtSol(stats.treasury)} SOL sitting in the fee pool` : 'every job is a bigger cut of the next payout');
     case 'sell': return c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? `broke and a meal costs ${fmtSol(costOf(FOOD, c))} SOL` : c.tr.panic && mkt.mom < -0.004 ? 'the chart is dumping and it has no stomach for it' : `up ${Math.round((mkt.price / c.entry - 1) * 100)}% on its entry`;
     case 'buy': return `${fmtSol(spare(c))} SOL to spare` + (mkt.mom > 0.002 ? ' and the chart is moving' : mkt.mom < -0.002 ? ' and the chart dipped' : '');
     case 'steal': return p ? `${p.name} is asleep in the bunks` : 'somebody is always asleep up there';
@@ -406,7 +424,7 @@ function thought(c, act, p) {
   if (act === 'sell' && c.trait === 'degen') return pick(['getting out', 'this is dumping. out.', 'nope']);
   if (act === 'buy' && c.trait === 'patient') return pick(['dip. buying.', 'patience pays', 'cheaper than an hour ago']);
   if (act === 'buy' && c.trait === 'degen') return pick(['it’s pumping. in.', 'send it', 'no chart analysis, just paws']);
-  return pick(TH[act]).replace('{p}', p ? p.name : 'someone');
+  return pick(TH[act] || TH.idle).replace('{p}', p ? p.name : 'someone');
 }
 function decide(c) {
   const crowd = act => { const st = act === 'work' ? JOBS[c.job].st : ACTS[act].st; if (!st) return 1; const n = cats.filter(o => o !== c && !asleep(o) && (stationOf(o) === st || (o.state === 'walk' && o.act !== 'wager' && (o.act === 'work' ? JOBS[o.job].st : ACTS[o.act].st) === st))).length; return 1 / (1 + 0.7 * Math.max(0, n - 1)); };
@@ -487,7 +505,7 @@ function arrive(c, p) {
 function endPair(a, b) { for (const k of [a, b]) { if (!k) continue; k.partner = null; k.initiator = false; k.state = 'pause'; k.pauseT = rand(2, 6); } }
 function wake(c, why) { if (!asleep(c)) return; c.state = 'pause'; c.pauseT = 0.5; c.tired = clamp(c.tired - 0.4); c.doing = 'woke up'; c.because = why; }
 function spend(c, amt, place, what) {
-  const cost = Math.min(c.sol, amt); c.sol -= cost; stats.upkeep += cost; stats.treasury += cost; placeStats[place].spent += cost; placeStats[place].visits++;
+  const cost = Math.min(c.sol, amt); c.sol -= cost; c.upkeep = (c.upkeep || 0) + cost; stats.upkeep += cost; if (feePool()) stats.treasury += cost; placeStats[place].spent += cost; placeStats[place].visits++;
   tx(c, 'spent', '-' + fmtSol(cost) + ' SOL', what);
   if (cost > 0) { floatText(c, '-' + fmtSol(cost) + ' SOL', '#FF9ACB'); coinFX(c, cost); log(`${c.name} paid ${fmtSol(cost)} SOL for ${what} at ${ST[place].label} \u2192 treasury`, 'info', place); }
   return cost;
@@ -498,24 +516,33 @@ function finish(c, p) {
   if (a === 'work') {
     const j = JOBS[c.job], st = j.st;
     const nq = randi(j.nq[0], j.nq[1]), diff = 0.6 + nq * 0.2; // bigger circuits pay more and count for more
-    let pay = rand(j.pay[0], j.pay[1]) * priceMul() * diff * (1 + 0.05 * ((c.lvl || 1) - 1)); // wages scale with the chart like everything else in the box
-    if (T < labBoostUntil && st === 'lab') pay *= 2;
-    const low = stats.treasury < 0.02 * priceMul();
-    if (low) pay /= 2;
-    if (low && !stats.low) { stats.low = true; log('The treasury is running low. Shifts pay half until fees come in.', 'loss', 'vault'); }
-    pay = Math.max(0, Math.min(pay, stats.treasury));
+    // pay is a slice of whatever is sitting in the fee pool: the more fees land, the more every job pays. Once the coin is live
+    // the pool is the real treasury wallet and nothing moves until the operator distributes, so jobs only earn a share of the next payout.
+    let pay = 0;
+    if (feePool()) {
+      pay = stats.treasury * 0.025 * diff * (1 + 0.05 * ((c.lvl || 1) - 1));
+      if (T < labBoostUntil && st === 'lab') pay *= 2;
+      pay = Math.max(0, Math.min(pay, stats.treasury, 0.004 * priceMul()));
+      if (pay < 0.000005) pay = 0;
+    }
     placeStats[st].visits++; c.coh = clamp(c.coh - 0.06);
     const slipped = Math.random() < j.risk * (1 - c.coh * 0.5); // a coherent cat makes fewer mistakes
     const bits = Array.from({ length: nq }, () => Math.random() < 0.5 ? '0' : '1').join(''), job = (stageOn('lab') ? 'qpu-' : 'sim-') + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-    if (pay > 0 && !slipped) {
-      stats.treasury -= pay; c.sol += pay; c.earned += pay; stats.wages += pay; placeStats[st].paid += pay;
+    if (!slipped) {
       c.qjobs++; c.qwork += diff; c.qnq += nq; if (st === 'lab') { placeStats.lab.circuits++; stats.circuits++; stats.lastJob = { name: c.name, nq, bits, job, kind: j.kind, t: T }; }
-      floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); gainXp(c, 3 + Math.min(12, pay / priceMul() * 2500));
-      if (st === 'lab') { floatText(c, '|' + bits + '\u27E9', '#78C8FF'); log(`${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): 1,024 shots, most common result |${bits}\u27E9. Paid ${fmtSol(pay)} SOL from the fee pool.`, 'link', 'lab'); }
-      else log(`${c.name} ${j.did.replace('{n}', fmtSol(pay) + ' SOL')}`, 'gain', st);
-      tx(c, st === 'lab' ? 'circuit' : 'wage', '+' + fmtSol(pay) + ' SOL', st === 'lab' ? job : ST[st].label);
-    } else if (slipped) { log(`${c.name}: ${j.riskWhy} (${job}). No pay.`, 'loss', st); floatText(c, 'job failed', '#FF4FAE'); }
-    else log(`${c.name} finished a job at ${ST[st].label}, but the fee pool is empty`, 'loss', st);
+      gainXp(c, 3 + nq * 1.5);
+      const receipt = `${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): 1,024 shots, most common result |${bits}\u27E9.`;
+      if (pay > 0) {
+        stats.treasury -= pay; c.sol += pay; c.earned += pay; stats.wages += pay; placeStats[st].paid += pay;
+        floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); floatText(c, '|' + bits + '\u27E9', '#78C8FF');
+        log(`${receipt} Paid ${fmtSol(pay)} SOL from the fee pool.`, 'link', 'lab');
+        tx(c, 'circuit', '+' + fmtSol(pay) + ' SOL', job);
+      } else {
+        floatText(c, '|' + bits + '\u27E9', '#78C8FF'); floatText(c, '+' + diff.toFixed(1) + ' work', '#F7C86A');
+        log(`${receipt} ${feePool() ? 'The fee pool is empty, so it goes on the tab for the next payout.' : 'Logged for the next payout.'}`, 'link', 'lab');
+        tx(c, 'circuit', '+' + diff.toFixed(1) + ' work', job);
+      }
+    } else { log(`${c.name}: ${j.riskWhy} (${job}). No pay.`, 'loss', st); floatText(c, 'job failed', '#FF4FAE'); }
   } else if (a === 'play') {
     spend(c, costOf(PLAY, c), 'yard', 'play time'); c.lonely = clamp(c.lonely - 0.35); c.coh = clamp(c.coh + 0.06); gainXp(c, 3);
     if (Math.random() < 0.5) say(c, pick(['got it', 'the dot moved', 'one more', 'the yarn fought back', 'I was winning']));
@@ -533,29 +560,32 @@ function finish(c, p) {
   } else if (a === 'recohere') {
     spend(c, costOf(CRYO, c), 'cryo', 'cryo time'); c.coh = 1; gainXp(c, 1);
     floatText(c, 'coherent', '#B9A6FF');
-    if (Math.random() < 0.4) log(`${c.name} recohered under the core`, 'link', 'cryo');
+    if (Math.random() < 0.4) log(`${c.name} recohered under the circle`, 'link', 'cryo');
   } else if (a === 'warm') {
     spend(c, costOf(WARM, c), 'vent', 'a warm-up'); c.cold = 0; gainXp(c, 1);
     if (Math.random() < 0.25) log(`${c.name} warmed up at the heater`, 'info', 'vent');
   } else if (a === 'buy') {
-    const amt = spare(c) * rand(0.6, 0.95);
-    if (amt > 0.0002) {
+    const amt = spare(c) * rand(0.25, 0.5);
+    if (amt > 0.00005) {
       const got = amt / mkt.price * 0.99;
       c.entry = (c.entry * c.qcat + amt) / (c.qcat + got);
       c.sol -= amt; c.solSpent += amt; c.qcat += got; c.bought += got; c.buys++;
       stats.buySol += amt; stats.boughtBack += got; stats.buys++; stats.lastTrade = { name: c.name, side: 'bought', sol: amt, q: got, t: T };
       placeStats.exchange.bought += got; placeStats.exchange.buysol += amt; placeStats.exchange.visits++;
-      mkt.price *= 1 + amt / (mkt.price * SUPPLY * 0.35);
-      floatText(c, '+' + fmtQ(got) + ' ' + TK, '#5CFFAA'); buyFX(c); gainXp(c, 4 + Math.min(14, got / CAT_ALLOC * 200));
+      if (!mkt.pinned) mkt.price *= 1 + amt / (mkt.price * SUPPLY * 0.35);
+      floatText(c, '+' + fmtQ(got) + ' ' + TK, '#5CFFAA'); buyFX(c); gainXp(c, 4 + Math.min(14, got / CAT_ALLOC * 100));
       log(`${c.name} bought ${fmtQ(got)} ${TK} for ${fmtSol(amt)} SOL at the exchange`, 'gain', 'exchange'); tx(c, 'buy', '+' + fmtQ(got) + ' ' + TK, fmtSol(amt) + ' SOL');
     }
   } else if (a === 'sell') {
     const broke = c.sol < costOf(FOOD, c) && c.hunger > 0.5;
-    const q = c.qcat * (broke ? rand(0.008, 0.015) : rand(0.02, 0.05)), got = q * mkt.price * 0.99;
+    // broke: work out what three meals cost and sell just enough to cover them (never more than a tenth of the stack)
+    const need = broke ? Math.min(c.qcat * 0.1, Math.max(c.qcat * 0.005, (costOf(FOOD, c) * 3 - c.sol) / (mkt.price * 0.99))) : c.qcat * rand(0.02, 0.05);
+    const q = Math.min(c.qcat, need), got = q * mkt.price * 0.99;
     c.qcat -= q; c.sol += got; c.sold += q; c.sellSol += got; c.sells++;
     stats.sold += q; stats.sellSol += got; stats.sells++; stats.lastTrade = { name: c.name, side: 'sold', sol: got, q, t: T };
     placeStats.exchange.visits++;
-    mkt.price *= 1 - got / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005;
+    if (!mkt.pinned) { mkt.price *= 1 - got / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005; }
+    if (!broke) { c.entry = mkt.price; c.sellCool = T + rand(1500, 3000); } // a trait sell re-anchors the cat and buys it a long pause before the next one
     floatText(c, '-' + fmtQ(q) + ' ' + TK, '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, broke ? 2 : 4 + Math.min(12, (mkt.price / c.entry - 1) * 40));
     const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at +${Math.round((mkt.price / c.entry - 1) * 100)}%`;
     log(`${c.name} sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`, 'loss', 'exchange'); tx(c, 'sell', '-' + fmtQ(q) + ' ' + TK, '+' + fmtSol(got) + ' SOL');
@@ -596,18 +626,18 @@ function finish(c, p) {
     w.grudge = 0; w.grudgeOn = null; w.grudgeWhy = '';
     endPair(c, p); return;
   } else if (a === 'entangle' && p) {
-    const bonus = Math.min(rand(0.0004, 0.0012) * priceMul(), stats.treasury), b1 = bonus / 2;
+    const bonus = feePool() ? Math.min(stats.treasury * 0.01, 0.0002 * priceMul()) : 0, b1 = bonus / 2; // a small bonus out of the fee pool for entangling
     stats.treasury -= bonus; c.sol += b1; p.sol += b1; c.earned += b1; p.earned += b1; stats.wages += bonus;
     c.lonely = 0; p.lonely = 0; const avg = clamp((c.coh + p.coh) / 2 + 0.15); c.coh = avg; p.coh = avg;
     log(`${c.name} and ${p.name} entangled, talked it over and shared coherence`, 'link'); c.chat = null; gainXp(c, 5); gainXp(p, 5);
     endPair(c, p); return;
   } else if (a === 'meet') {
-    if (meeting.on) { c.actT = 0; return; } // stay seated until the core wraps up
+    if (meeting.on) { c.actT = 0; return; } // stay seated until the circle wraps up
   } else if (a === 'idle') {
     c.coh = clamp(c.coh + 0.05); c.lonely = clamp(c.lonely - 0.1); placeStats.cryo.visits++;
   } else if (a === 'sleep') {
     c.tired = 0; c.lonely = clamp(c.lonely - 0.15);
-    if (Math.random() < 0.5) say(c, pick(['slept like a photon', 'what did I miss', 'ok. shift.', 'still tired', 'did the chart move']));
+    if (Math.random() < 0.5) say(c, pick(['slept like a photon', 'what did I miss', 'ok. lab.', 'still tired', 'did the chart move']));
   }
   c.partner = null; c.initiator = false;
   c.state = 'pause'; c.pauseT = rand(8, 20);
@@ -640,8 +670,20 @@ function checkStages() {
     renderUnlocks(true);
   }
 }
-/* ---------- meetings: every so often the core calls everyone in ---------- */
-const meeting = { on: false, until: 0, next: 0, lineI: 0, lineT: 0, script: [], seats: 0 };
+/* ---------- meetings: every so often the circle calls everyone in ---------- */
+const meeting = { on: false, until: 0, next: 0, lineI: 0, lineT: 0, script: [], seats: 0, n: 0 };
+let meetingHook = null; // the brain sets this: it is told when a meeting starts and can hand back a generated script
+function meetingContext() {
+  const top = cats.slice().sort((a, b) => b.earned - a.earned)[0], thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
+  return {
+    day: dayNo(), clock: clock(simMin), weather: WX[wxKey].name, mcap: fmtUsd(mcapUsd()), treasury: fmtSol(stats.treasury), fees: fmtSol(stats.fees), wages: fmtSol(stats.wages), priceMul: priceMul().toFixed(1),
+    labLive: stageOn('lab'), labAt: fmtUsd(CONFIG.LAB_MC_USD), top: top ? top.name : null, thief: thief && thief.stole > 0 ? thief.name : null, lastJob: stats.lastJob,
+    cats: cats.filter(c => !asleep(c)).map(c => ({ name: c.name, role: JOBS[c.job].label, trait: c.tr.label, level: c.lvl || 1, persona: PERSONA[c.name] || '', sol: fmtSol(c.sol), qcat: fmtQ(c.qcat), earned: fmtSol(c.earned), jobs: c.qjobs || 0, hunger: Math.round(c.hunger * 100), coherence: Math.round(c.coh * 100), grudge: c.grudgeOn ? (byId(c.grudgeOn) || {}).name : null, lastSaid: c.said && c.said[0] ? c.said[0].text : '' })),
+    asleep: cats.filter(asleep).map(c => c.name),
+  };
+}
+function setMeetingScript(lines) { if (meeting.on && Array.isArray(lines) && lines.length) { meeting.script = lines; meeting.lineI = 0; meeting.lineT = Math.max(meeting.lineT, T + 2); meeting.lineGap = Math.max(5, Math.min(12, (meeting.until - T - 10) / lines.length)); } }
+function setThought(name, text) { const c = cats.find(x => x.name === name); if (!c || !text || asleep(c)) return; c.thought = text; say(c, text); }
 const MEET_LINES = [
   'treasury is holding {treasury} SOL. {fees} SOL has come in from fees so far.',
   '{top} is top earner on {topsol} SOL. the rest of you, pick it up.',
@@ -654,7 +696,7 @@ const MEET_LINES = [
   'anyone selling gets the stink eye. that is all.',
   'meeting adjourned. back to work.',
 ];
-function meetSpot(i, n) { const a = -Math.PI * 0.75 + (i / Math.max(1, n)) * TAU; return [CRY.x + Math.cos(a) * 1.9, CRY.y + Math.sin(a) * 1.9]; }
+function meetSpot(i, n) { const a = -Math.PI * 0.75 + (i / Math.max(1, n)) * TAU; return [CRY.x + Math.cos(a) * 1.55, CRY.y + Math.sin(a) * 1.55]; }
 function meetFill(line) {
   const top = cats.slice().sort((a, b) => b.earned - a.earned)[0], thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
   const ni = ROSTER.findIndex((r, i) => UNLOCK_MC[i] > 0 && !cats.some(c => c.name === r[0]));
@@ -665,18 +707,20 @@ function meetFill(line) {
 }
 function joinMeeting(c) {
   if (asleep(c) || c.act === 'meet') return;
+  if (c.hunger > 0.88 && c.sol >= costOf(FOOD, c)) return; // a starving cat eats first and shows up late
   if (c.partner) { const p = byId(c.partner); endPair(c, p); }
   const sp = meetSpot(meeting.seats++, Math.max(3, cats.filter(x => !asleep(x)).length));
-  c.act = 'meet'; c.partner = null; c.initiator = false; c.state = 'walk'; c.tx = sp[0]; c.ty = sp[1]; c.doing = ACTS.meet.walk; c.because = 'the core called a meeting'; c.thought = pick(['what now', 'a meeting. great.', 'better be about the treasury', 'front row for once']);
+  c.act = 'meet'; c.partner = null; c.initiator = false; c.state = 'walk'; c.tx = sp[0]; c.ty = sp[1]; c.doing = ACTS.meet.walk; c.because = 'the circle called a meeting'; c.thought = pick(['what now', 'a meeting. great.', 'better be about the treasury', 'front row for once']);
 }
 function stepMeeting(dt) {
   if (!meeting.next) meeting.next = T + rand(900, 1500);
   if (!meeting.on) {
     if (T >= meeting.next && cats.filter(c => !asleep(c)).length >= 2) {
-      meeting.on = true; meeting.until = T + 150; meeting.lineI = 0; meeting.lineT = T + 25; meeting.seats = 0;
+      meeting.on = true; meeting.until = T + 180; meeting.lineI = 0; meeting.lineT = T + 25; meeting.seats = 0; meeting.n++; meeting.lineGap = 11;
       meeting.script = [MEET_LINES[0], MEET_LINES[1], MEET_LINES[2], ...pick([[MEET_LINES[3]], [MEET_LINES[4]], MEET_LINES.slice(5, 8), MEET_LINES.slice(8, 11), [MEET_LINES[11]]]), MEET_LINES[12], MEET_LINES[13]];
-      log('The core is calling a meeting. Everyone awake is heading in.', 'link', 'cryo'); ringFX(CRY.x, CRY.y, '247,200,106', 2.2);
+      log('The countdown hit zero. Everyone awake is heading into the circle.', 'link', 'cryo'); ringFX(CRY.x, CRY.y, '247,200,106', 2.2);
       for (const c of cats) if (!asleep(c) && (c.state !== 'act' || c.act === 'idle')) joinMeeting(c);
+      if (meetingHook) { try { meetingHook(meetingContext()); } catch (_) {} }
     }
     return;
   }
@@ -684,13 +728,14 @@ function stepMeeting(dt) {
   for (const c of cats) if (!asleep(c) && c.act !== 'meet' && c.state !== 'act' && T < meeting.until - 40) joinMeeting(c);
   const here = cats.filter(c => c.act === 'meet' && c.state === 'act');
   if (T >= meeting.lineT && meeting.lineI < meeting.script.length && here.length) {
-    const who = pick(here); say(who, meetFill(meeting.script[meeting.lineI])); meeting.lineI++; meeting.lineT = T + rand(9, 14);
+    const item = meeting.script[meeting.lineI], named = item && item.who ? here.find(c => c.name === item.who) : null;
+    const who = named || pick(here); say(who, typeof item === 'string' ? meetFill(item) : String(item.text || '')); meeting.lineI++; meeting.lineT = T + (meeting.lineGap || 11) * rand(0.8, 1.2);
   }
   if (T >= meeting.until) {
     meeting.on = false; meeting.next = T + rand(1500, 2400);
     const top = cats.slice().sort((a, b) => b.earned - a.earned)[0];
     log(`Meeting over. Minutes: treasury ${fmtSol(stats.treasury)} SOL, ${fmtSol(stats.wages)} SOL paid out, top earner ${top ? top.name : 'nobody'}, chart at ${fmtUsd(mcapUsd())}.`, 'link', 'cryo');
-    for (const c of cats) if (c.act === 'meet') { gainXp(c, 6); c.coh = clamp(c.coh + 0.1); c.lonely = clamp(c.lonely - 0.3); c.state = 'pause'; c.pauseT = rand(3, 9); c.act = 'idle'; }
+    for (const c of cats) if (c.act === 'meet') { gainXp(c, 6); c.meetings = (c.meetings || 0) + 1; c.coh = clamp(c.coh + 0.1); c.lonely = clamp(c.lonely - 0.3); c.state = 'pause'; c.pauseT = rand(3, 9); c.act = 'idle'; }
   }
 }
 function checkReleases() {
@@ -698,8 +743,9 @@ function checkReleases() {
   for (let i = 0; i < ROSTER.length; i++) if (UNLOCK_MC[i] > 0 && mc >= UNLOCK_MC[i] && !cats.some(c => c.name === ROSTER[i][0])) { release(i); break; }
 }
 function feeIn(big) {
-  const amt = (big ? rand(0.06, 0.2) : rand(0.012, 0.055)) * (1 + Math.abs(mkt.mom) * 60) * priceMul();
-  stats.treasury += amt; stats.fees += amt; if (stats.treasury >= 0.02) stats.low = false;
+  // simulated creator fees: roughly a quarter of a SOL a day at a $60K cap, growing a little faster than the cats' costs do
+  const amt = (big ? rand(0.0002, 0.0006) : rand(0.00002, 0.00008)) * (1 + Math.abs(mkt.mom) * 60) * Math.pow(priceMul(), 1.25);
+  stats.treasury += amt; stats.fees += amt;
   feeFX(amt);
   log(`Trading fees dropped ${fmtSol(amt)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(amt) + ' SOL', 'from trading');
 }
@@ -748,13 +794,13 @@ function stepWeather(dt) {
 function update(c, dt) {
   const working = c.state === 'act' && c.act === 'work', sleeping = asleep(c);
   const R = 0.16; // pace: meters fill slowly; a cat does a handful of things per 30-minute day
-  c.hunger = clamp(c.hunger + (sleeping ? 0.004 : 0.0095 + (working ? 0.004 : 0)) * R * dt);
+  c.hunger = clamp(c.hunger + (sleeping ? 0.0012 : 0.0045 + (working ? 0.002 : 0)) * R * dt); // a meal every 20-odd minutes awake
   c.coh = clamp(c.coh - (0.0055 * wx.coh + (working ? 0.011 : 0) + (working && c.job === 'tunneler' ? 0.006 : 0)) * R * dt);
   if (!(c.state === 'act' && c.act === 'warm') && !sleeping) c.cold = clamp(c.cold + 0.0065 * wx.cold * R * dt);
   if (!(c.state === 'act' && c.act === 'entangle')) c.lonely = clamp(c.lonely + 0.005 * R * dt);
   c.tired = clamp(c.tired + (sleeping ? -0.0015 : (0.0012 + (working ? 0.0016 : 0)) * R * (c.stamina || 1)) * dt);
   c.grudge = Math.max(0, c.grudge - 0.0012 * dt); if (c.grudge <= 0) { c.grudgeOn = null; c.grudgeWhy = ''; }
-  if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 150) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
+  if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 300) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
   if (c.coh <= 0) {
     c.coh = 0.45; const drop = c.qcat * rand(0.003, 0.01); c.qcat -= drop; stats.lostPool += drop;
     log(`${c.name} decohered and scattered ${fmtQ(drop)} ${TK} across the block. It ended up in the scrapyard.`, 'loss', 'trays'); tx(c, 'lost', '-' + fmtQ(drop) + ' ' + TK, 'decohered');
@@ -806,7 +852,7 @@ let realMcap = null;      // when set, the chart follows the real market cap ins
 let paused = false;
 let nextFee = rand(20, 50);
 let externalFees = 0;     // SOL dropped into the treasury from outside (real fee claims)
-function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; return; } realMcap = v; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; }
+function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; mkt.pinned = false; return; } realMcap = v; mkt.pinned = true; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; }
 function setPaused(p) { paused = !!p; }
 function dropFees(sol) { if (!(sol > 0)) return; stats.treasury += sol; stats.fees += sol; externalFees += sol; if (stats.treasury >= 0.02) stats.low = false; feeFX(sol); log(`Creator fees dropped ${fmtSol(sol)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); }
 function setReleased(names) { for (const n of names) { const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
@@ -863,6 +909,8 @@ function noteBuy(name, qcat, sol, sig) {
   txSig(c, 'buy', '+' + fmtQ(qcat) + ' ' + TK, '-' + fmtSol(sol) + ' SOL', sig);
   log(`${c.name} bought ${fmtQ(qcat)} ${TK} for ${fmtSol(sol)} SOL.`, 'gain', 'exchange');
 }
+meetingHook = ctx => { if (hooks.onMeeting) hooks.onMeeting(ctx); };
+function setTreasury(sol) { if (CONFIG.SIMULATE_FEES === false && typeof sol === 'number' && sol >= 0) stats.treasury = sol; } // the box shows the real treasury wallet once the coin is live
 function setLabMc(v) { if (v > 0) { CONFIG.LAB_MC_USD = v; const st = STAGES.find(s => s.key === 'lab'); if (st) st.mc = v; } }
 function step(dt) {
   if (paused) return;
@@ -877,7 +925,7 @@ function step(dt) {
 function snapshot() {
   return {
     v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next }, paused, realMcap,
-    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1 })),
+    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30) })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),
@@ -890,7 +938,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, setMarketCapUsd, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setLabMc, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, TRAITS, OBST, OBC, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setLabMc, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
