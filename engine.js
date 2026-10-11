@@ -124,7 +124,7 @@ const WX = {
   fog:     { rain: 0,    snow: 0,    fog: 0.6,  wind: 0.05, cold: 1.2, coh: 1.2,  name: 'harbor fog' },
   snow:    { rain: 0,    snow: 0.85, fog: 0.16, wind: 0.2,  cold: 2.4, coh: 1,    name: 'snow' },
 };
-const WXNEXT = { clear: ['drizzle', 'fog', 'snow', 'drizzle'], drizzle: ['rain', 'clear', 'rain'], rain: ['storm', 'drizzle', 'clear'], storm: ['rain'], fog: ['clear', 'drizzle'], snow: ['clear', 'fog'] };
+const WXNEXT = { clear: ['drizzle', 'fog', 'snow', 'drizzle', 'storm', 'clear'], drizzle: ['rain', 'clear', 'rain', 'snow'], rain: ['storm', 'drizzle', 'clear', 'storm'], storm: ['rain', 'clear', 'drizzle'], fog: ['clear', 'drizzle', 'storm'], snow: ['clear', 'fog', 'snow', 'storm'] };
 const WXLOG = { clear: 'The sky cleared over the block.', drizzle: 'A drizzle started. Strays are looking for cover.', rain: 'Rain rolled in off the harbor.', storm: 'A decoherence storm hit the block. Coherence is draining fast.', fog: 'Fog came in off the harbor.', snow: 'It started snowing. The vent is going to be crowded.' };
 let wxNext = 'rain', wxDur = 1, wxKey = 'clear', wxUntil = 0, nextBolt = 0, flash = 0, shake = 0, bolt = null, relayBoostUntil = 0;
 const wx = { rain: 0, snow: 0, fog: 0.04, wind: 0.15, cold: 1, coh: 1 };
@@ -276,6 +276,8 @@ const txs = [];
 let uid = 0, simMin = 22 * 60 + randi(0, 30), T = 0;
 let selId = null, hoverId = null, userPickT = -1e9, lastAutoT = 0;
 const byId = id => id == null ? null : cats.find(c => c.id === id) || null;
+const DAY_SECS = 1800; // one day in the box lasts 30 real minutes
+const dayNo = () => Math.floor(T / DAY_SECS) + 1;
 const clock = m => { m = ((Math.floor(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v); };
 function tx(c, type, amount, note) { txs.unshift({ t: clock(simMin), cat: c ? c.name : 'the box', type, amount, note: note || '' }); if (txs.length > 60) txs.pop(); }
@@ -589,14 +591,14 @@ function strike() {
   else if (roll < 0.8) { const b = pick(OUT.filter(o => !o.far && o.h > 7)); tg = [b.x + b.w / 2, b.y + b.d / 2, b.h]; what = 'roof'; }
   else { tg = [3.5, 3.5, 7.6]; what = 'tower'; }
   const pts = []; for (let i = 0; i <= 12; i++) { const s = i / 12, j = i && i < 12 ? 0.7 : 0; pts.push([tg[0] + rand(-j, j), tg[1] + rand(-j, j), tg[2] + (1 - s) * 34]); }
-  bolt = { pts, t: 0 }; flash = 1; shake = reduce ? 0 : 0.35;
+  bolt = { pts, t: 0 }; flash = 1; shake = reduce ? 0 : 0.35; pushFx('bolt', { pts });
   if (what === 'relay') { relayBoostUntil = T + 60; ringFX(M(15), M(7.6), '92,242,255', 1.6); log('Lightning hit the relay. Runners earn double for the next minute.', 'gain', 'relay'); }
 }
 function stepWeather(dt) {
   if (T >= wxUntil) {
     const first = wxUntil === 0, prev = wxKey;
     wxKey = first ? 'rain' : wxNext;
-    wxDur = rand(540, 660); // roughly 10 minutes per weather
+    wxDur = rand(240, 600); // four to ten minutes per weather
     wxUntil = T + wxDur;
     wxNext = pick(WXNEXT[wxKey]);
     if (first || prev !== wxKey) log(WXLOG[wxKey], 'info');
@@ -673,10 +675,45 @@ function setTrait(name, trait) {
   c.trait = trait; c.tr = TRAITS[trait]; log(`${c.name} is now ${c.tr.label}.`, 'info'); return true;
 }
 function setSolUsd(v) { if (v > 0) CONFIG.SOL_USD = v; }
+function setSimulateFees(v) { CONFIG.SIMULATE_FEES = !!v; }
+// ---- real money, mirrored into the box (the server calls these after an on-chain tx confirmed) ----
+function txSig(c, type, amount, note, sig) { tx(c, type, amount, note); if (sig) txs[0].sig = sig; }
+function noteFees(sol) {
+  if (!(sol > 0)) return;
+  stats.fees += sol; externalFees += sol; feeFX(sol);
+  log(`Creator fees landed: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed');
+}
+function payout(list, sig) {
+  // list: [{ name, sol }] — real SOL that just left the treasury wallet for each cat
+  let total = 0, n = 0;
+  for (const { name, sol } of list) {
+    const c = cats.find(x => x.name === name); if (!c || !(sol > 0)) continue;
+    c.sol += sol; c.earned += sol; stats.wages += sol; total += sol; n++;
+    payFX(c); floatText(c, '+' + fmtSol(sol) + ' SOL', '#F7C86A');
+    txSig(c, 'wage', '+' + fmtSol(sol) + ' SOL', 'paid from creator fees', sig);
+    say(c, pick(['payday', 'fees hit', 'the treasury came through', 'that\u2019s my cut', 'wages in']));
+  }
+  if (n) log(`Payday. The treasury paid ${fmtSol(total)} SOL to ${n} cat${n === 1 ? '' : 's'} \u2014 ${fmtSol(total / n)} SOL each.`, 'gain', 'vault');
+  return { total, n };
+}
+function noteSell(name, qcat, sol, sig) {
+  const c = cats.find(x => x.name === name); if (!c) return;
+  c.qcat = Math.max(0, c.qcat - qcat); c.sold += qcat; c.sells++; c.sellSol += sol; c.sol += sol; stats.sold += qcat; stats.sellSol += sol; stats.sells++;
+  burst(c, '255,79,174', 14); floatText(c, '-' + fmtQ(qcat), '#FF4FAE');
+  txSig(c, 'sell', '-' + fmtQ(qcat) + ' ' + TK, '+' + fmtSol(sol) + ' SOL', sig);
+  log(`${c.name} sold ${fmtQ(qcat)} ${TK} for ${fmtSol(sol)} SOL.`, 'loss', 'exchange');
+}
+function noteBuy(name, qcat, sol, sig) {
+  const c = cats.find(x => x.name === name); if (!c) return;
+  c.qcat += qcat; c.bought += qcat; c.buys++; c.solSpent += sol; c.sol = Math.max(0, c.sol - sol); stats.boughtBack += qcat; stats.buySol += sol; stats.buys++;
+  buyFX(c); floatText(c, '+' + fmtQ(qcat), '#5CFFAA');
+  txSig(c, 'buy', '+' + fmtQ(qcat) + ' ' + TK, '-' + fmtSol(sol) + ' SOL', sig);
+  log(`${c.name} bought ${fmtQ(qcat)} ${TK} for ${fmtSol(sol)} SOL.`, 'gain', 'exchange');
+}
 function setLabMc(v) { if (v > 0) { CONFIG.LAB_MC_USD = v; const st = STAGES.find(s => s.key === 'lab'); if (st) st.mc = v; } }
 function step(dt) {
   if (paused) return;
-  T += dt; simMin += dt;
+  T += dt; simMin += dt * (1440 / DAY_SECS);
   stepWeather(dt);
   if (realMcap == null) stepMarket(dt);
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
@@ -686,7 +723,7 @@ function step(dt) {
 }
 function snapshot() {
   return {
-    v: 1, T, simMin, clock: clock(simMin), paused, realMcap,
+    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), paused, realMcap,
     cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, relayBoostUntil, boat: { ...boat } },
@@ -700,7 +737,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, setMarketCapUsd, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setLabMc, TRAITS, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, setMarketCapUsd, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setLabMc, setSimulateFees, noteFees, payout, noteSell, noteBuy, TRAITS, get cats() { return cats; }, get stats() { return stats; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
