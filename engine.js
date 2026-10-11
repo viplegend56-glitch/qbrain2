@@ -631,7 +631,7 @@ function stepPayout() {
   else if (T > payouts.next + payouts.every) payouts.next = T + payouts.every; // live, and nobody paid: the timer rolls over rather than sitting at zero forever
 }
 const txWith = (c, type, amount, note, sig) => { tx(c, type, amount, note); if (sig) txs[0].sig = sig; };
-const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 2e-6); // SOL per $QI, from the chart once it is wired in
+const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 1.3e-5); // about $0.002 a $QI at $150 SOL, where the chart sat on 11 Oct 2026; the real chart replaces it once the mint is set // SOL per $QI, from the chart once it is wired in
 const qiLive = () => CONFIG.QI_LIVE === true; // the real $QI wallet is being read: nothing moves until a payout
 const fmtQi = n => fmtQ(n);
 const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how readily each personality parts with its $QI when broke; the rest hold and sell a slice of $QCATS instead
