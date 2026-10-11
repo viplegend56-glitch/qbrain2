@@ -575,7 +575,7 @@ const spendGas = c => { c.gas = Math.max(0, (c.gas == null ? GAS_FLOOR : c.gas) 
 // $QI: what the lab pays. Paid per job out of the lab's pool while the box runs on its own; once the real $QI wallet is wired in, jobs only earn a share of the next payout.
 const QI = '$QI';
 const qiPerJob = () => Number(CONFIG.QI_PER_JOB) > 0 ? Number(CONFIG.QI_PER_JOB) : 5000;
-const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 1e-7); // SOL per $QI, from the chart once it is wired in
+const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 2.5e-7); // SOL per $QI, from the chart once it is wired in
 const qiLive = () => CONFIG.QI_LIVE === true; // the real $QI wallet is being read: nothing moves until a payout
 const fmtQi = n => fmtQ(n);
 const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how readily each personality parts with its $QI when broke; the rest hold and sell a slice of $QCATS instead
@@ -603,6 +603,7 @@ function gainXp(c, n) {
 }
 function sellUrge(c) {
   if (c.qcat < 2000 && !(c.qi >= 1)) return 0;
+  if (T < (c.brokeCool || 0) && c.hunger < 0.95) return 0; // sold to eat not long ago: live on it before going back
   let w = 0;
   if (c.sol < costOf(FOOD, c) && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6 + c.hunger * 0.5; // broke and hungry: sell enough to eat
   if (c.sol < costOf(FOOD, c) && c.hunger > 0.9) w = Math.max(w, 1.1);                                       // even diamond paws eat
@@ -618,12 +619,12 @@ const DRIVES = [
   { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= CRYO ? 1 : 0.45) },
   { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= WARM ? 1 : 0.4) },
   { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (c.coh < 0.4 ? 0.2 : 1) * (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
-  { act: 'buy',      label: 'spare SOL',                w: c => clamp(spare(c) / 0.008) * 0.9 * c.tr.eager * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40) ) },
+  { act: 'buy',      label: 'spare SOL',                w: c => (T < (c.buyCool || 0) ? 0 : 1) * clamp(spare(c) / 0.012) * 0.7 * c.tr.eager * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40) ) },
   { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : 'taking profit'), w: c => sellUrge(c) },
   { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
   { act: 'wager',    label: 'feeling lucky',            w: c => (0.06 + 0.26 * c.tr.gamble) * (c.qcat > 5000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) * (T - (c.wagerT || -1e9) > 900 ? 1 : 0.25) },
-  { act: 'gamble',   label: 'feeling lucky',            w: c => (0.2 + 0.4 * c.tr.gamble) * (c.sol > costOf(FOOD, c) * 4 ? 1 : 0) * (T - (c.casinoT || -1e9) > 1200 ? 1 : 0.08) }, // only a cat with a few meals in hand; a degen feels it most
+  { act: 'gamble',   label: 'feeling lucky',            w: c => (0.2 + 0.4 * c.tr.gamble) * (c.sol > costOf(FOOD, c) * 12 ? 1 : 0) * (T - (c.casinoT || -1e9) > 1200 ? 1 : 0.08) }, // only a cat with a few meals in hand; a degen feels it most
   { act: 'entangle', label: 'wants company',            w: c => c.lonely * 0.85 * c.tr.social },
   { act: 'idle',     label: () => (wx.rain + wx.snow > 0.3 ? 'caught in the weather' : 'nothing urgent'), w: () => 0.2 + wx.rain * 0.4 + wx.snow * 0.35 },
   { act: 'sleep',    label: 'tired',                    w: c => Math.pow(c.tired, 2.2) * 1.1 },
@@ -653,7 +654,7 @@ const TH = {
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
 
-const fmtSol = v => (!(v > 0) ? '0.00' : v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v < 0.00005 ? '<0.0001' : v.toFixed(4));
+const fmtSol = v => (Number(v) || 0).toFixed(2); // two decimals, everywhere, by request
 const fmtQ = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'K' : Math.round(v).toLocaleString('en-US'));
 const fmtUsd = v => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? '$' + Math.round(v / 1e3) + 'K' : v >= 1e4 ? '$' + (v / 1e3).toFixed(1) + 'K' : v >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + Math.round(v));
 const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
@@ -889,7 +890,7 @@ function finish(c, p) {
         log(`${receipt} Paid ${fmtQi(pay)} ${QI} from the lab.`, 'link', 'lab');
         tx(c, 'circuit', '+' + fmtQi(pay) + ' ' + QI, job);
       } else {
-        floatText(c, '+' + diff.toFixed(1) + ' work', '#C4B2FF');
+        floatText(c, '+1 lab job, next payout', '#C4B2FF');
         log(`${receipt} ${qiLive() ? 'Logged for the next ' + QI + ' payout.' : 'The lab\u2019s ' + QI + ' pool is empty, so it goes on the tab for the next payout.'}`, 'link', 'lab');
         tx(c, 'circuit', '+' + diff.toFixed(1) + ' work', job);
       }
@@ -906,8 +907,8 @@ function finish(c, p) {
       if (feePool()) { pay = stats.treasury * (quantum ? 0.03 : 0.012) * t.tier + Math.min(t.bounty, stats.treasury); pay = Math.max(0, Math.min(pay, stats.treasury, 0.008 * priceMul())); if (pay < 0.000005) pay = 0; }
       const credit = (quantum ? 1.0 : 0.4) * t.tier;
       c.twork = (c.twork || 0) + credit; c.tasks = (c.tasks || 0) + 1; if (quantum) { c.qjobs++; c.qnq += 2 + t.tier * 2; } learn(c, 'tasks', 1); learn(c, quantum ? 'quantum tasks' : 'chores', 1);
-      if (pay > 0) { stats.treasury -= pay; c.sol += pay; c.earned += pay; c.taskPay = (c.taskPay || 0) + pay; stats.wages += pay; floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); }
-      else floatText(c, '+' + credit.toFixed(1) + ' work', '#F7C86A');
+      if (pay > 0) { stats.treasury -= pay; c.sol += pay; c.earned += pay; c.taskPay = (c.taskPay || 0) + pay; stats.wages += pay; floatText(c, '+' + fmtSol(pay) + ' SOL', '#F7C86A'); payFX(c); }
+      else floatText(c, '+1 chore, next payout', '#F7C86A');
       t.status = 'done'; t.doneBy = c.name; t.at = T; t.atClock = clock(simMin); t.pay = pay; t.tookMin = Math.round((T - (t.taken || T)) / 60);
       board.done.unshift(t); if (board.done.length > 40) board.done.pop(); board.tasks = board.tasks.filter(x => x !== t); c.task = null;
       if (dayCur) { dayCur.tasks.push({ t: t.atClock, by: c.name, title: t.title, tier: t.tier, pay }); }
@@ -966,7 +967,7 @@ function finish(c, p) {
     if (amt > 0.00005) {
       const got = amt / mkt.price * 0.99;
       c.entry = (c.entry * c.qcat + amt) / (c.qcat + got);
-      c.sol -= amt; c.solSpent += amt; c.qcat += got; c.bought += got; c.buys++; spendGas(c);
+      c.sol -= amt; c.solSpent += amt; c.qcat += got; c.bought += got; c.buys++; spendGas(c); c.buyCool = T + rand(1500, 2700);
       stats.buySol += amt; stats.boughtBack += got; stats.buys++; stats.lastTrade = { name: c.name, side: 'bought', sol: amt, q: got, t: T };
       placeStats.exchange.bought += got; placeStats.exchange.buysol += amt; placeStats.exchange.visits++;
       if (!mkt.pinned) mkt.price *= 1 + amt / (mkt.price * SUPPLY * 0.35);
@@ -975,9 +976,9 @@ function finish(c, p) {
     }
   } else if (a === 'sell' && c.qi >= 1 && (c.sol < costOf(FOOD, c) && c.hunger > 0.5) && (c.qcat < 2000 || Math.random() < (SELL_QI[c.trait] || 0.5))) {
     // broke, and this one would rather part with its $QI than its $QCATS: sell just enough $QI to cover a few meals
-    const need = Math.max(1, Math.min(c.qi, (costOf(FOOD, c) * 6 - c.sol) / (qiSol() * 0.99))); // enough for a few days of meals, so it is not back here every hour
+    const need = Math.max(1, Math.min(c.qi, (costOf(FOOD, c) * 24 - c.sol) / (qiSol() * 0.99))); // enough for a day of meals, so it is not back here every hour
     const q = Math.min(c.qi, Math.round(need)), got = q * qiSol() * 0.99;
-    c.qi -= q; c.sol += got; c.qiSold += q; c.qiSellSol += got; c.sells++; spendGas(c);
+    c.qi -= q; c.sol += got; c.qiSold += q; c.qiSellSol += got; c.sells++; spendGas(c); c.brokeCool = T + 3600;
     stats.qiSold += q; stats.qiSellSol += got; stats.sells++; stats.lastTrade = { name: c.name, side: 'sold', sol: got, q, t: T, tok: QI };
     placeStats.exchange.visits++; c.lastSellTok = QI; c.lastSellT = T;
     floatText(c, '-' + fmtQi(q) + ' ' + QI, '#C4B2FF'); ringFX(EXC.x, EXC.y, '196,178,255', 1.1); gainXp(c, 2);
@@ -985,15 +986,16 @@ function finish(c, p) {
   } else if (a === 'sell') {
     const broke = c.sol < costOf(FOOD, c) && c.hunger > 0.5;
     // broke: work out what three meals cost and sell just enough to cover them (never more than a tenth of the stack)
-    const need = broke ? Math.min(c.qcat * 0.1, Math.max(c.qcat * 0.005, (costOf(FOOD, c) * 3 - c.sol) / (mkt.price * 0.99))) : c.qcat * rand(0.02, 0.05);
+    const need = broke ? Math.min(c.qcat * 0.1, Math.max(c.qcat * 0.005, (costOf(FOOD, c) * 20 - c.sol) / (mkt.price * 0.99))) : c.qcat * rand(0.02, 0.05);
     const q = Math.min(c.qcat, need), got = q * mkt.price * 0.99;
-    c.qcat -= q; c.sol += got; c.sold += q; c.sellSol += got; c.sells++; spendGas(c); c.lastSellTok = TK; c.lastSellT = T;
+    c.qcat -= q; c.sol += got; c.sold += q; c.sellSol += got; c.sells++; spendGas(c); c.lastSellTok = TK; c.lastSellT = T; if (broke) c.brokeCool = T + 3600;
     stats.sold += q; stats.sellSol += got; stats.sells++; stats.lastTrade = { name: c.name, side: 'sold', sol: got, q, t: T };
     placeStats.exchange.visits++;
     if (!mkt.pinned) { mkt.price *= 1 - got / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005; }
+    const gain = Math.round((mkt.price / c.entry - 1) * 100);
     if (!broke) { c.entry = mkt.price; c.sellCool = T + rand(1500, 3000); } // a trait sell re-anchors the cat and buys it a long pause before the next one
-    floatText(c, '-' + fmtQ(q) + ' ' + TK, '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, broke ? 2 : 4 + Math.min(12, (mkt.price / c.entry - 1) * 40));
-    const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at +${Math.round((mkt.price / c.entry - 1) * 100)}%`;
+    floatText(c, '-' + fmtQ(q) + ' ' + TK, '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, broke ? 2 : 4 + Math.min(12, gain * 0.4));
+    const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at ${gain >= 0 ? '+' : ''}${gain}%`;
     log(`${c.name} sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`, 'loss', 'exchange'); tx(c, 'sell', '-' + fmtQ(q) + ' ' + TK, '+' + fmtSol(got) + ' SOL'); did(c, `sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`); recordEvent('sell', `${c.name} sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`);
   } else if (a === 'steal') {
     const victims = cats.filter(o => o !== c && asleep(o));
@@ -1093,7 +1095,7 @@ function meetingContext() {
     top: top ? top.name : null, thief: thief && thief.stole > 0 ? thief.name : null, lastJob: stats.lastJob, lessons: lessons.slice(0, 6).map(l => `day ${l.day}: ${l.text}`), meetingN: meeting.n,
     sinceLast: { mcap0: meeting.mcap0 ? fmtUsd(meeting.mcap0) : null, mcapPct: meeting.mcap0 ? Math.round((mcapUsd() / meeting.mcap0 - 1) * 100) : null, fees: fmtSol(stats.fees - (meeting.fees0 || 0)) },
     today: dayCur ? { jobs: stats.circuits - dayCur.jobs0, tasks: dayCur.tasks.length, faints: dayCur.events.filter(e => e.kind === 'faint').length, casino: dayCur.events.filter(e => e.kind === 'casino').map(e => e.text).slice(-4), shop: dayCur.events.filter(e => e.kind === 'shop').map(e => e.text).slice(-3), arena: dayCur.events.filter(e => e.kind === 'arena').map(e => e.text).slice(-2), thefts: dayCur.events.filter(e => e.kind === 'theft').map(e => e.text).slice(-2), drops: deliverySeq } : null,
-    cats: cats.filter(c => !asleep(c)).map(c => ({ name: c.name, role: JOBS[c.job].label, trait: c.tr.label, level: c.lvl || 1, persona: PERSONA[c.name] || '', sol: fmtSol(c.sol), qcat: fmtQ(c.qcat), qi: fmtQ(c.qi || 0), qiEarned: fmtQ(c.qiEarned || 0), earned: fmtSol(c.earned), jobs: c.qjobs || 0, hunger: Math.round(c.hunger * 100), coherence: Math.round(c.coh * 100), grudge: c.grudgeOn ? (byId(c.grudgeOn) || {}).name : null, memory: (c.memory || []).slice(0, 5).map(m => m.text), recent: (c.acts || []).slice(0, 4).map(a => a.text), wearing: c.wearing ? (ITEMS.find(it => it.key === c.wearing) || {}).name : null, casino: (c.casinoW || c.casinoL) ? `${c.casinoW || 0}W ${c.casinoL || 0}L` : null, todayJobs: dayCur && dayCur.cats0[c.name] ? (c.qjobs || 0) - dayCur.cats0[c.name].jobs : (c.qjobs || 0), todayTasks: dayCur && dayCur.cats0[c.name] ? (c.tasks || 0) - dayCur.cats0[c.name].tasks : (c.tasks || 0), lastSaid: c.said && c.said[0] ? c.said[0].text : '' })),
+    cats: cats.filter(c => !asleep(c)).map(c => ({ name: c.name, role: JOBS[c.job].label, trait: c.tr.label, level: c.lvl || 1, persona: PERSONA[c.name] || '', sol: fmtSol(c.sol), qcat: fmtQ(c.qcat), qi: fmtQ(c.qi || 0), qiEarned: fmtQ(c.qiEarned || 0), studied: (c.notes || []).slice(0, 3).map(n => n.title + ': ' + n.text), ladder: c.study ? `${(c.study.i % CURRICULUM.length) + 1} of ${CURRICULUM.length}` : '1 of ' + CURRICULUM.length, earned: fmtSol(c.earned), jobs: c.qjobs || 0, hunger: Math.round(c.hunger * 100), coherence: Math.round(c.coh * 100), grudge: c.grudgeOn ? (byId(c.grudgeOn) || {}).name : null, memory: (c.memory || []).slice(0, 5).map(m => m.text), recent: (c.acts || []).slice(0, 4).map(a => a.text), wearing: c.wearing ? (ITEMS.find(it => it.key === c.wearing) || {}).name : null, casino: (c.casinoW || c.casinoL) ? `${c.casinoW || 0}W ${c.casinoL || 0}L` : null, todayJobs: dayCur && dayCur.cats0[c.name] ? (c.qjobs || 0) - dayCur.cats0[c.name].jobs : (c.qjobs || 0), todayTasks: dayCur && dayCur.cats0[c.name] ? (c.tasks || 0) - dayCur.cats0[c.name].tasks : (c.tasks || 0), lastSaid: c.said && c.said[0] ? c.said[0].text : '' })),
     asleep: cats.filter(asleep).map(c => c.name),
     drones: deliveries.length, bots: bots.length,
     board: { open: board.tasks.filter(t => t.status === 'open').map(t => `${t.title} (tier ${t.tier})`), taken: board.tasks.filter(t => t.status !== 'open').map(t => `${t.by}: ${t.title}`), doneToday: board.done.filter(t => T - (t.at || 0) < DAY_SECS).map(t => `${t.doneBy}: ${t.title}`) },
@@ -1123,6 +1125,9 @@ function meetBeats() {
   if (top && lazy && top !== lazy) middle.push([L(any(), `${top.name} ran ${today(top).jobs} jobs today for ${fmtSol(today(top).earned)} SOL. ${lazy.name} ran ${today(lazy).jobs}.`), L(lazy, pick(['I was recohering', 'the consoles were full', 'I did the chores. somebody has to', 'quality over quantity'])), L(top, pick(['the fee pool pays per job. just saying.', 'the readout was blurry by the end', 'one more and I would have decohered']))]);
   // the chores
   if (dayCur && dayCur.tasks.length) middle.push([L(any(), `${dayCur.tasks.length} thing${dayCur.tasks.length === 1 ? '' : 's'} dealt with today. ${tasker && today(tasker).tasks ? tasker.name + ' did ' + today(tasker).tasks + ' of them.' : ''}`), L(not(tasker), pick(['the courier bot keeps dumping parcels on us', 'the tourists are the problem', 'who leaves a scooter in the middle of the plaza', 'the bins are full. where does it go after the bins']))]);
+  // the lab notebooks
+  { const studied = here.filter(c => c.notes && c.notes[0]).sort((a, b) => ((b.study && b.study.i) || 0) - ((a.study && a.study.i) || 0))[0]; if (studied) { const n = studied.notes[0]; middle.push([L(studied, `lab notes. ${n.title}: ${n.text}`), L(not(studied), pick(['write that down', 'is that right?', 'the simulator says so', 'read it back tomorrow', 'and the real chip would disagree']))]); }
+    const solved = research.filter(e => e.kind === 'problem' && e.day === dayNo()); if (solved.length) { const okN = solved.filter(e => e.ok).length; middle.push([L(any(), `${solved.length} lab problem${solved.length === 1 ? '' : 's'} today, ${okN} right. ${solved[0].cat} had the last one: ${solved[0].q}`), L(cats.find(c => c.name === solved[0].cat) || any(), solved[0].ok ? solved[0].a + '. easy.' : 'it is ' + solved[0].a + '. I know now.')]); } }
   if (open.length) middle.push([L(any(), `${open[0].title} is still lying out there. nobody?`), L(any(), pick(['tier ' + open[0].tier + '. not me.', 'after the meeting', 'I saw it. I walked round it.', 'somebody flag it']))]);
   // the casino and the arena
   { const cs = ev('casino'); if (cs.length) { const last = cs[cs.length - 1].text, loser = cats.filter(c => (c.casinoNet || 0) < 0).sort((a, b) => a.casinoNet - b.casinoNet)[0]; middle.push([L(any(), last + '.'), L(loser || any(), pick(['the reels are rigged', 'one more spin would have done it', 'that was rent, yes', 'the house is the treasury. so it stays in the box. so it is fine.'])), L(not(loser), pick(['the house always wins', 'it literally pays us back as wages', 'stay out of the casino and run a circuit']))]); } }
@@ -1284,17 +1289,20 @@ function studySession(c, r) {
   c.study.i++; stats.sessions = (stats.sessions || 0) + 1; learn(c, 'research', 1);
   did(c, `studied ${title}: ${text}`);
   if (studyHook) { try { studyHook(c, { key, title, depth, nq: r.nq, bits: r.bits, kind: r.kind, noteId: e.id, previous: c.notes.slice(1, 4).map(n => n.text) }); } catch (_) {} }
-  // every few sessions the box sets a problem it can check for itself
-  if (Math.random() < 0.3) problemFor(c);
+  // an open problem on the lab's board: half the time the cat that just finished takes the oldest one
+  if (board.lab && board.lab.length && Math.random() < 0.5) problemFor(c, board.lab.shift());
 }
-function problemFor(c) {
-  const pr = pick(PROBLEMS)(); const sk = skillLvl(skillOf(c, 'research'));
+function newProblem() { const pr = pick(PROBLEMS)(); pr.id = 'P' + (++researchSeq); pr.posted = T; pr.t = clock(simMin); return pr; }
+function stepLab() { if (!board.lab) board.lab = []; if (board.lab.length < 3 && T >= (board.labNext || 0)) { board.lab.push(newProblem()); board.labNext = T + rand(240, 600); } }
+function problemFor(c, pr) {
+  if (!pr) pr = newProblem(); const sk = skillLvl(skillOf(c, 'research'));
   const covered = (c.notes || []).some(n => n.topic === pr.topic);
   const p = clamp(0.3 + sk * 0.06 + (covered ? 0.25 : 0) + 0.04 * ((c.lvl || 1) - 1), 0.2, 0.95), ok = Math.random() < p;
   let bonus = 0;
   if (ok) { bonus = qiLive() ? 0 : Math.min(stats.qiPool, Math.round(qiPerJob() * 0.6)); if (bonus > 0) { stats.qiPool -= bonus; c.qi += bonus; c.qiEarned += bonus; stats.qiPaid += bonus; floatText(c, '+' + fmtQi(bonus) + ' ' + QI + ' bonus', '#C4B2FF'); } c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
   else { c.coh = clamp(c.coh - 0.08); c.failed = (c.failed || 0) + 1; stats.failed = (stats.failed || 0) + 1; }
-  const e = pushResearch({ kind: 'problem', cat: c.name, topic: pr.topic, q: pr.q, a: pr.a, given: ok ? pr.a : pr.wrong, ok, bonus });
+  const e = pushResearch({ kind: 'problem', cat: c.name, topic: pr.topic, q: pr.q, a: pr.a, given: ok ? pr.a : pr.wrong, ok, bonus, waited: pr.posted != null ? Math.round((T - pr.posted) / 60) : 0 });
+  recordEvent('lab', `${c.name} ${ok ? 'solved' : 'missed'} a lab problem: ${pr.q} ${ok ? '' : '(it said ' + e.given + ')'}`);
   log(`${c.name} was set a problem in the lab: ${pr.q} It said ${e.given}. ${ok ? 'Right' + (bonus ? ', +' + fmtQi(bonus) + ' ' + QI : '') + '.' : 'Wrong; the answer was ' + pr.a + '.'}`, ok ? 'gain' : 'loss', 'lab');
   did(c, `${ok ? 'solved' : 'missed'}: ${pr.q} (${e.given})`); if (ok) remember(c, `got one right in the lab: ${pr.q} ${pr.a}`); else remember(c, `missed one in the lab: ${pr.q} it is ${pr.a}`);
 }
@@ -1548,19 +1556,19 @@ function step(dt) {
   stepWeather(dt);
   if (realMcap == null) stepMarket(dt);
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
-  checkReleases(); checkStages(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt);
+  checkReleases(); checkStages(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt); stepGas(); stepLab();
   if (CONFIG.SIMULATE_FEES !== false && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
   for (const c of cats) update(c, dt); separateAll(dt);
 }
 function snapshot() {
   return {
     v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next }, paused, realMcap,
-    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 8), solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
+    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 24), solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),
     unlock: UNLOCK_MC, roster: ROSTER,
-    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool },
+    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool, lab: board.lab || [], labNext: board.labNext || 0 },
     deliveries: deliveries.map(d => ({ id: d.id, kind: d.kind, x: +d.x.toFixed(3), y: +d.y.toFixed(3), z: +d.z.toFixed(3), tx: +d.tx.toFixed(3), ty: +d.ty.toFixed(3), state: d.state })),
     bots: bots.map(b => ({ id: b.id, x: +b.x.toFixed(3), y: +b.y.toFixed(3), tx: +b.tx.toFixed(3), ty: +b.ty.toFixed(3), state: b.state, face: b.face, pauseT: b.pauseT > 0 ? +b.pauseT.toFixed(2) : 0 })),
     days, today: dayCur, lessons: lessons.slice(0, 12), research: research.slice(0, 80),
@@ -1590,7 +1598,7 @@ function restoreFrom(snap) {
   if (snap.days) { days.length = 0; days.push(...snap.days); }
   if (snap.today) dayCur = snap.today;
   if (snap.lessons) { lessons.length = 0; lessons.push(...snap.lessons); }
-  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).slice(0, BOARD_MAX).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
+  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).slice(0, BOARD_MAX).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; board.lab = (snap.board.lab || []).slice(0, 3); board.labNext = snap.board.labNext || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
   if (snap.weather) { wxKey = snap.weather.key; wxNext = snap.weather.next; wxUntil = snap.weather.until; wxDur = snap.weather.dur; Object.assign(wx, snap.weather.wx); }
 }
 };

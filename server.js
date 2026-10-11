@@ -28,6 +28,7 @@ const DEFAULTS = {
   QI_PER_JOB: 5000,                     // $QI per finished lab job in the box (scaled by circuit size and level)
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: true, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; under `min` the treasury refills it
+  aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
   SOL_USD: 150, START_MC_USD: 3100,
   sellCapPct: 5,          // max % of its stack a cat may sell per day (enforced once the cats trade for real)
   buyPct: 15,             // % of spare SOL a cat spends per buy (same)
@@ -57,7 +58,7 @@ const hooks = {
   // two cats sitting down together get their own exchange (at most one AI chat every three minutes; the rest use the built-in lines)
   onPair: (ctx, a, b) => { if (!llm.enabled() || Date.now() - lastPairAt < 180000) return; lastPairAt = Date.now(); llm.pairChat(ctx, a, b).then(lines => { if (lines) engine.setChat(a, b, lines); }).catch(e => console.error('pair chat', e.message)); },
   // a cat finished a study session in the lab: the model writes its note (at most one every 90 seconds; the box's own line stands otherwise)
-  onStudy: (ctx, name, info) => { if (!llm.enabled() || Date.now() - lastStudyAt < 90000) return; lastStudyAt = Date.now(); llm.studyNote(ctx, name, info).then(t => { if (t) engine.setNote(info.noteId, t); }).catch(e => console.error('study note', e.message)); },
+  onStudy: (ctx, name, info) => { if (!llm.enabled() || Date.now() - lastStudyAt < (Number(config.aiStudyGapSec) || 0) * 1000) return; lastStudyAt = Date.now(); llm.studyNote(ctx, name, info).then(t => { if (t) engine.setNote(info.noteId, t); }).catch(e => console.error('study note', e.message)); },
   // the day's lesson, written at the end of each day and read back into every later meeting
   onDayEnd: (recap, ctx) => { if (!llm.enabled()) { engine.setLesson(`day ${recap.day}: ${recap.fees.toFixed ? recap.fees.toFixed(4) : recap.fees} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); return; } llm.daySummary(ctx, recap).then(line => { if (line) engine.setLesson(line); }).catch(e => console.error('day summary', e.message)); },
 };
@@ -331,7 +332,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       if (p === '/admin/config') {
         for (const k of ['CA', 'X_URL', 'QI_MINT']) if (k in b) config[k] = String(b[k]).trim();
-        for (const k of ['sellCapPct', 'buyPct', 'slippageBps', 'QI_PER_JOB', 'QI_SOL']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        for (const k of ['sellCapPct', 'buyPct', 'slippageBps', 'QI_PER_JOB', 'QI_SOL', 'aiStudyGapSec']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
         if ('gasFloor' in b || 'gasMin' in b || 'gasForm' in b) { const g = config.gas; g.auto = !!b.gasAuto; if (b.gasFloor !== '' && b.gasFloor != null) g.floor = Math.max(0.001, Number(b.gasFloor)); if (b.gasMin !== '' && b.gasMin != null) g.min = Math.max(0.0005, Math.min(g.floor, Number(b.gasMin))); }
         engine.setSimulateFees(simulateFees()); engine.setQiConfig(config.QI_PER_JOB, config.QI_SOL);
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved');
