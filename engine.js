@@ -432,6 +432,23 @@ function stepBots(dt) {
     }
   }
 }
+// nobody walks into anybody: after everyone has moved, any two bodies closer than a cat's width are eased apart. A body that
+// is planted (asleep, on a seat, in the circle, a bot on its bay) stays put and the other one gives way; two planted ones are
+// left alone. Nobody gets pushed into a structure, and a cat is never moved off the thing it is standing over.
+const BODY_R = 0.38;
+function separateAll(dt, kx = 'x', ky = 'y') {
+  const all = cats.concat(bots), fixed = a => a.bot ? a.state === 'docked' : (asleep(a) || onSeat(a) || a.act === 'meet' || a.chair != null);
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j]; if (a[kx] == null || b[kx] == null) continue;
+    const dx = a[kx] - b[kx], dy = a[ky] - b[ky], d = Math.hypot(dx, dy); if (d >= BODY_R || d < 1e-4) continue;
+    const fa = fixed(a), fb = fixed(b); if (fa && fb) continue;
+    const seating = o => !o.bot && o.state === 'walk' && o.tx != null && Math.hypot(o.tx - o[kx], o.ty - o[ky]) < 1.0; if ((fa && seating(b)) || (fb && seating(a))) continue; // taking the next seat along: brushing past a planted neighbour is allowed, the steering still eases round it
+    const push = Math.min(BODY_R - d, 0.9 * dt), ux = dx / d, uy = dy / d, wa = fa ? 0 : fb ? 1 : 0.5, wb = 1 - wa;
+    const ax = a[kx] + ux * push * wa, ay = a[ky] + uy * push * wa, bx = b[kx] - ux * push * wb, by = b[ky] - uy * push * wb;
+    if (wa) { steerSelf = a; try { if (pushOut(ax, ay, 0.001)[2] < 1) { a[kx] = ax; a[ky] = ay; } } finally { steerSelf = null; } }
+    if (wb) { steerSelf = b; try { if (pushOut(bx, by, 0.001)[2] < 1) { b[kx] = bx; b[ky] = by; } } finally { steerSelf = null; } }
+  }
+}
 function callTask(id) {
   // a viewer flagged something: the cats hear about it. They still decide for themselves whether and when to go.
   const t = board.tasks.find(q => q.id === id); if (!t || t.status !== 'open' || board.badge !== id) return false;
@@ -1394,7 +1411,7 @@ function step(dt) {
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
   checkReleases(); checkStages(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt);
   if (CONFIG.SIMULATE_FEES !== false && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
-  for (const c of cats) update(c, dt);
+  for (const c of cats) update(c, dt); separateAll(dt);
 }
 function snapshot() {
   return {
