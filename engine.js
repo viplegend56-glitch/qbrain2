@@ -87,7 +87,7 @@ const ST = {
   plaza:  { label: 'the plaza',       spot: () => wanderSpot() },
   bazaar: { label: 'the shop',        spot: me => { const taken = cats.filter(c => c !== me && c.act === 'shop').map(c => [c.tx, c.ty]); const free = BAZ_SPOTS.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); const q = pick(free.length ? free : BAZ_SPOTS); return [q[0], q[1]]; } },
   cryo:   { label: 'the circle',      spot: () => wanderSpot() },
-  fridge: { label: 'the fridge',      spot: () => { const a = rand(-0.2, 1.3), r = FRIDGE.r + 0.95; return [FRIDGE.x + Math.cos(a) * r, FRIDGE.y + Math.sin(a) * r]; } }, // the plaza side of the fridge
+  fridge: { label: 'the fridge',      spot: () => { const a = rand(1.0, 1.45), r = 1.5; return [FRIDGE.x + Math.cos(a) * r, FRIDGE.y + Math.sin(a) * r]; } }, // below the fridge, clear of the readout and the coolant drop on its lab side
   crates: { label: 'the diner',       spot: me => { const taken = cats.filter(c => c !== me && c.act === 'eat').map(c => [c.tx, c.ty]); const free = DINER_STOOLS.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); if (!free.length) return [rand(CRATES.x + 0.1, CRATES.x + 1.5), CRATES.y + 1.95]; const q = pick(free); return [q[0], q[1]]; } }, // no free stool: eat standing, behind the stools
   vent:   { label: 'the heater',      spot: () => [rand(VENT.x + 0.26, VENT.x + 1.4), rand(VENT.y + 0.26, VENT.y + 1.04)] },
   trays:  { label: 'the scrapyard',   spot: () => [rand(TRAYS.x - 1.3, TRAYS.x - 0.5), rand(TRAYS.y + 0.5, TRAYS.y + 2.9)] },
@@ -303,25 +303,40 @@ const ITEMS = [
 // ---- work on the ground: things turn up around the block and want doing. First cat there gets it. Mostly quantum, some chores.
 // carry: the cat picks the thing up and takes it somewhere; otherwise it stays on the spot and deals with it.
 const TASK_KINDS = {
-  trash:   { tier: 1, q: false, title: 'trash behind the diner',            carry: 'bin',    dur: 3,  w: 3,   spawn: () => [rand(CRATES.x + 0.1, CRATES.x + 1.5), CRATES.y + rand(1.9, 2.3)] },
-  litter:  { tier: 1, q: false, title: 'litter on the plaza',               carry: 'bin',    dur: 3,  w: 2,   spawn: () => wanderSpot() },
-  crate:   { tier: 1, q: false, title: 'a dropped crate',                   carry: 'trays',  dur: 3,  w: 2,   spawn: () => wanderSpot() },
-  spill:   { tier: 1, q: false, title: 'a spill to mop up',                 carry: null,     dur: 45, w: 2,   spawn: () => wanderSpot() },
-  leaves:  { tier: 1, q: false, title: 'leaves to sweep',                   carry: null,     dur: 40, w: 2,   spawn: () => wanderSpot() },
-  parcel:  { tier: 2, q: false, title: 'a parcel for the shop',             carry: 'bazaar', dur: 3,  w: 1,   spawn: () => { const b = pick(BINS); return b[0] > b[1] ? [b[0] - 0.9, b[1] + rand(-0.6, 0.6)] : [b[0] + rand(-0.6, 0.6), b[1] - 0.9]; } },
-  cable:   { tier: 2, q: true,  title: 'a loose cable outside the lab',     carry: null,     dur: 50, w: 1.5, spawn: () => [LAB.x + rand(-1.4, 1.4), LAB.y + LAB.d / 2 + rand(1.2, 1.8)] },
-  calib:   { tier: 2, q: true,  title: 'a console that needs recalibrating', carry: null,    dur: 60, w: 2,   spawn: () => pick(LAB_CONSOLES) },
-  readout: { tier: 3, q: true,  title: 'a readout check on the fridge',     carry: null,     dur: 70, w: 1,   spawn: () => [FRIDGE.x + rand(-0.3, 0.3), FRIDGE.y + FRIDGE.r + 0.75] },
-  coolant: { tier: 3, q: true,  title: 'a coolant can for the fridge',      carry: 'fridge', dur: 3,  w: 0.7, spawn: () => { const b = pick(BINS); return b[0] > b[1] ? [b[0] - 0.9, b[1] + rand(-0.6, 0.6)] : [b[0] + rand(-0.6, 0.6), b[1] - 0.9]; } },
+  trash:   { tier: 1, q: false, title: 'trash beside the diner',            carry: 'bin',    dur: 3,  w: 3,   spawn: () => [CRATES.x + CRATES.w + rand(0.55, 0.95), CRATES.y + rand(0.1, 0.9)] }, // the side of the counter, away from the stools
+  litter:  { tier: 1, q: false, title: 'litter on the plaza',               carry: 'bin',    dur: 3,  w: 2,   spawn: () => floorSpot() },
+  crate:   { tier: 1, q: false, title: 'a dropped crate',                   carry: 'trays',  dur: 3,  w: 2,   spawn: () => floorSpot() },
+  spill:   { tier: 1, q: false, title: 'a spill to mop up',                 carry: null,     dur: 45, w: 2,   spawn: () => floorSpot() },
+  leaves:  { tier: 1, q: false, title: 'leaves to sweep',                   carry: null,     dur: 40, w: 2,   spawn: () => floorSpot() },
+  parcel:  { tier: 2, q: false, title: 'a parcel for the shop',             carry: 'bazaar', dur: 3,  w: 1,   spawn: () => floorSpot() },
+  cable:   { tier: 2, q: true,  title: 'a loose cable outside the lab',     carry: null,     dur: 50, w: 1.5, spawn: () => [LAB.x + rand(-1.6, 1.6), LAB.y + LAB.d / 2 + rand(1.5, 2.0)] }, // a stride out from the console row
+  calib:   { tier: 2, q: true,  title: 'a console that needs recalibrating', carry: null,    dur: 60, w: 2,   spawn: () => { const q = pick(LAB_CONSOLES); return q[1] > LAB.y + LAB.d / 2 ? [q[0], q[1] + 0.95] : [q[0] + 0.95, q[1]]; } }, // the marker goes down in front of the console, not on its stool
+  readout: { tier: 3, q: true,  title: 'a readout check on the fridge',     carry: null,     dur: 70, w: 1,   spawn: () => { const a = rand(-0.25, 0.05); return [FRIDGE.x + Math.cos(a) * 1.55, FRIDGE.y + Math.sin(a) * 1.55]; } }, // the lab side of the fridge
+  coolant: { tier: 3, q: true,  title: 'a coolant can for the fridge',      carry: 'fridge', dur: 3,  w: 0.7, spawn: () => floorSpot() },
 };
 const DEST = {
   bin:    (x, y) => { const b = BINS.slice().sort((p, q) => Math.hypot(p[0] - x, p[1] - y) - Math.hypot(q[0] - x, q[1] - y))[0]; return b[0] > b[1] ? [b[0] - 0.55, b[1]] : [b[0], b[1] - 0.55]; },
   trays:  () => ST.trays.spot(),
   bazaar: () => [BAZ_SPOTS[1][0], BAZ_SPOTS[1][1]],
-  fridge: () => [FRIDGE.x, FRIDGE.y + FRIDGE.r + 0.75],
+  fridge: () => [FRIDGE.x + Math.cos(0.5) * 1.5, FRIDGE.y + Math.sin(0.5) * 1.5], // the plaza side of the fridge, clear of the cats recohering below it
 };
+// everywhere a cat stands or sits to do something. Nothing gets left lying on any of these, so a task never blocks a place.
+let placeSpots = null;
+function nearPlace(x, y) {
+  if (!placeSpots) placeSpots = [
+    ...MEET_ORDER.map(i => [...chairAt(i), 0.7]), ...LAB_CONSOLES.map(q => [q[0], q[1], 0.8]), ...DINER_STOOLS.map(q => [q[0], q[1], 0.8]), [CRATES.x + 0.8, CRATES.y + 1.95, 1.1],
+    ...BAZ_SPOTS.map(q => [q[0], q[1], 0.8]), ...BINS.map(b => { const d = DEST.bin(b[0], b[1]); return [d[0], d[1], 0.7]; }),
+    [ARENA.x, ARENA.y, ARENA.r + 0.6], [EXC.x + 1.5, EXC.y, 1.2], [VENT.x + 0.83, VENT.y + 0.65, 1.1], [TRAYS.x - 0.9, TRAYS.y + 1.7, 1.7], [LOFT.x + 1.05, LOFT.y + 0.65, 1.4],
+    [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2, 1.9], [FRIDGE.x + 0.9, FRIDGE.y + 1.1, 1.4], [VAULT.x, VAULT.y, 1.0], [BAZ.x + BAZ.w + 0.45, BAZ.y + 0.3, 0.8],
+    [CRY.x - 3.6, CRY.y - 3.6, 1.4], // the bit of floor the countdown over the beacon hangs in front of on screen, so nothing hides behind the clock
+  ];
+  for (const [px, py, r] of placeSpots) if (Math.hypot(x - px, y - py) < r) return true;
+  return false;
+}
+function floorSpot() { for (let i = 0; i < 24; i++) { const q = wanderSpot(); if (!nearPlace(q[0], q[1])) return q; } return wanderSpot(); }
 const DEST_LABEL = { bin: 'the bin', trays: 'the scrapyard', bazaar: 'the shop', fridge: 'the fridge' };
 const board = { tasks: [], done: [], seq: 0, next: 0 };
+const FLAG_COOL = 600; // after a viewer flags something, the badge is gone and it cannot be flagged again for ten minutes
 // visitors: people and bots that come out of the buildings round the block, leave something that wants doing, and go back in
 const VISITOR_KINDS = {
   courier:  { robot: true,  name: 'a courier bot',     posts: ['parcel', 'coolant'],           line: 'drop for the box. someone sign for it.', waits: false, w: 2 },
@@ -371,7 +386,7 @@ function stepVisitors(dt) {
 }
 function callTask(id) {
   // a viewer flagged something: the cats hear about it. They still decide for themselves whether and when to go.
-  const t = board.tasks.find(q => q.id === id); if (!t || t.status !== 'open') return false;
+  const t = board.tasks.find(q => q.id === id); if (!t || t.status !== 'open' || (t.called != null && T - t.called < FLAG_COOL)) return false;
   t.called = T; log(`Somebody flagged ${t.title}.`, 'info');
   const c = cats.filter(x => !asleep(x) && x.act !== 'meet' && !x.task && qualifies(x, t) && (x.state === 'pause' || (x.state === 'act' && x.act === 'idle'))).sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
   if (c) { if (c.state === 'pause') c.pauseT = Math.min(c.pauseT, 0.4); else c.actT = c.actDur; say(c, pick(['heard that', 'on it, maybe', 'if nobody else wants it', 'let me finish this first'])); }
@@ -382,8 +397,9 @@ const qualifies = (c, t) => t.tier === 1 || (t.tier === 2 && ((c.lvl || 1) >= 2 
 const tasksFor = c => board.tasks.filter(t => t.status === 'open' && qualifies(c, t));
 function postTask(def, poster) {
   const kind = TASK_KINDS[def.kind] ? def.kind : pick(Object.keys(TASK_KINDS)), K0 = TASK_KINDS[kind];
-  let at = (def && def.at && pushOut(def.at[0], def.at[1], 0.3)[2] === 0) ? def.at : null;
-  for (let i = 0; !at && i < 12; i++) { const q = K0.spawn(); if (i === 11 || pushOut(q[0], q[1], 0.34)[2] === 0) at = q; } // never up against a structure
+  let at = (def && def.at && pushOut(def.at[0], def.at[1], 0.3)[2] === 0 && !nearPlace(def.at[0], def.at[1])) ? def.at : null;
+  for (let i = 0; !at && i < 12; i++) { const q = K0.spawn(); if (pushOut(q[0], q[1], 0.34)[2] === 0 && !nearPlace(q[0], q[1])) at = q; } // never up against a structure or on a place
+  if (!at) at = floorSpot();
   const t = { id: 'T' + String(++board.seq).padStart(3, '0'), kind, tier: K0.tier, q: K0.q, title: K0.title, x: at[0], y: at[1], carry: K0.carry, dest: K0.carry ? DEST[K0.carry](at[0], at[1]) : null, dur: K0.dur, bounty: Math.max(0, (def && def.bounty) || 0), posted: T, day: dayNo(), status: 'open', by: null, poster: poster || 'the box' };
   board.tasks.push(t);
   log(`${t.title[0].toUpperCase() + t.title.slice(1)} turned up${t.carry ? ', wants taking to ' + DEST_LABEL[t.carry] : ''} (tier ${t.tier}${t.bounty ? ', ' + fmtSol(t.bounty) + ' SOL on it' : ''}).`, 'info');
@@ -392,7 +408,7 @@ function postTask(def, poster) {
 function releaseTask(c) {
   if (!c || !c.task) return;
   const t = board.tasks.find(x => x.id === c.task);
-  if (t && t.by === c.name && (t.status === 'taken' || t.status === 'carried')) { if (t.status === 'carried') { t.x = c.x; t.y = c.y; } t.status = 'open'; t.by = null; } // dropped where it stood
+  if (t && t.by === c.name && (t.status === 'taken' || t.status === 'carried')) { if (t.status === 'carried') { if (nearPlace(c.x, c.y) || pushOut(c.x, c.y, 0.34)[2] > 0) { const q = floorSpot(); t.x = q[0]; t.y = q[1]; } else { t.x = c.x; t.y = c.y; } } t.status = 'open'; t.by = null; } // dropped where it stood (or the nearest bit of clear floor, so it never blocks a place)
   c.task = null;
 }
 function stepBoard(dt) {
@@ -505,7 +521,7 @@ const DRIVES = [
   { act: 'idle',     label: () => (wx.rain + wx.snow > 0.3 ? 'caught in the weather' : 'nothing urgent'), w: () => 0.2 + wx.rain * 0.4 + wx.snow * 0.35 },
   { act: 'sleep',    label: 'tired',                    w: c => Math.pow(c.tired, 2.2) * 1.1 },
   { act: 'play',     label: 'wants to play',            w: c => (0.32 + c.lonely * 0.4) * c.tr.social * (spare(c) > costOf(PLAY, c) ? 1 : 0.05) * (T - (c.playT || -1e9) > 900 ? 1 : 0.3) },
-  { act: 'task',     label: c => (tasksFor(c).some(t => t.called && T - t.called < 180) ? 'somebody flagged something' : 'something wants doing'), w: c => { const ts = tasksFor(c); return ts.length ? (c.coh < 0.4 ? 0.2 : 1) * (0.42 + 0.12 * Math.max(...ts.map(t => t.tier))) * c.ethic * (ts.some(t => t.called && T - t.called < 180) ? 1.8 : 1) : 0; } },
+  { act: 'task',     label: c => (tasksFor(c).some(t => t.called != null && T - t.called < 180) ? 'somebody flagged something' : 'something wants doing'), w: c => { const ts = tasksFor(c); return ts.length ? (c.coh < 0.4 ? 0.2 : 1) * (0.42 + 0.12 * Math.max(...ts.map(t => t.tier))) * c.ethic * (ts.some(t => t.called != null && T - t.called < 180) ? 1.8 : 1) : 0; } },
   { act: 'shop',     label: 'feeling flush',            w: c => itemsFor(c).length ? (0.3 + 0.25 * (c.vanity || 1)) * (1 - (c.items || []).length / ITEMS.length) * (T - (c.shopT || -1e9) > 2400 ? 1 : 0.08) : 0 },
 ];
 const TH = {
@@ -665,8 +681,8 @@ function decide(c) {
   }
   if (ch.act === 'task') {
     // first come first served: the nearest thing it qualifies for, the harder tiers first when they are close
-    const t = tasksFor(c).sort((a, b) => (Math.hypot(a.x - c.x, a.y - c.y) - a.tier * 2 - (a.called && T - a.called < 180 ? 6 : 0)) - (Math.hypot(b.x - c.x, b.y - c.y) - b.tier * 2 - (b.called && T - b.called < 180 ? 6 : 0)))[0];
-    t.status = 'taken'; t.by = c.name; t.taken = T; c.task = t.id; c.taskPlace = t.kind === 'calib' ? 'lab' : 'plaza';
+    const t = tasksFor(c).sort((a, b) => (Math.hypot(a.x - c.x, a.y - c.y) - a.tier * 2 - (a.called != null && T - a.called < 180 ? 6 : 0)) - (Math.hypot(b.x - c.x, b.y - c.y) - b.tier * 2 - (b.called != null && T - b.called < 180 ? 6 : 0)))[0];
+    t.status = 'taken'; t.by = c.name; t.taken = T; c.task = t.id; c.taskPlace = 'plaza';
     c.doing = `heading for ${t.title}`; c.because = `tier ${t.tier}, nobody else got there first${t.bounty ? ', ' + fmtSol(t.bounty) + ' SOL on it' : ''}`;
     c.tx = t.x; c.ty = t.y; c.state = 'walk'; c.slide = 0; c.stuckP = null; c.stuckN = 0; return;
   }
