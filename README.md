@@ -4,7 +4,7 @@ The server that runs the one shared box. The website reads from it; the admin pa
 
 **What it does right now:**
 - runs the exact simulation that ships in the website, 24/7, so every visitor sees the same cats
-- reads the real market cap from DexScreener once the contract address is set, and releases cats / opens the lab from it
+- reads the real market cap from DexScreener once the contract address is set, and releases cats from it
 - serves `/state.json` for the website and a password-protected `/admin`
 - holds the ten cat wallets + the treasury wallet (keys only in environment variables), reads their balances, notices when fees land
 - **Distribute**: pays SOL from the treasury to the cats, split by the quantum work each cat did since the last payout
@@ -47,7 +47,7 @@ Paste the contract address into `/admin` → Token → CA, add the X link, Save.
 
 ## Still to build
 - the cats' own trades and living payments as real on-chain transfers (today they are mirrored in the box only; Distribute and Sell are real)
-- the lab on real quantum hardware once the chart hits the lab threshold
+- the lab on real quantum hardware (today every job runs on the built-in simulator)
 
 ## Files
 - `server.js` — http server, loop, admin routes, autopilot

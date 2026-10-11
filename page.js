@@ -171,7 +171,6 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     <div class="row3">
       <div><label>Sell cap: max % of its stack a cat may sell per day</label><input type="number" step="1" min="0" max="100" name="sellCapPct" value="${esc(config.sellCapPct)}"></div>
       <div><label>Buy size: % of spare SOL a cat spends per buy</label><input type="number" step="1" min="1" max="100" name="buyPct" value="${esc(config.buyPct)}"></div>
-      <div><label>The lab opens at (USD market cap)</label><input type="number" step="1000" name="LAB_MC_USD" value="${esc(config.LAB_MC_USD)}"></div>
     </div>
     <button class="btn">Save</button>
   </div></div>

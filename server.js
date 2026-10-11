@@ -24,7 +24,7 @@ const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const DEFAULTS = {
   NAME: 'Quantum Cats', TICKER: 'QCAT',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
-  SOL_USD: 150, START_MC_USD: 3100, LAB_MC_USD: 200000,
+  SOL_USD: 150, START_MC_USD: 3100,
   sellCapPct: 5,          // max % of its stack a cat may sell per day (enforced once the cats trade for real)
   buyPct: 15,             // % of spare SOL a cat spends per buy (same)
   slippageBps: 300,       // 3% slippage on operator sells
@@ -231,7 +231,7 @@ const server = http.createServer(async (req, res) => {
       const ws = wallets.load();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, LAB_MC_USD: config.LAB_MC_USD, sellCapPct: config.sellCapPct },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct },
         market: mkt,
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -245,8 +245,8 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       if (p === '/admin/config') {
         for (const k of ['CA', 'X_URL']) if (k in b) config[k] = String(b[k]).trim();
-        for (const k of ['LAB_MC_USD', 'sellCapPct', 'buyPct', 'slippageBps']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
-        engine.setLabMc(config.LAB_MC_USD); engine.setSimulateFees(simulateFees());
+        for (const k of ['sellCapPct', 'buyPct', 'slippageBps']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        engine.setSimulateFees(simulateFees());
         saveConfig(); pollMarket(); pollBalances(); return back(res, 'saved');
       }
       if (p === '/admin/auto') {

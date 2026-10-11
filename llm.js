@@ -39,7 +39,7 @@ const WORLD = `You write dialogue for Quantum Cats: ten stray cats living in an 
 Facts of their world, never contradict them:
 - Every cat was given 100,000 $QCAT and no SOL. They sell a little coin to pay for food, a bunk, warmth and play; prices rise as the chart rises.
 - The cats earn SOL only from the coin's creator fees, which land in the treasury and are paid out in proportion to the quantum work each cat does in the lab (sampling, Grover search, Shor factoring, calibration). Lazy cats earn less and sell more.
-- Until the chart reaches the lab threshold the jobs run on a simulator; after that, fees buy time on real quantum hardware.
+- The lab is open from day one: ten consoles in a glass control room, the chip in a dilution fridge next door, piped to the lab.
 - The circle in the middle of the box runs a countdown. When it hits zero every awake cat sits down there and talks through the day: treasury, chart, lab, grudges, strategy.
 - Cats steal from sleepers, wager in the arena, hold grudges, decohere when they overwork, faint when they go hungry.
 Voice: lowercase, short, dry, funny, specific. Crypto-native slang is fine (dip, pump, fees, bag, ape, hold), no hashtags, no emojis, no exclamation marks, no corporate tone. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
@@ -51,7 +51,6 @@ function describeDay(ctx) {
   return [
     `Day ${ctx.day}, ${ctx.clock}, weather: ${ctx.weather}. Market cap ${ctx.mcap}. Survival prices are ${ctx.priceMul}x launch.`,
     `Treasury holds ${ctx.treasury} SOL; ${ctx.fees} SOL of fees have landed in total and ${ctx.wages} SOL has been paid out to cats.`,
-    ctx.labLive ? 'The lab is on real quantum hardware.' : `The lab runs on a simulator until the chart hits ${ctx.labAt}.`,
     ctx.lastJob ? `Last job: ${ctx.lastJob.name} ran a ${ctx.lastJob.nq}-qubit ${ctx.lastJob.kind} job, most common result |${ctx.lastJob.bits}⟩.` : '',
     ctx.top ? `Top earner so far: ${ctx.top}.` : '', ctx.thief ? `${ctx.thief} has been stealing from sleepers.` : '',
     ctx.asleep && ctx.asleep.length ? `Asleep in the bunks (not present): ${ctx.asleep.join(', ')}.` : '',
@@ -67,12 +66,12 @@ async function meetingScript(ctx) {
 Cats present in the circle:
 ${cats.map(describeCat).join('\n')}
 
-Write the meeting: 12 to 14 lines of dialogue. Open with someone reading the numbers (treasury, chart, fees), then argue about the day: who worked, who did not, whether to sell coin for food or hold, what the lab should run next, one grudge or one joke, and end with a plan for tomorrow. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters.
+Write the meeting: 20 to 26 lines of dialogue for a five-minute sit-down. Open with someone reading the numbers (treasury, chart, fees), then argue about the day: who worked, who did not, whether to sell coin for food or hold, what the lab should run next, one grudge, one joke, and end with a plan for tomorrow. Cats interrupt and answer each other, so write some quick back-and-forth exchanges of two or three short lines. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters.
 Reply with ONLY a JSON array like [{"who":"Miso","text":"..."}, ...]`;
-  const text = await complete(WORLD, user, 1200);
+  const text = await complete(WORLD, user, 2000);
   const arr = parseArray(text);
   const lines = arr.map(x => ({ who: names.includes(x.who) ? x.who : null, text: clip(x.text, 120) })).filter(x => x.text);
-  return lines.length >= 4 ? lines.slice(0, 16) : null;
+  return lines.length >= 4 ? lines.slice(0, 30) : null;
 }
 
 // a one-line thought for a few awake cats, about what they are doing right now
