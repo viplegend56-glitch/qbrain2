@@ -99,6 +99,7 @@ const OBST = [
   { x: EXC.x - 0.8, y: EXC.y - 0.8, w: 1.6, d: 1.6 },  // exchange
   { x: LAB.x - 0.7, y: LAB.y - 0.65, w: 1.4, d: 1.3 }, // lab
   { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 }, // treasury
+  { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },  // heater unit
   ...BUILD.map(b => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
 ];
 const OBC = [[CRY.x, CRY.y, 1.15]]; // round ones: the cryostat
@@ -319,9 +320,9 @@ const PLACES = {
   vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['here', 'spent', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
   trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [M(16.0), M(11.6)], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
   exchange: { title: 'The exchange',    kind: 'where cats buy back',       pt: [M(6.6), M(11.5)],  stats: ['here', 'bought', 'buysol'],  desc: 'A kiosk with a ticker on the front. Any cat with SOL to spare walks up and buys ' + TK + '. Cats never sell here, there is no sell button. Every buy goes straight to the chart.' },
-  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(9.5), M(12.6)],  stats: ['here', 'wagered', 'visits'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
+  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(9.5), M(12.6)],  stats: ['here', 'spent', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
   boxes:    { title: 'The boxes',       kind: 'shelter',                   pt: [M(10.2), M(7.6)],  stats: ['here', 'visits', 'visits'],  desc: 'Cardboard. Free and dry. Soaked cats wait out the weather here.' },
-  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.4), M(5.8)],  stats: ['here', 'visits', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
+  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.4), M(5.8)],  stats: ['here', 'spent', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
   lab:      { title: 'The lab',         kind: 'quantum compute',           pt: [M(14.1), M(10.55)], stats: ['here', 'circuits', 'spent'], stage: 'lab',  desc: 'A real quantum computer, rented by the second. When the lab is open, fees buy time on it and coherent cats run circuits: a few qubits, a thousand shots, a result, a job receipt you can check. It doesn\u2019t solve anything useful yet. It is real.' },
   vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.2), M(13.3)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays a fee in SOL, and the fees land here. Every shift on the block is paid out of it. When it runs low, shifts pay half.' },
 };
