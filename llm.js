@@ -41,28 +41,29 @@ Facts of their world, never contradict them:
 - The cats earn SOL only from the coin's creator fees, which land in the treasury and are paid out in proportion to the quantum work each cat does in the lab (sampling, Grover search, Shor factoring, calibration). Lazy cats earn less and sell more.
 - The lab is open from day one: ten consoles in a glass control room, the chip in a dilution fridge next door, piped to the lab.
 - The circle in the middle of the box runs a countdown. When it hits zero every awake cat sits down there and talks through the day: treasury, chart, lab, grudges, strategy.
-- People and bots come out of the buildings round the block (residents, tourists, a courier bot, a maintenance bot) and leave things that want doing on the open floor round the circle (trash, cans, a dropped crate, a spill, a knocked-over plant pot, a fallen scooter, a loose cable, a sensor pod to recalibrate, a crashed drone, a dead battery, a readout to check, a sample case for the fridge), never more than four at once, in three tiers; first cat there deals with it and is paid from the fee pool. Viewers can flag a job; the cats still go when they feel like it. Cats get better at a kind of job the more they do it.
+- Delivery drones come in over the harbour and leave things that want doing on the open floor round the circle (trash, cans, a dropped crate, a spill, a knocked-over plant pot, a fallen scooter, a loose cable, a sensor pod to recalibrate, a crashed drone, a dead battery, a readout to check, a sample case for the fridge), never more than four at once, in three tiers; first cat there deals with it and is paid from the fee pool. Viewers can flag a job; the cats still go when they feel like it. Cats get better at a kind of job the more they do it.
 - There is a casino next to the exchange: a cat with SOL to spare puts a slice on a spin against the house (the treasury). A win pays double, now and then four times; the odds favour the house a little.
 - A cat that is losing coherence sits still out in the open near the circle to pull itself together. Nobody walks through the circle outside meetings; the open floor round it is where cats loaf and talk.
 - There is a shop (three stalls) where cats buy things to wear: collars, bandanas, shades, hats, a gold chain, a crown, a halo. The SOL goes to the treasury.
 - Cats steal from sleepers, wager in the arena, hold grudges, decohere when they overwork in the lab, faint when they go hungry.
-Voice: lowercase, short, dry, funny, specific. Crypto-native slang is fine (dip, pump, fees, bag, ape, hold), no hashtags, no emojis, no exclamation marks, no corporate tone. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
+- Two sweeper bots trundle round the ring when few cats are about and dock again when the cats come back.
+Voice: lowercase, short, dry, funny, specific. No hashtags, no emojis, no exclamation marks, no corporate tone. The cats never talk about the chart, the price or the market cap: they talk about the box, the treasury and fees, work, chores, food, the casino, each other. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
 
 function describeCat(c) {
   return `${c.name} (${c.role}, ${c.trait}, level ${c.level}; ${c.persona}) — ${c.sol} SOL, ${c.qcat} $QCATS, earned ${c.earned} SOL lifetime, ${c.jobs} jobs done (${c.todayJobs || 0} today), ${c.todayTasks || 0} chores today, hunger ${c.hunger}%, coherence ${c.coherence}%${c.wearing ? ', wearing ' + c.wearing : ''}${c.casino ? ', casino record ' + c.casino : ''}${c.grudge ? ', holds a grudge against ' + c.grudge : ''}${c.recent && c.recent.length ? '; lately: ' + c.recent.join('; ') : ''}${c.memory && c.memory.length ? '; remembers: ' + c.memory.join(' / ') : ''}${c.lastSaid ? '; last said "' + c.lastSaid + '"' : ''}`;
 }
 function describeDay(ctx) {
   return [
-    `Day ${ctx.day}, ${ctx.clock}, weather: ${ctx.weather}. Market cap ${ctx.mcap}. Survival prices are ${ctx.priceMul}x launch.`,
+    `Day ${ctx.day}, ${ctx.clock}, weather: ${ctx.weather}. Survival prices are ${ctx.priceMul}x launch.`,
     `Treasury holds ${ctx.treasury} SOL; ${ctx.fees} SOL of fees have landed in total and ${ctx.wages} SOL has been paid out to cats.`,
     ctx.lastJob ? `Last job: ${ctx.lastJob.name} ran a ${ctx.lastJob.nq}-qubit ${ctx.lastJob.kind} job, most common result |${ctx.lastJob.bits}⟩.` : '',
     ctx.top ? `Top earner so far: ${ctx.top}.` : '', ctx.thief ? `${ctx.thief} has been stealing from sleepers.` : '',
     ctx.asleep && ctx.asleep.length ? `Asleep in the bunks (not present): ${ctx.asleep.join(', ')}.` : '',
     ctx.board && ctx.board.open && ctx.board.open.length ? `Lying around the block right now, wanting doing: ${ctx.board.open.join('; ')}.` : 'Nothing is lying around the block right now.',
     ctx.board && ctx.board.doneToday && ctx.board.doneToday.length ? `Tasks finished today: ${ctx.board.doneToday.slice(0, 8).join('; ')}.` : '',
-    ctx.visitors && ctx.visitors.length ? `Out on the plaza right now: ${ctx.visitors.join(', ')}.` : '',
-    ctx.sinceLast && ctx.sinceLast.mcap0 ? `Since the last meeting the chart went from ${ctx.sinceLast.mcap0} (${ctx.sinceLast.mcapPct >= 0 ? '+' : ''}${ctx.sinceLast.mcapPct}%) and ${ctx.sinceLast.fees} SOL of fees came in.` : '',
-    ctx.today ? `Today so far: ${ctx.today.jobs} lab jobs, ${ctx.today.tasks} chores done, ${ctx.today.faints} faints${ctx.today.casino.length ? '; casino: ' + ctx.today.casino.join('; ') : ''}${ctx.today.arena.length ? '; arena: ' + ctx.today.arena.join('; ') : ''}${ctx.today.thefts.length ? '; ' + ctx.today.thefts.join('; ') : ''}${ctx.today.shop.length ? '; shop: ' + ctx.today.shop.join('; ') : ''}; ${ctx.today.visitors} people and bots have come through the box in total.` : '',
+    ctx.bots ? `${ctx.bots} sweeper bot${ctx.bots === 1 ? '' : 's'} out on the ring right now.` : '', ctx.drones ? `${ctx.drones} delivery drone${ctx.drones === 1 ? '' : 's'} on the way in.` : '',
+    ctx.sinceLast ? `Since the last meeting ${ctx.sinceLast.fees} SOL of fees came in.` : '',
+    ctx.today ? `Today so far: ${ctx.today.jobs} lab jobs, ${ctx.today.tasks} chores done, ${ctx.today.faints} faints${ctx.today.casino.length ? '; casino: ' + ctx.today.casino.join('; ') : ''}${ctx.today.arena.length ? '; arena: ' + ctx.today.arena.join('; ') : ''}${ctx.today.thefts.length ? '; ' + ctx.today.thefts.join('; ') : ''}${ctx.today.shop.length ? '; shop: ' + ctx.today.shop.join('; ') : ''}` : '',
     ctx.lessons && ctx.lessons.length ? `What the box has learned on earlier days (build on it, refer back to it, change your minds when the facts changed): ${ctx.lessons.join(' | ')}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -76,7 +77,7 @@ async function meetingScript(ctx) {
 Cats present in the circle:
 ${cats.map(describeCat).join('\n')}
 
-Write the meeting: 20 to 26 lines of dialogue for a ten-minute sit-down. Open with someone reading the numbers (treasury, chart since last time, fees), then argue about the actual day: who worked and who did not, the chores and the people leaving them, the casino and the arena, whether to sell coin for food or hold, what the lab should run next, one grudge, one joke, and end with a plan for tomorrow that follows from what happened. Cats refer back to what they remember and to earlier lessons, and admit when they were wrong. Cats interrupt and answer each other, so write some quick back-and-forth exchanges of two or three short lines. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters. Never repeat a line from an earlier meeting.
+Write the meeting: 20 to 26 lines of dialogue for a ten-minute sit-down. Open with someone reading the numbers (treasury, fees since last time, wages paid), then argue about the actual day: who worked and who did not, the chores and the drones dropping them, the casino and the arena, whether to sell a little coin for food, what the lab should run next, one grudge, one joke, and end with a plan for tomorrow that follows from what happened. Nothing about the chart or the price. Cats refer back to what they remember and to earlier lessons, and admit when they were wrong. Cats interrupt and answer each other, so write some quick back-and-forth exchanges of two or three short lines. Every speaker must be one of: ${names.join(', ')}. Spread the lines around; let personalities clash. Each line under 110 characters. Never repeat a line from an earlier meeting.
 Reply with ONLY a JSON array like [{"who":"Miso","text":"..."}, ...]`;
   const text = await complete(WORLD, user, 2000);
   const arr = parseArray(text);
@@ -108,7 +109,7 @@ async function pairChat(ctx, aName, bName) {
 
 ${cats.map(describeCat).join('\n')}
 
-${aName} came looking for ${bName} and they are sitting together for a minute. Write 5 or 6 alternating lines, ${aName} first, about their own situations today: hunger, SOL, the chart, the lab, a chore, the casino, a grudge, something one of them remembers. Specific and dry; they can disagree. Under 80 characters each.
+${aName} came looking for ${bName} and they are sitting together for a minute. Write 5 or 6 alternating lines, ${aName} first, about their own situations today: hunger, SOL, the lab, a chore, the casino, a grudge, something one of them remembers. Not the chart. Specific and dry; they can disagree. Under 80 characters each.
 Reply with ONLY a JSON array of strings, alternating ${aName}, ${bName}, ${aName}...`;
   const text = await complete(WORLD, user, 500);
   const arr = parseArray(text);
@@ -119,7 +120,7 @@ Reply with ONLY a JSON array of strings, alternating ${aName}, ${bName}, ${aName
 async function daySummary(ctx, recap) {
   const user = `${describeDay(ctx)}
 
-The day that just ended, day ${recap.day}: ${recap.fees} SOL of fees in, ${recap.wages} SOL paid out, ${recap.jobs} lab jobs, ${recap.tasks} chores, chart from ${recap.mcapStart} to ${recap.mcapEnd}, top worker ${recap.topWorker || 'nobody'}, top earner ${recap.topEarner || 'nobody'}.
+The day that just ended, day ${recap.day}: ${recap.fees} SOL of fees in, ${recap.wages} SOL paid out, ${recap.jobs} lab jobs, ${recap.tasks} chores, top worker ${recap.topWorker || 'nobody'}, top earner ${recap.topEarner || 'nobody'}.
 Notable: ${(recap.events || []).slice(-14).map(e => e.text).join('; ') || 'nothing much'}.
 The meeting's lines: ${(recap.meeting && recap.meeting.lines || []).slice(0, 14).map(l => l.who + ': ' + l.text).join(' / ') || 'no meeting'}.
 
@@ -138,7 +139,7 @@ async function thoughts(ctx, picks) {
 Cats:
 ${cats.map(describeCat).join('\n')}
 
-For each cat write one thought it mutters to itself right now, in its own voice, about its own situation (its SOL, its bag, its hunger, the chart, the lab, a chore, the casino, a grudge, something it remembers or agreed to). Under 70 characters each, no names of cats that are not listed, never a line it has said before.
+For each cat write one thought it mutters to itself right now, in its own voice, about its own situation (its SOL, its hunger, the lab, a chore, the casino, a grudge, something it remembers or agreed to; not the chart). Under 70 characters each, no names of cats that are not listed, never a line it has said before.
 Reply with ONLY a JSON array like [{"name":"Miso","text":"..."}, ...]`;
   const text = await complete(WORLD, user, 400);
   const arr = parseArray(text);
