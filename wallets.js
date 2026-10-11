@@ -66,17 +66,22 @@ function assertKnown(ws, pub) {
   if (pub !== ws.treasury.pub && !ws.cats.some(c => c.pub === pub)) throw new Error('refusing to send to an address that is not one of the ten cats or the treasury');
 }
 
-// outs: [{ pub, sol }] — one transaction, several transfers. Returns the signature.
-async function transferSol(rpcUrl, ws, fromKp, outs) {
+const MEMO_PROGRAM = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
+function memoIx(text) { const { PublicKey, TransactionInstruction } = libs(); return new TransactionInstruction({ programId: new PublicKey(MEMO_PROGRAM), keys: [], data: Buffer.from(String(text).slice(0, 200), 'utf8') }); }
+// outs: [{ pub, sol }] — one transaction, several transfers, an optional memo so Solscan shows what it was. Returns the signature.
+// A transfer to an account that may not exist yet (a fresh cat wallet) must be at least the rent minimum; one to the treasury or a funded cat can be any size.
+async function transferSol(rpcUrl, ws, fromKp, outs, memo, allowSmall) {
   const { Connection, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
   const tx = new Transaction();
   for (const o of outs) {
     assertKnown(ws, o.pub);
     const lamports = Math.floor(o.sol * LAMPORTS);
-    if (lamports < 900000) throw new Error(`each transfer must be at least 0.0009 SOL (rent); ${o.pub.slice(0, 4)}… would get ${o.sol}`);
+    if (lamports < 900000 && !allowSmall) throw new Error(`each transfer must be at least 0.0009 SOL (rent); ${o.pub.slice(0, 4)}… would get ${o.sol}`);
+    if (lamports < 1000) throw new Error('transfer too small');
     tx.add(SystemProgram.transfer({ fromPubkey: fromKp.publicKey, toPubkey: new PublicKey(o.pub), lamports }));
   }
+  if (memo) tx.add(memoIx(memo));
   return sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 });
 }
 
@@ -96,7 +101,7 @@ async function mintInfo(rpcUrl, mint) {
 }
 function ataOf(owner, mint, program) { const { PublicKey } = libs(); return PublicKey.findProgramAddressSync([owner.toBuffer(), new PublicKey(program).toBuffer(), mint.toBuffer()], new PublicKey(ATA_PROGRAM))[0]; }
 // outs: [{ pub, raw }] (raw = smallest units). Creates the cat's token account if it has none (idempotent), then transferChecked. Five cats per transaction. Returns the signatures.
-async function transferToken(rpcUrl, ws, fromKp, mint, outs) {
+async function transferToken(rpcUrl, ws, fromKp, mint, outs, memo) {
   const { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
   const { program, decimals } = await mintInfo(rpcUrl, mint);
@@ -118,6 +123,7 @@ async function transferToken(rpcUrl, ws, fromKp, mint, outs) {
       ], data }));
     }
     if (!tx.instructions.length) continue;
+    if (memo) tx.add(memoIx(memo));
     sigs.push(await sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 }));
   }
   return { sigs, decimals };
@@ -148,4 +154,4 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) 
   return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
 }
 
-module.exports = { load, generate, balances, transferSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS };
+module.exports = { load, generate, balances, transferSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };

@@ -8,8 +8,8 @@ const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
-function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs, flash, err, env, generated, busy }) {
-  marketQi = marketQi || {};
+function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, balances, logs, flash, err, env, generated, busy }) {
+  marketQi = marketQi || {}; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
   const tre = balances && balances.treasury ? balances.treasury.sol : null;
@@ -153,6 +153,22 @@ function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs
     <div class="pb">
     <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th></tr>${catRows}</table>
   </div></div>
+
+  <form method="post" action="/admin/chain">
+  <div class="panel"><div class="ph"><span>On-chain · the cats' own transactions</span><small class="mut">${ch.mode === 'live' ? '<span class="ok">LIVE: every payment the cats make is a real transaction</span>' : ch.mode === 'dry' ? 'dry-run: logging what would be sent, sending nothing' : 'off: the box only'}</small></div><div class="pb">
+    ${walletsReady ? `
+    <p class="mut" style="margin:0 0 10px">Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; casino wins treasury → cat; arena wagers cat → cat. Each is one transaction with a memo (what it was) that shows on Solscan. In <b>dry-run</b> the brain logs every one and sends nothing; use that for a day first. In <b>live</b> the wallet balances become the truth for what a cat can spend.</p>
+    <div class="row3">
+      <div><label>mode</label><select name="mode"><option value="off" ${ch.mode === 'off' ? 'selected' : ''}>off — the box only</option><option value="dry" ${ch.mode === 'dry' ? 'selected' : ''}>dry-run — log, send nothing</option><option value="live" ${ch.mode === 'live' ? 'selected' : ''}>live — send real transactions</option></select></div>
+      <div><label>cap per payment (SOL)</label><input type="number" step="0.01" min="0.001" name="maxPaySol" value="${esc(ch.maxPaySol != null ? ch.maxPaySol : 0.2)}"></div>
+      <div><label>treasury pays out at most this much SOL a day in casino wins</label><input type="number" step="0.1" min="0.01" name="dayCapSol" value="${esc(ch.dayCapSol != null ? ch.dayCapSol : 2)}"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin-top:8px"><input type="checkbox" name="buyQi" ${ch.buyQi !== false ? 'checked' : ''}> <b>Treasury buys the $QI it owes</b> <span class="mut">at payout time, through Jupiter, with SOL from the fees (otherwise it only pays from $QI it already holds)</span></label>
+    <button class="btn">Save</button>
+    <div style="margin-top:12px"><small class="mut">queued now: ${engine.intents.length} · last results, newest first</small>
+    ${chainLog.length ? `<table style="margin-top:6px"><tr><th>when</th><th>what</th><th>SOL</th><th>result</th></tr>${chainLog.slice(0, 20).map(e => `<tr><td>${ago(e.at)}</td><td>${esc(e.cat)} → ${esc(e.to)} · ${esc(e.memo)}</td><td>${sol(e.sol)}</td><td>${e.dry ? '<span class="mut">dry-run</span>' : e.ok ? `<span class="ok">sent</span> ${addr(e.sig)}` : `<span class="bad">${esc(e.err)}</span>`}</td></tr>`).join('')}</table>` : '<div class="mut" style="margin-top:6px">nothing yet</div>'}</div>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+  </div></div>
+  </form>
 
   <form method="post" action="/admin/auto">
   <div class="panel"><div class="ph"><span>Autopilot</span><small class="mut">runs on its own at a random moment every few minutes, so the box keeps going while you are away</small></div><div class="pb">

@@ -28,6 +28,7 @@ const DEFAULTS = {
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
+  chain: { mode: 'off', buyQi: true, maxPaySol: 0.2, dayCapSol: 2 }, // mode: off (the box only) · dry (log what would be sent) · live (send it). buyQi: the treasury buys the $QI it owes at payout time
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: true, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; under `min` the treasury refills it
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
@@ -41,7 +42,7 @@ const DEFAULTS = {
   auto: { distribute: false, distKeep: 0.02, distPct: 0, qiPct: 0, sell: false, sellPct: 1, sellDayCap: 5, maxMin: 20, nextDist: 0, nextSell: 0, lastDist: '', lastSell: '', soldDay: '', soldPct: {} },
 };
 let config = { ...DEFAULTS };
-try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) }, gas: { ...DEFAULTS.gas, ...(saved.gas || {}) } }; } catch (_) {}
+try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) }, gas: { ...DEFAULTS.gas, ...(saved.gas || {}) }, chain: { ...DEFAULTS.chain, ...(saved.chain || {}) } }; } catch (_) {}
 config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; // the name and ticker come from the code, not from an old saved config
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
@@ -68,6 +69,7 @@ const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() 
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
 engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery((config.payoutEveryMin || 20) * 60); engine.setPriceMul(config.PRICE_MUL || 1);
+const applyChainMode = () => { const m = (config.chain || {}).mode || 'off'; engine.setLiveTx(m === 'live' || m === 'dry'); engine.setDryRun(m === 'dry'); }; applyChainMode();
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
   logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
@@ -117,6 +119,7 @@ async function pollBalances() {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA, config.QI_MINT)) };
     const t = balances.treasury && balances.treasury.sol;
     { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); }
+    if ((config.chain || {}).mode === 'live') engine.setLiveBalances(balances.cats); // the wallets are the truth once the box is paying for real
     if (typeof t === 'number') {
       engine.setTreasury(t);
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005) {
@@ -127,6 +130,44 @@ async function pollBalances() {
   } catch (e) { balances = { ...balances, err: String(e.message || e) }; }
 }
 setInterval(pollBalances, 30000); pollBalances();
+
+// ---------- the executor: one queued intent at a time, as a real transaction (or a log line in dry-run) ----------
+const chainLog = []; let chainSpentToday = { day: '', sol: 0 };
+function chainNote(e) { chainLog.unshift({ ...e, at: Date.now() }); if (chainLog.length > 100) chainLog.pop(); }
+async function runIntent(i) {
+  const ws = wallets.load(); if (!ws.ready || !RPC_URL) throw new Error('wallets or RPC not ready');
+  const catW = ws.cats.find(c => c.name === i.cat); if (!catW) throw new Error('unknown cat ' + i.cat);
+  const ch = config.chain || {}; const day = new Date().toISOString().slice(0, 10); if (chainSpentToday.day !== day) chainSpentToday = { day, sol: 0 };
+  const memo = `${config.TICKER} · ${i.cat} · ${i.memo}`;
+  if (i.type === 'pay') { // cat -> treasury
+    if (i.sol > (ch.maxPaySol || 0.2)) throw new Error(`over the per-payment cap (${i.sol} SOL)`);
+    const b = balances.cats[i.cat]; if (b && b.sol - i.sol < (config.gas.min || 0.002)) throw new Error('would dip into gas');
+    return wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.treasury.pub, sol: i.sol }], memo, true);
+  }
+  if (i.type === 'win') { // treasury -> cat (a casino win)
+    if (i.sol > (ch.maxPaySol || 0.2) * 4) throw new Error('win over the cap');
+    if (chainSpentToday.sol + i.sol > (ch.dayCapSol || 2)) throw new Error('treasury day cap reached'); chainSpentToday.sol += i.sol;
+    return wallets.transferSol(RPC_URL, ws, ws.treasury.kp, [{ pub: catW.pub, sol: i.sol }], memo, true);
+  }
+  if (i.type === 'wager') { // cat -> cat
+    const toW = ws.cats.find(c => c.name === i.to); if (!toW) throw new Error('unknown cat ' + i.to);
+    if (i.sol > (ch.maxPaySol || 0.2)) throw new Error('wager over the cap');
+    return wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: toW.pub, sol: i.sol }], memo, true);
+  }
+  throw new Error('unknown intent type ' + i.type);
+}
+async function chainTick() {
+  const ch = config.chain || {}; if (ch.mode !== 'live' && ch.mode !== 'dry') return;
+  if (busy) return;
+  const i = engine.takeIntent(); if (!i) return;
+  engine.markIntent(i.id, 'sending');
+  if (ch.mode === 'dry') { engine.intentDone(i.id, null); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, dry: true }); return; }
+  busy = true;
+  try { const sig = await runIntent(i); engine.intentDone(i.id, sig); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, sig }); console.log('chain', i.type, i.cat, i.sol, i.memo, sig); }
+  catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, i.cat, e.message); }
+  finally { busy = false; }
+}
+setInterval(() => { chainTick().catch(e => console.error('chainTick', e)); }, 2500);
 
 // ---------- gas: a cat under the minimum gets refilled to the floor from the treasury, at most once every ten minutes per cat ----------
 const gasLast = {};
@@ -142,7 +183,7 @@ async function topUpGas() {
   if (need > tre - 0.005) { console.warn('gas: treasury too low to refill', outs.map(o => o.name).join(', ')); return; }
   busy = true;
   try {
-    const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs);
+    const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs, `${config.TICKER} · gas top-up`);
     for (const o of outs) { gasLast[o.name] = now; engine.noteGas(o.name, o.sol, sig); }
     config.lastTreasurySol = tre - need; saveConfig();
     console.log('gas top-up', outs.map(o => o.name + ' +' + o.sol).join(', '), sig);
@@ -179,7 +220,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, chainLog, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -194,7 +235,7 @@ async function distribute(b) {
   const tre = balances.treasury && balances.treasury.sol;
   if (typeof tre !== 'number') throw new Error('treasury balance not read yet');
   const parts = [];
-  let spentSol = 0;
+  let spentSol = 0, needSol = 0;
   if (total > 0) {
     if (total > tre - 0.005) throw new Error(`treasury has ${tre.toFixed(4)} SOL; keep 0.005 for fees`);
     const shares = engine.workShares(names);
@@ -242,15 +283,26 @@ async function payOwed() {
   let solSig = null;
   if (solOuts.length) {
     if (needSol > tre - 0.01) throw new Error(`treasury has ${tre.toFixed(4)} SOL, ${needSol.toFixed(4)} is owed`);
-    solSig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, solOuts); parts.push(`${needSol.toFixed(4)} SOL to ${solOuts.length} cats · ${solSig.slice(0, 8)}…`);
+    solSig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, solOuts, `${config.TICKER} · payout · SOL for chores`); parts.push(`${needSol.toFixed(4)} SOL to ${solOuts.length} cats · ${solSig.slice(0, 8)}…`);
     paid = paid.concat(solOuts.map(o => ({ name: o.name, sol: o.sol, qi: 0, sig: solSig })));
   }
   const qiOuts = config.QI_MINT ? owed.filter(o => o.qi >= 1) : [];
   if (qiOuts.length) {
-    const tq = balances.treasury && balances.treasury.qi, dec = balances.treasury && balances.treasury.qiDec;
-    if (typeof tq !== 'number' || dec == null) throw new Error('treasury $QI balance not read yet');
-    const needQi = qiOuts.reduce((a, o) => a + o.qi, 0); if (needQi > tq) throw new Error(`treasury holds ${Math.floor(tq)} $QI, ${needQi} is owed`);
-    const { sigs } = await wallets.transferToken(RPC_URL, ws, ws.treasury.kp, config.QI_MINT, qiOuts.map(o => ({ pub: ws.cats.find(c => c.name === o.name).pub, raw: Math.floor(o.qi * Math.pow(10, dec)) })));
+    let tq = balances.treasury && balances.treasury.qi, dec = balances.treasury && balances.treasury.qiDec;
+    if (dec == null) { try { dec = (await wallets.mintInfo(RPC_URL, config.QI_MINT)).decimals; } catch (e) { throw new Error('could not read the $QI mint: ' + e.message); } }
+    if (typeof tq !== 'number') tq = 0;
+    const needQi = qiOuts.reduce((a, o) => a + o.qi, 0);
+    if (needQi > tq) {
+      // the treasury buys the shortfall at the market, with SOL, through Jupiter — the payout is funded by fees the way it is meant to be
+      if (!(config.chain || {}).buyQi) throw new Error(`treasury holds ${Math.floor(tq)} $QI, ${needQi} is owed, and buying is off`);
+      const shortQi = needQi - tq, priceSol = mktQi.priceSol; if (!(priceSol > 0)) throw new Error('no $QI price yet, cannot size the buy');
+      const solIn = shortQi * priceSol * 1.03; // 3% over for slippage; whatever is left stays in the treasury as $QI
+      if (solIn > tre - spentSol - needSol - 0.02) throw new Error(`treasury needs ${solIn.toFixed(4)} SOL to buy the $QI owed, has ${(tre - spentSol - needSol).toFixed(4)}`);
+      const r = await wallets.jupiterSwap(RPC_URL, ws.treasury.kp, config.QI_MINT, 'buy', Math.floor(solIn * wallets.LAMPORTS), config.slippageBps);
+      const got = r.outAmount / Math.pow(10, dec); tq += got; parts.push(`bought ${Math.floor(got).toLocaleString('en-US')} $QI for ${solIn.toFixed(4)} SOL · ${r.sig.slice(0, 8)}…`); console.log('treasury bought', got, '$QI for', solIn, 'SOL', r.sig);
+      if (needQi > tq) throw new Error('the buy came up short; try again');
+    }
+    const { sigs } = await wallets.transferToken(RPC_URL, ws, ws.treasury.kp, config.QI_MINT, qiOuts.map(o => ({ pub: ws.cats.find(c => c.name === o.name).pub, raw: Math.floor(o.qi * Math.pow(10, dec)) })), `${config.TICKER} · payout · $QI for lab work`);
     parts.push(`${needQi.toLocaleString('en-US')} $QI to ${qiOuts.length} cats · ${sigs.map(x => x.slice(0, 8)).join(', ')}…`);
     for (const o of qiOuts) { const p = paid.find(x => x.name === o.name); if (p) p.qi = o.qi; else paid.push({ name: o.name, sol: 0, qi: o.qi, sig: sigs[0] }); }
   }
@@ -347,7 +399,7 @@ const server = http.createServer(async (req, res) => {
       const ws = wallets.load();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' } },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -394,6 +446,11 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/unrelease') { const ok = b.name && engine.unrelease(b.name); return back(res, ok ? b.name + ' taken out' : 'not in the box', !ok); }
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
+      if (p === '/admin/chain') {
+        const ch = config.chain; ch.mode = ['off', 'dry', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = !!b.buyQi;
+        if (b.maxPaySol !== '' && b.maxPaySol != null) ch.maxPaySol = Math.max(0.001, Number(b.maxPaySol)); if (b.dayCapSol !== '' && b.dayCapSol != null) ch.dayCapSol = Math.max(0.01, Number(b.dayCapSol));
+        applyChainMode(); saveConfig(); return back(res, 'on-chain mode: ' + ch.mode);
+      }
       if (p === '/admin/payowed') {
         if (busy) return back(res, 'another transaction is still running', true);
         busy = true; try { return back(res, 'paid what was owed: ' + await payOwed()); } catch (e) { console.error('payowed failed', e); return back(res, 'payout failed: ' + e.message, true); } finally { busy = false; }
