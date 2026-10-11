@@ -40,10 +40,10 @@ const M = v => 1.6 + (v - 1.6) * WS;
 const BUILD = [
   { x: 2, y: 2, w: 3, d: 3, h: 7.6, tower: true },
   { x: 2, y: 5.6, w: 3, d: 3.2, h: 4.6 },
-  { x: 2, y: 9.4, w: 3, d: 2.8, h: 5.8, board: 'R' },
+  { x: 2, y: 9.4, w: 3, d: 2.8, h: 5.8, board: 'D' },   // a hoarding on the left too
   { x: 2, y: 12.8, w: 3, d: 2.6, h: 3.6 },
   { x: 2, y: 16, w: 3, d: 2.2, h: 2.4 },
-  { x: 5.6, y: 2, w: 3.2, d: 3, h: 5.2, board: 'L' },
+  { x: 5.6, y: 2, w: 3.2, d: 3, h: 5.2 },
   { x: 9.4, y: 2, w: 2.8, d: 3, h: 3.4 },
   { x: 12.8, y: 2, w: 2.6, d: 3, h: 6.4, board: 'C' },
   { x: 16, y: 2, w: 2.2, d: 3, h: 4.0 },
@@ -118,6 +118,8 @@ const OBST = [
   { x: BAZ.x - 0.2, y: 5.0, w: BAZ.w + 0.4, d: BAZ.y - 5.0 },                 // and behind the shop
   ...BINS.map(([bx, by]) => ({ x: bx - 0.22, y: by - 0.22, w: 0.44, d: 0.44 })),
   { x: VAULT.x - 0.45, y: VAULT.y - 0.45, w: 0.9, d: 0.9 },    // treasury
+  { x: LOFT.x - 0.12, y: 5.0, w: LOFT.w + 0.24, d: LOFT.y + 0.06 - 5.0 }, // the bunks' back wall, and the slot behind it
+  { x: LOFT.x - 0.12, y: LOFT.y, w: 0.14, d: LOFT.d + 0.06 },             // the bunks' side wall: in by the open front only
   { x: BAZ.x - 0.1, y: BAZ.y - 0.1, w: BAZ.w + 0.2, d: BAZ.d + 0.2 }, // the shop stalls
   { x: VENT.x - 0.6, y: VENT.y - 0.05, w: 0.5, d: 0.95 },      // heater unit
   ...BUILD.map(b => ({ x: b.x, y: b.y, w: b.w, d: b.d })),
@@ -214,7 +216,7 @@ const OUT = [];
   }
   const SIGNS = [['NODE', '92,242,255'], ['CRYO', '154,123,255'], ['24H', '255,79,174'], ['QUBITS', '247,200,106'], ['ENTANGLE', '255,79,174'], ['NOODLES', '255,138,92'], ['PAWN', '247,200,106'], ['SOL', '92,255,170'], ['HOTEL', '255,79,174'], ['DECOHERE', '154,123,255']];
   const cand = OUT.filter(b => !b.far && b.h > 6 && b.w > 2.8);
-  for (let i = 0; i < SIGNS.length && cand.length; i++) { const b = cand.splice(Math.floor(r() * cand.length), 1)[0]; b.sign = { text: SIGNS[i][0], c: SIGNS[i][1] }; }
+  // the outer city's sign panels came down with the coin boards; the roof lights stay
 })();
 OUT.sort((a, b) => (a.x + a.w / 2 + a.y + a.d / 2) - (b.x + b.w / 2 + b.y + b.d / 2));
 const SHIM = [];
@@ -369,7 +371,7 @@ function nearPlace(x, y) {
 }
 function floorSpot() { return wanderSpot(); }
 const DEST_LABEL = { bin: 'the bin', trays: 'the scrapyard', bazaar: 'the shop', fridge: 'the fridge' };
-const board = { tasks: [], done: [], seq: 0, next: 0 };
+const board = { tasks: [], done: [], seq: 0, next: 0, badge: null, badgeCool: 0 }; // badge: the one thing a viewer can flag right now
 const FLAG_COOL = 600, FLAG_AFTER = 300, BOARD_MAX = 4; // the badge shows once something has lain untouched for five minutes; a flag hides it for ten; never more than four things out at once
 // deliveries: a drone comes in high over the harbour side, drops down over a clear bit of the ring, leaves the thing and climbs out again
 const deliveries = []; let deliverySeq = 0;
@@ -423,8 +425,8 @@ function stepBots(dt) {
 }
 function callTask(id) {
   // a viewer flagged something: the cats hear about it. They still decide for themselves whether and when to go.
-  const t = board.tasks.find(q => q.id === id); if (!t || t.status !== 'open' || T - (t.since != null ? t.since : t.posted) < FLAG_AFTER || (t.called != null && T - t.called < FLAG_COOL)) return false;
-  t.called = T; log(`Somebody flagged ${t.title}.`, 'info');
+  const t = board.tasks.find(q => q.id === id); if (!t || t.status !== 'open' || board.badge !== id) return false;
+  t.called = T; board.badge = null; board.badgeCool = T + FLAG_COOL; log(`Somebody flagged ${t.title}.`, 'info');
   const c = cats.filter(x => !asleep(x) && x.act !== 'meet' && !x.task && qualifies(x, t) && (x.state === 'pause' || (x.state === 'act' && x.act === 'idle'))).sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
   if (c) { if (c.state === 'pause') c.pauseT = Math.min(c.pauseT, 0.4); else c.actT = c.actDur; say(c, pick(['heard that', 'on it, maybe', 'if nobody else wants it', 'let me finish this first'])); }
   return true;
@@ -457,6 +459,9 @@ function stepBoard(dt) {
   }
   for (const t of board.tasks) if (t.status === 'open' && T - t.posted > DAY_SECS) { t.status = 'expired'; log(`Nobody dealt with ${t.title}; it is gone.`, 'info'); }
   if (board.tasks.some(t => t.status === 'expired')) board.tasks = board.tasks.filter(t => t.status !== 'expired');
+  // the badge: one thing at a time, picked at random from what has lain untouched for five minutes; it stays until that thing is flagged or dealt with
+  if (board.badge) { const t = board.tasks.find(q => q.id === board.badge); if (!t || t.status !== 'open') board.badge = null; }
+  if (!board.badge && T >= board.badgeCool) { const ok = board.tasks.filter(q => q.status === 'open' && T - (q.since != null ? q.since : q.posted) >= FLAG_AFTER); if (ok.length) board.badge = pick(ok).id; }
 }
 // ---- the recap: one record per day, with the meeting and everything notable that happened ----
 const days = [];
@@ -473,7 +478,8 @@ function recapOf(d, final) {
   return { day: d.day, final: !!final, fees: stats.fees - d.fees0, wages: stats.wages - d.wages0, upkeep: stats.upkeep - d.upkeep0, sold: stats.sold - d.sold0, bought: stats.boughtBack - d.bought0, jobs: stats.circuits - d.jobs0, tasks: d.tasks.length, mcapStart: d.mcapStart, mcapEnd: mcapUsd(), treasuryEnd: stats.treasury, meeting: d.meeting, events: d.events.slice(-80), tasksDone: d.tasks.slice(-60), cats: perCat, topWorker: names.length ? by(x => x.jobs + x.tasks) : null, topEarner: names.length ? by(x => x.earned) : null };
 }
 function dayEnd() {
-  if (!dayCur) return; const r = recapOf(dayCur, true); days.unshift(r); if (days.length > 14) days.pop(); log(`Day ${dayCur.day} is over. The recap is on the Recap page.`, 'info');
+  if (!dayCur) return; const r = recapOf(dayCur, true); days.unshift(r); if (days.length > 14) days.pop();
+  log(`Day ${dayCur.day} is over. Recap: ${fmtSol(r.fees)} SOL of fees in, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topWorker ? ', ' + r.topWorker + ' worked hardest' : ''}${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}. The full recap is on the Recap page.`, 'link');
   if (dayEndHook) { try { dayEndHook(r, meetingContext()); } catch (_) {} }
   else setLesson(pick([
     `day ${r.day}: ${fmtSol(r.fees)} SOL of fees in, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}`,
@@ -618,7 +624,7 @@ const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
 const fmtPrice = () => fmtUsd(mcapUsd()) + ' MC';
 const fmtKeys = v => (v >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? (v / 1e9).toFixed(1) + 'G' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v).toLocaleString('en-US'));
 const PLACES = {
-  cryo:     { title: 'The circle',      kind: 'where the box meets',     pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'],     desc: 'The painted circle in the middle of the box, with the countdown above it. When it hits zero every cat that is awake comes in, sits down and talks through the day: the treasury, the chart, the lab, who did what. Nobody walks through it the rest of the time.' },
+  cryo:     { title: 'The circle',      kind: 'where the box meets',     pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'],     desc: 'The painted circle in the middle of the box, with the countdown above it. It hits zero in the last ten minutes of every day: every cat that is awake comes in, sits down and talks through the day: the treasury, the lab, the chores, who did what. The day\u2019s recap is written the moment it ends. Nobody walks through the circle the rest of the time.' },
   crates:   { title: 'The diner',       kind: 'food',                      pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
   vent:     { title: 'The heater',      kind: 'warmth',                    pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
   trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [TRAYS.x - 0.7, TRAYS.y + 1.6], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
@@ -1100,6 +1106,8 @@ function chatterLine(c) {
     (c.casinoL || 0) > (c.casinoW || 0) ? 'the casino owes me' : (c.casinoW || 0) ? 'the reels like me' : 'never been in the casino. yet.',
   ]);
 }
+// the meeting is always the last ten minutes of the day; the recap follows it when the day turns over
+function nextMeetingT() { let n = Math.floor(T / DAY_SECS) * DAY_SECS + DAY_SECS - 600; if (n <= T) n += DAY_SECS; return n; }
 const MEET_ORDER = [0, 5, 3, 8, 1, 6, 4, 9, 2, 7]; // which of the ten benches fills first, so a half-full circle still looks spread out
 function chairAt(i) { const a = i / 10 * TAU + Math.PI / 10; return [CRY.x + Math.cos(a) * 1.5, CRY.y + Math.sin(a) * 1.5]; }
 function freeChair() { const used = new Set(cats.filter(c => c.act === 'meet' && c.chair != null).map(c => c.chair)); return MEET_ORDER.find(i => !used.has(i)); }
@@ -1120,10 +1128,11 @@ function joinMeeting(c) {
   return true;
 }
 function stepMeeting(dt) {
-  if (!meeting.next) meeting.next = T + rand(900, 1800);
+  if (!meeting.next) meeting.next = nextMeetingT();
   if (!meeting.on) {
+    if (T > meeting.next + 120) meeting.next = nextMeetingT(); // missed it (too few cats awake): tomorrow, then
     if (T >= meeting.next && cats.filter(c => !asleep(c)).length >= 2) {
-      meeting.on = true; meeting.until = T + 600; meeting.lineI = 0; meeting.lineT = T + 25; meeting.seats = 0; meeting.n++; meeting.lineGap = 11;
+      meeting.on = true; meeting.until = Math.ceil(T / DAY_SECS) * DAY_SECS - 1; meeting.lineI = 0; meeting.lineT = T + 25; meeting.seats = 0; meeting.n++; meeting.lineGap = 11;
       meeting.script = []; meeting.used = new Set(); // filled on the first beat, once the cats are in their chairs (the brain's AI may hand a script back before then)
       log('The countdown hit zero. Everyone awake is heading into the circle.', 'link', 'cryo'); ringFX(CRY.x, CRY.y, '247,200,106', 2.2);
       if (!dayCur) dayStart(); dayCur.meeting.held = true; dayCur.meeting.at = clock(simMin); dayCur.meeting.lines = []; recordEvent('meeting', 'the countdown hit zero and the meeting started');
@@ -1158,7 +1167,7 @@ function stepMeeting(dt) {
     }
   }
   if (T >= meeting.until) {
-    meeting.on = false; { const day0 = (Math.floor(T / DAY_SECS) + 1) * DAY_SECS; meeting.next = day0 + rand(300, DAY_SECS - 900); } // once a day, at a random hour
+    meeting.on = false; meeting.next = nextMeetingT(); // the last ten minutes of every day
     const top = cats.slice().sort((a, b) => b.earned - a.earned)[0];
     log(`Meeting over. Minutes: treasury ${fmtSol(stats.treasury)} SOL, ${fmtSol(stats.wages)} SOL paid out, top earner ${top ? top.name : 'nobody'}, chart at ${fmtUsd(mcapUsd())}.`, 'link', 'cryo');
     recordEvent('meeting', `meeting over: treasury ${fmtSol(stats.treasury)} SOL, top earner ${top ? top.name : 'nobody'}, chart at ${fmtUsd(mcapUsd())}`);
@@ -1387,9 +1396,9 @@ function snapshot() {
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),
     unlock: UNLOCK_MC, roster: ROSTER,
-    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next },
-    deliveries: deliveries.map(d => ({ id: d.id, kind: d.kind, x: +d.x.toFixed(3), y: +d.y.toFixed(3), z: +d.z.toFixed(3), state: d.state })),
-    bots: bots.map(b => ({ id: b.id, x: +b.x.toFixed(3), y: +b.y.toFixed(3), state: b.state, face: b.face, pauseT: b.pauseT > 0 ? +b.pauseT.toFixed(2) : 0 })),
+    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool },
+    deliveries: deliveries.map(d => ({ id: d.id, kind: d.kind, x: +d.x.toFixed(3), y: +d.y.toFixed(3), z: +d.z.toFixed(3), tx: +d.tx.toFixed(3), ty: +d.ty.toFixed(3), state: d.state })),
+    bots: bots.map(b => ({ id: b.id, x: +b.x.toFixed(3), y: +b.y.toFixed(3), tx: +b.tx.toFixed(3), ty: +b.ty.toFixed(3), state: b.state, face: b.face, pauseT: b.pauseT > 0 ? +b.pauseT.toFixed(2) : 0 })),
     days, today: dayCur, lessons: lessons.slice(0, 12),
     txs: txs.slice(0, 60), talk: talk.slice(0, 80), placeStats, placeLogs, fx: fx.splice(0, fx.length),
   };
@@ -1412,11 +1421,11 @@ function restoreFrom(snap) {
   if (snap.placeStats) Object.assign(placeStats, snap.placeStats);
   if (snap.placeLogs) Object.assign(placeLogs, snap.placeLogs);
   if (snap.stages) for (const st of snap.stages) if (st.open) stageSeen[st.key] = true;
-  if (snap.meeting) { meeting.on = false; meeting.next = snap.meeting.next || 0; }
+  if (snap.meeting) { meeting.on = false; meeting.next = 0; } // recomputed on the first step: the last ten minutes of the day
   if (snap.days) { days.length = 0; days.push(...snap.days); }
   if (snap.today) dayCur = snap.today;
   if (snap.lessons) { lessons.length = 0; lessons.push(...snap.lessons); }
-  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
+  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
   if (snap.weather) { wxKey = snap.weather.key; wxNext = snap.weather.next; wxUntil = snap.weather.until; wxDur = snap.weather.dur; Object.assign(wx, snap.weather.wx); }
 }
 };
