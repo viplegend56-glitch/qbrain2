@@ -163,7 +163,7 @@ const OUT = [];
 })();
 OUT.sort((a, b) => (a.x + a.w / 2 + a.y + a.d / 2) - (b.x + b.w / 2 + b.y + b.d / 2));
 const SHIM = [];
-for (let i = 0; i < 70; i++) SHIM.push(Math.random() < 0.5 ? { x: rand(QUAY + 0.8, 46), y: rand(-40, 46), ph: rand(0, TAU) } : { x: rand(-40, 46), y: rand(QUAY + 0.8, 46), ph: rand(0, TAU) });
+for (let i = 0; i < 150; i++) SHIM.push(Math.random() < 0.5 ? { x: rand(QUAY + 0.8, 46), y: rand(-40, 46), ph: rand(0, TAU) } : { x: rand(-40, 46), y: rand(QUAY + 0.8, 46), ph: rand(0, TAU) });
 const boat = { x: QUAY + 5.4, y: -6, dir: 1 };
 
 /* ---------- weather ---------- */
@@ -175,7 +175,7 @@ const WX = {
   fog:     { rain: 0,    snow: 0,    fog: 0.6,  wind: 0.05, cold: 1.2, coh: 1.2,  name: 'harbor fog' },
   snow:    { rain: 0,    snow: 0.85, fog: 0.16, wind: 0.2,  cold: 2.4, coh: 1,    name: 'snow' },
 };
-const WXNEXT = { clear: ['drizzle', 'fog', 'snow', 'drizzle', 'storm', 'clear'], drizzle: ['rain', 'clear', 'rain', 'snow'], rain: ['storm', 'drizzle', 'clear', 'storm'], storm: ['rain', 'clear', 'drizzle'], fog: ['clear', 'drizzle', 'storm'], snow: ['clear', 'fog', 'snow', 'storm'] };
+const WXNEXT = { clear: ['drizzle', 'snow', 'drizzle', 'storm', 'clear', 'rain'], drizzle: ['rain', 'clear', 'rain', 'snow'], rain: ['storm', 'drizzle', 'clear', 'storm'], storm: ['rain', 'clear', 'drizzle'], fog: ['clear', 'drizzle', 'storm'], snow: ['clear', 'snow', 'storm', 'clear'] };
 const WXLOG = { clear: 'The sky cleared over the block.', drizzle: 'A drizzle started. Strays are looking for cover.', rain: 'Rain rolled in off the harbor.', storm: 'A decoherence storm hit the block. Coherence is draining fast.', fog: 'Fog came in off the harbor.', snow: 'It started snowing. The heater is going to be crowded.' };
 let wxNext = 'rain', wxDur = 1, wxKey = 'clear', wxUntil = 0, nextBolt = 0, flash = 0, shake = 0, bolt = null, relayBoostUntil = 0;
 const wx = { rain: 0, snow: 0, fog: 0.04, wind: 0.15, cold: 1, coh: 1 };
@@ -231,19 +231,19 @@ const JOBS = {
   cooler:   { label: 'cooler',   st: 'cryo',   verb: 'keeping the cryostat cold',       pay: [0.001, 0.0024], risk: 0,    riskWhy: '',                   did: 'kept the cryostat cold for {n}' },
 };
 const ACTS = {
-  eat:      { st: 'crates',   dur: 35,   verb: 'eating at the diner',          walk: 'heading to the diner',          color: '247,200,106', name: 'eat' },
-  hunt:     { st: 'trays',    dur: 40,   verb: 'hunting in the scrapyard',    walk: 'creeping toward the scrapyard', color: '255,138,92', name: 'hunt' },
-  work:     {                 dur: 70,                                                                                     color: '92,242,255', name: 'work' },
-  recohere: { st: 'cryo',     dur: 50,   verb: 'recohering under the cryostat', walk: 'drifting toward the cryostat',    color: '154,123,255', name: 'recohere' },
-  warm:     { st: 'vent',     dur: 40,   verb: 'warming up at the heater',        walk: 'heading for the heater',            color: '255,138,92', name: 'warm up' },
-  sell:     { st: 'exchange', dur: 30,  verb: 'selling at the exchange',       walk: 'heading to the exchange',         color: '255,120,120', name: 'sell' },
-  buy:      { st: 'exchange', dur: 30, verb: 'buying at the exchange',        walk: 'heading to the exchange',         color: '92,255,170', name: 'buy' },
-  steal:    { st: 'loft',     dur: 35,   verb: 'sneaking around the bunks',      walk: 'creeping toward the bunks',        color: '255,79,174', name: 'steal' },
-  wager:    { st: 'arena',    dur: 60,                                                                                   color: '255,200,80', name: 'wager' },
-  scrap:    {                 dur: 25,                                                                                   color: '255,79,174', name: 'scrap' },
-  entangle: {                 dur: 55,                                                                                     color: '154,123,255', name: 'entangle' },
-  idle:     { st: 'boxes',    dur: 45,   verb: 'curled up in a box',            walk: 'wandering to the boxes',          color: '140,151,194', name: 'rest' },
-  circuit:  { st: 'lab',      dur: 75,  verb: 'running a circuit in the lab',   walk: 'heading to the lab',              color: '120,200,255', name: 'run a circuit' },
+  eat:      { st: 'crates',   dur: 50,   verb: 'eating at the diner',          walk: 'heading to the diner',          color: '247,200,106', name: 'eat' },
+  hunt:     { st: 'trays',    dur: 60,   verb: 'hunting in the scrapyard',    walk: 'creeping toward the scrapyard', color: '255,138,92', name: 'hunt' },
+  work:     {                 dur: 100,                                                                                     color: '92,242,255', name: 'work' },
+  recohere: { st: 'cryo',     dur: 75,   verb: 'recohering under the cryostat', walk: 'drifting toward the cryostat',    color: '154,123,255', name: 'recohere' },
+  warm:     { st: 'vent',     dur: 60,   verb: 'warming up at the heater',        walk: 'heading for the heater',            color: '255,138,92', name: 'warm up' },
+  sell:     { st: 'exchange', dur: 45,  verb: 'selling at the exchange',       walk: 'heading to the exchange',         color: '255,120,120', name: 'sell' },
+  buy:      { st: 'exchange', dur: 45, verb: 'buying at the exchange',        walk: 'heading to the exchange',         color: '92,255,170', name: 'buy' },
+  steal:    { st: 'loft',     dur: 55,   verb: 'sneaking around the bunks',      walk: 'creeping toward the bunks',        color: '255,79,174', name: 'steal' },
+  wager:    { st: 'arena',    dur: 90,                                                                                   color: '255,200,80', name: 'wager' },
+  scrap:    {                 dur: 40,                                                                                   color: '255,79,174', name: 'scrap' },
+  entangle: {                 dur: 80,                                                                                     color: '154,123,255', name: 'entangle' },
+  idle:     { st: 'boxes',    dur: 70,   verb: 'curled up in a box',            walk: 'wandering to the boxes',          color: '140,151,194', name: 'rest' },
+  circuit:  { st: 'lab',      dur: 110,  verb: 'running a circuit in the lab',   walk: 'heading to the lab',              color: '120,200,255', name: 'run a circuit' },
   sleep:    { st: 'loft',     dur: 120,  verb: 'asleep in the bunks',            walk: 'heading to the bunks to sleep',    color: '110,120,170', name: 'sleep' },
 };
 // what two entangled cats say to each other (alternating lines; {p} = the other cat)
@@ -481,7 +481,7 @@ function arrive(c, p) {
   c.state = 'act'; c.actT = 0;
   if (c.act === 'work') { c.actDur = ACTS.work.dur; c.doing = JOBS[c.job].verb; }
   else { c.actDur = ACTS[c.act].dur; c.doing = ACTS[c.act].verb; }
-  if (c.act === 'sleep') { c.actDur = c.fainted ? rand(90, 150) : rand(240, 420); c.fainted = false; placeStats.loft.visits++; spend(c, costOf(BUNK, c), 'loft', 'a bunk for the night'); if (Math.random() < 0.5) log(`${c.name} climbed into the bunks to sleep`, 'info', 'loft'); }
+  if (c.act === 'sleep') { c.actDur = c.fainted ? rand(120, 200) : rand(1080, 1320); c.fainted = false; placeStats.loft.visits++; spend(c, costOf(BUNK, c), 'loft', 'a bunk for the night'); if (Math.random() < 0.5) log(`${c.name} climbed into the bunks to sleep`, 'info', 'loft'); }
   if (c.act === 'idle' && wx.rain + wx.snow > 0.3) c.doing = `sheltering in a box from the ${wx.snow > wx.rain ? 'snow' : 'rain'}`;
   if ((c.act === 'warm' || c.act === 'eat') && Math.random() < 0.2) {
     const o = cats.find(o => o !== c && o.state === 'act' && o.act === c.act);
@@ -493,7 +493,7 @@ function wake(c, why) { if (!asleep(c)) return; c.state = 'pause'; c.pauseT = 0.
 function spend(c, amt, place, what) {
   const cost = Math.min(c.sol, amt); c.sol -= cost; stats.upkeep += cost; stats.treasury += cost; placeStats[place].spent += cost; placeStats[place].visits++;
   tx(c, 'spent', '-' + fmtSol(cost) + ' SOL', what);
-  if (cost > 0) { floatText(c, '-' + fmtSol(cost) + ' SOL · ' + what, '#FF9ACB'); coinFX(c, cost); log(`${c.name} paid ${fmtSol(cost)} SOL for ${what} at ${ST[place].label} \u2192 treasury`, 'info', place); }
+  if (cost > 0) { floatText(c, '-' + fmtSol(cost) + ' SOL', '#FF9ACB'); coinFX(c, cost); log(`${c.name} paid ${fmtSol(cost)} SOL for ${what} at ${ST[place].label} \u2192 treasury`, 'info', place); }
   return cost;
 }
 function moveTokens(from, to, amt) { amt = Math.min(from.qcat, amt); from.qcat -= amt; to.qcat += amt; return amt; }
@@ -613,7 +613,7 @@ function finish(c, p) {
     if (Math.random() < 0.5) say(c, pick(['slept like a photon', 'what did I miss', 'ok. shift.', 'still tired', 'did the chart move']));
   }
   c.partner = null; c.initiator = false;
-  c.state = 'pause'; c.pauseT = rand(5, 14);
+  c.state = 'pause'; c.pauseT = rand(8, 20);
 }
 function faint(c, why) {
   const sp = ST.loft.spot();
@@ -697,12 +697,12 @@ function stepWeather(dt) {
 }
 function update(c, dt) {
   const working = c.state === 'act' && c.act === 'work', sleeping = asleep(c);
-  const R = 0.22; // pace: meters fill slowly; a cat does a handful of things per 30-minute day
+  const R = 0.16; // pace: meters fill slowly; a cat does a handful of things per 30-minute day
   c.hunger = clamp(c.hunger + (sleeping ? 0.004 : 0.0095 + (working ? 0.004 : 0)) * R * dt);
   c.coh = clamp(c.coh - (0.0055 * wx.coh + (working ? 0.011 : 0) + (working && c.job === 'tunneler' ? 0.006 : 0)) * R * dt);
   if (!(c.state === 'act' && c.act === 'warm') && !sleeping) c.cold = clamp(c.cold + 0.0065 * wx.cold * R * dt);
   if (!(c.state === 'act' && c.act === 'entangle')) c.lonely = clamp(c.lonely + 0.005 * R * dt);
-  c.tired = clamp(c.tired + (sleeping ? -0.006 : (0.003 + (working ? 0.004 : 0)) * R) * dt);
+  c.tired = clamp(c.tired + (sleeping ? -0.0015 : (0.0012 + (working ? 0.0016 : 0)) * R) * dt);
   c.grudge = Math.max(0, c.grudge - 0.0012 * dt); if (c.grudge <= 0) { c.grudgeOn = null; c.grudgeWhy = ''; }
   if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 150) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
   if (c.coh <= 0) {
@@ -736,7 +736,7 @@ function update(c, dt) {
     if (c.act === 'wager') { if (!p || p.act !== 'wager') { c.partner = null; c.initiator = false; c.state = 'pause'; c.pauseT = 1; return; } if (!p.arrived || !c.initiator) return; }
     if (c.partner && !c.initiator) return;
     if (c.act === 'entangle' && c.chat && p && c.chatI < c.chat.length && c.actT >= c.chatT) {
-      const who = c.chatI % 2 ? p : c, other = who === c ? p : c; say(who, c.chat[c.chatI].replace('{p}', other.name)); c.chatI++; c.chatT = c.actT + rand(5, 9);
+      const who = c.chatI % 2 ? p : c, other = who === c ? p : c; say(who, c.chat[c.chatI].replace('{p}', other.name)); c.chatI++; c.chatT = c.actT + rand(8, 14);
     }
     c.actT += dt;
     if (c.actT >= c.actDur) finish(c, p);
