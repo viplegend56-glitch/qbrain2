@@ -70,7 +70,11 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="${prefix}_${esc(name)}" class="${cls}" ${on ? 'checked' : 'disabled'}> ${esc(name)}${inBox.has(name) ? (on ? '' : ' <span class="mut">(no tokens)</span>') : ' <span class="mut">(not released)</span>'}</label>`;
   }).join('');
   const allNone = cls => `<span class="selall"><button type="button" class="btn ghost mini" data-all="${cls}">select all</button> <button type="button" class="btn ghost mini" data-none="${cls}">unselect all</button></span>`;
-  const distChecks = checks('dist', 'dchk', () => true);
+  const shares = engine.workShares(engine.ROSTER.map(r => r[0]).filter(n => inBox.has(n)));
+  const distChecks = engine.ROSTER.map(([name]) => {
+    const on = inBox.has(name);
+    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? ` <span class="mut">${Math.round((shares[name] || 0) * 100)}%</span>` : ' <span class="mut">(not released)</span>'}</label>`;
+  }).join('');
   const sellChecks = checks('sel', 'schk', n => { const b = balances && balances.cats && balances.cats[n]; return !!(b && b.qcat > 0); });
   const a = config.auto || {};
   const mins = ms => ms ? Math.max(0, Math.round((ms - Date.now()) / 60000)) + ' min' : '—';
@@ -104,9 +108,9 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   </div></div>
   </form>
 
-  <div class="panel"><div class="ph"><span>Treasury → cats</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
+  <div class="panel"><div class="ph"><span>Treasury → cats · payroll</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
-    <p class="mut" style="margin:0 0 6px">Claim your creator fees on pump.fun and send them to the treasury address above. They show up here within 30 seconds and the site logs "creator fees landed". Then pick how much to hand out:</p>
+    <p class="mut" style="margin:0 0 6px">Claim your creator fees on pump.fun and send them to the treasury address above. They show up here within 30 seconds and the site logs "creator fees landed". Then pick how much to pay out — it is split between the ticked cats by how much quantum work each one has done since the last payout (the % next to each name).</p>
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL from the treasury to the ticked cats?')">
       <div class="dist">
         <div>
@@ -115,7 +119,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
           <input type="hidden" name="sol" id="dSol" value="0">
           <div class="chk" style="margin-top:12px">${distChecks}</div>${allNone('dchk')}
         </div>
-        <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dEach">0</span> SOL to each of <span id="dN">0</span> cats</div>
+        <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dN">0</span> cats · split by quantum work since the last payout</div>
           <button class="btn gold" id="dBtn" ${busy ? 'disabled data-busy="1"' : ''}>Distribute</button></div>
       </div>
     </form>` : `<p class="mut">${!wallets.ready ? 'Generate wallets below, paste the keys into the host\u2019s environment variables, redeploy.' : 'Set RPC_URL (your Helius URL) in the environment.'}</p>`}
@@ -179,8 +183,8 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   </div>
   <script>
   (function(){
-    var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), each=document.getElementById('dEach'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
-      function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; each.textContent=on?(v/on).toFixed(4):'0'; if(btn&&!btn.dataset.busy) btn.disabled=!(v>0&&on>0&&v/on>=0.001); }
+    var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
+      function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; if(btn&&!btn.dataset.busy) btn.disabled=!(v>0&&on>0&&v>=0.002); }
       r.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
     var held=${JSON.stringify(Object.fromEntries(engine.ROSTER.map(([n]) => [n, balances && balances.cats && balances.cats[n] && balances.cats[n].qcat || 0])))};
     var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'), big=document.getElementById('sellBig'), sn=document.getElementById('sellN'), sq=document.getElementById('sellQ'), sb=document.getElementById('sellBtn');

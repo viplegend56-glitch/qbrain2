@@ -128,15 +128,17 @@ async function distribute(b) {
   const tre = balances.treasury && balances.treasury.sol;
   if (typeof tre !== 'number') throw new Error('treasury balance not read yet');
   if (total > tre - 0.005) throw new Error(`treasury has ${tre.toFixed(4)} SOL; keep 0.005 for fees`);
-  const each = Math.floor((total / names.length) * 1e6) / 1e6;
-  if (each < 0.001) throw new Error('that is less than 0.001 SOL per cat');
-  const outs = names.map(n => ({ pub: ws.cats.find(c => c.name === n).pub, sol: each }));
+  // split by quantum work done since the last payout; a cat whose share would be under 0.001 SOL waits for the next one
+  const shares = engine.workShares(names);
+  const outs = names.map(n => ({ name: n, pub: ws.cats.find(c => c.name === n).pub, sol: Math.floor(total * shares[n] * 1e6) / 1e6 })).filter(o => o.sol >= 0.001);
+  if (!outs.length) throw new Error('every share would be under 0.001 SOL — send more or tick fewer cats');
   const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs);
-  engine.payout(names.map(n => ({ name: n, sol: each })), sig);
-  console.log('distributed', each, 'SOL to', names.join(','), sig);
-  if (typeof tre === 'number') { config.lastTreasurySol = tre - each * names.length; saveConfig(); }
+  engine.payout(outs.map(o => ({ name: o.name, sol: o.sol })), sig); engine.resetWork(outs.map(o => o.name));
+  const sent = outs.reduce((a, o) => a + o.sol, 0);
+  console.log('distributed', sent, 'SOL by work:', outs.map(o => o.name + ' ' + o.sol).join(', '), sig);
+  if (typeof tre === 'number') { config.lastTreasurySol = tre - sent; saveConfig(); }
   pollBalances();
-  return `paid ${each} SOL to ${names.length} cats · ${sig.slice(0, 8)}…`;
+  return `paid ${sent.toFixed(4)} SOL by work · ${outs.map(o => `${o.name} ${o.sol.toFixed(4)} (${Math.round(shares[o.name] * 100)}%)`).join(' · ')} · ${sig.slice(0, 8)}…`;
 }
 async function sellFor(name, pct) {
   const ws = wallets.load(); if (!ws.ready) throw new Error('wallets not loaded');
@@ -187,7 +189,7 @@ async function autoTick() {
       await pollBalances();
       const tre = balances.treasury && balances.treasury.sol, names = engine.cats.map(c => c.name);
       const amount = Math.floor(Math.max(0, (tre || 0) - a.distKeep - 0.005) * a.distPct / 100 * 1000) / 1000;
-      if (names.length && amount / names.length >= 0.001) { const b = { sol: amount }; for (const n of names) b['dist_' + n] = 'on'; a.lastDist = stamp() + ' · ' + await distribute(b); }
+      if (names.length && amount >= 0.002) { const b = { sol: amount }; for (const n of names) b['dist_' + n] = 'on'; a.lastDist = stamp() + ' · ' + await distribute(b); }
       else a.lastDist = stamp() + ' · skipped (treasury ' + (tre == null ? 'unread' : tre.toFixed(4) + ' SOL, nothing above the keep amount') + ')';
     } catch (e) { a.lastDist = stamp() + ' · failed: ' + e.message; console.error('auto-distribute', e); }
     finally { busy = false; saveConfig(); }
