@@ -8,7 +8,8 @@ const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
-function renderAdmin({ config, engine, market, wallets, balances, logs, flash, err, env, generated, busy }) {
+function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs, flash, err, env, generated, busy }) {
+  marketQi = marketQi || {};
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
   const tre = balances && balances.treasury ? balances.treasury.sol : null;
@@ -61,7 +62,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       <td>${c ? `<form class="inline" method="post" action="/admin/trait"><input type="hidden" name="name" value="${esc(name)}"><select name="trait" onchange="this.form.submit()">${Object.keys(engine.TRAITS).map(t => `<option value="${t}" ${t === c.trait ? 'selected' : ''}>${esc(engine.TRAITS[t].label)}</option>`).join('')}</select></form>` : `<span class="mut">${esc(engine.TRAITS[trait] ? engine.TRAITS[trait].label : trait)}</span>`}</td>
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
-      <td>${b ? `<b>${sol(b.sol)}</b><br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}` : '<span class="mut">—</span>'}</td>
+      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">low gas</span>' : ''}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + num(b.qi) + ' $QI' : (config.QI_MINT ? '' : '<br><span class="mut">set the $QI mint</span>')}` : '<span class="mut">—</span>'}</td>
 </tr>`;
   }).join('');
 
@@ -70,12 +71,14 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="${prefix}_${esc(name)}" class="${cls}" ${on ? 'checked' : 'disabled'}> ${esc(name)}${inBox.has(name) ? (on ? '' : ' <span class="mut">(no tokens)</span>') : ' <span class="mut">(not released)</span>'}</label>`;
   }).join('');
   const allNone = cls => `<span class="selall"><button type="button" class="btn ghost mini" data-all="${cls}">select all</button> <button type="button" class="btn ghost mini" data-none="${cls}">unselect all</button></span>`;
-  const shares = engine.workShares(engine.ROSTER.map(r => r[0]).filter(n => inBox.has(n)));
+  const inNames = engine.ROSTER.map(r => r[0]).filter(n => inBox.has(n));
+  const shares = engine.workShares(inNames), labShares = engine.labShares(inNames);
   const distChecks = engine.ROSTER.map(([name]) => {
     const on = inBox.has(name);
-    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? ` <span class="mut">${Math.round((shares[name] || 0) * 100)}%</span>` : ' <span class="mut">(not released)</span>'}</label>`;
+    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? ` <span class="mut">${Math.round((shares[name] || 0) * 100)}% SOL · ${Math.round((labShares[name] || 0) * 100)}% $QI</span>` : ' <span class="mut">(not released)</span>'}</label>`;
   }).join('');
-  const sellChecks = checks('sel', 'schk', n => { const b = balances && balances.cats && balances.cats[n]; return !!(b && b.qcat > 0); });
+  const treQi = balances && balances.treasury && typeof balances.treasury.qi === 'number' ? balances.treasury.qi : null;
+  const sellChecks = checks('sel', 'schk', n => { const b = balances && balances.cats && balances.cats[n]; return !!(b && (b.qcat > 0 || b.qi > 0)); });
   const a = config.auto || {};
   const mins = ms => ms ? Math.max(0, Math.round((ms - Date.now()) / 60000)) + ' min' : '—';
 
@@ -104,6 +107,7 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   <div class="panel"><div class="ph"><span>Token</span><small class="mut">the site copies this CA from the top-right button and the $${esc(config.TICKER)} page</small></div><div class="pb">
     <label>Contract address (CA) — paste it the moment the coin exists; market cap, token balances and the site's CA button go live from this</label><input type="text" name="CA" value="${esc(config.CA)}" placeholder="not launched yet">
     <label>X link</label><input type="text" name="X_URL" value="${esc(config.X_URL)}" placeholder="https://x.com/…">
+    <label>$QI mint — the token the lab pays. Send the supply to the treasury wallet; its balance is the lab's pool${marketQi.ok ? ` · chart: ${marketQi.priceSol ? marketQi.priceSol.toExponential(2) + ' SOL per $QI' : '—'}` : marketQi.err && config.QI_MINT ? ` · <span class="bad">${esc(marketQi.err.slice(0, 50))}</span>` : ''}</label><input type="text" name="QI_MINT" value="${esc(config.QI_MINT || '')}" placeholder="$QI contract address">
     <button class="btn">Save</button>
   </div></div>
   </form>
@@ -111,15 +115,17 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   <div class="panel"><div class="ph"><span>Treasury → cats · payroll</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
     <p class="mut" style="margin:0 0 6px">Claim your creator fees on pump.fun and send them to the treasury address above. They show up here within 30 seconds and the site logs "creator fees landed". Then pick how much to pay out — it is split between the ticked cats by how much quantum work each one has done since the last payout (the % next to each name).</p>
-    <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL from the treasury to the ticked cats?')">
+    <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (document.getElementById('dQi') ? document.getElementById('dQi').value || 0 : 0) + ' $QI from the treasury to the ticked cats?')">
       <div class="dist">
         <div>
-          <label>Amount to distribute — treasury has ${sol(tre)} (0.005 kept for fees)</label>
+          <label>SOL to distribute (split by chores) — treasury has ${sol(tre)} (0.005 kept for fees)</label>
           <input type="range" id="dRange" min="0" max="${maxDist}" step="0.001" value="${Math.min(maxDist, Math.max(0, Math.floor(maxDist * 0.5 * 1000) / 1000))}">
           <input type="hidden" name="sol" id="dSol" value="0">
+          <label style="margin-top:10px">$QI to distribute (split by lab work) — treasury holds ${treQi != null ? num(treQi) + ' $QI' : (config.QI_MINT ? 'reading…' : 'no $QI mint set')}</label>
+          <input type="number" name="qi" id="dQi" min="0" step="1" value="0" ${treQi != null ? `max="${Math.floor(treQi)}"` : 'disabled'} style="max-width:220px">
           <div class="chk" style="margin-top:12px">${distChecks}</div>${allNone('dchk')}
         </div>
-        <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dN">0</span> cats · split by quantum work since the last payout</div>
+        <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dN">0</span> cats · SOL by chores, $QI by lab work, since the last payout</div>
           <button class="btn gold" id="dBtn" ${busy ? 'disabled data-busy="1"' : ''}>Distribute</button></div>
       </div>
     </form>` : `<p class="mut">${!wallets.ready ? 'Generate wallets below, paste the keys into the host\u2019s environment variables, redeploy.' : 'Set RPC_URL (your Helius URL) in the environment.'}</p>`}
@@ -130,11 +136,12 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
       ${wallets.ready ? '' : `<form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost mini" onclick="return confirm('Generate a fresh treasury + ten cat wallets? They are shown once.')">generate wallets</button></form>`}
       ${walletsReady ? `<form method="post" action="/admin/refresh" class="inline"><button class="btn ghost mini">refresh balances</button></form>` : ''}
     </span></div>
-    ${walletsReady && config.CA ? `<div class="pb" style="border-bottom:1px solid var(--line)">
-      <form method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + document.getElementById('sellPct').value + '% of the ticked cats\\' ${esc(config.TICKER)} for SOL?')">
+    ${walletsReady && (config.CA || config.QI_MINT) ? `<div class="pb" style="border-bottom:1px solid var(--line)">
+      <form method="post" action="/admin/sell" onsubmit="return confirm('Sell ' + document.getElementById('sellPct').value + '% of the ticked cats\\' ' + document.getElementById('sellTok').options[document.getElementById('sellTok').selectedIndex].text + ' for SOL?')">
         <div class="dist">
           <div>
-            <label>Cats → SOL — sell <b id="sellLbl" style="color:var(--text)">10%</b> of each ticked cat's ${esc(config.TICKER)} (via Jupiter, ${(config.slippageBps / 100).toFixed(1)}% slippage)</label>
+            <label>Cats → SOL — sell <b id="sellLbl" style="color:var(--text)">10%</b> of each ticked cat's holding (via Jupiter, ${(config.slippageBps / 100).toFixed(1)}% slippage)</label>
+            <select name="tok" id="sellTok" style="max-width:260px">${config.CA ? `<option value="qcats">${esc(config.TICKER)}</option>` : ''}${config.QI_MINT ? `<option value="qi">$QI</option>` : ''}${config.CA && config.QI_MINT ? `<option value="auto">whatever each cat chose in the box</option>` : ''}</select>
             <input type="range" id="sellPct" name="pct" min="1" max="100" step="1" value="10">
             <div class="chk" style="margin-top:12px">${sellChecks}</div>${allNone('schk')}
           </div>
@@ -152,11 +159,11 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     <div class="row">
       <div>
         <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="distribute" ${a.distribute ? 'checked' : ''}> <b>Auto-distribute</b> <span class="mut">${a.distribute ? 'next in ~' + mins(a.nextDist) : 'off'}</span></label>
-        <div class="row"><div><label>keep at least (SOL) in the treasury</label><input type="number" step="0.001" min="0" name="distKeep" value="${esc(a.distKeep != null ? a.distKeep : 0.02)}"></div><div><label>hand out this % of the rest each run</label><input type="number" step="1" min="1" max="100" name="distPct" value="${esc(a.distPct != null ? a.distPct : 50)}"></div></div>
+        <div class="row"><div><label>keep at least (SOL) in the treasury</label><input type="number" step="0.001" min="0" name="distKeep" value="${esc(a.distKeep != null ? a.distKeep : 0.02)}"></div><div><label>each run, hand out this % of the treasury's $QI (by lab work)</label><input type="number" step="1" min="0" max="100" name="qiPct" value="${esc(a.qiPct != null ? a.qiPct : 10)}"></div><div><label>hand out this % of the rest each run</label><input type="number" step="1" min="1" max="100" name="distPct" value="${esc(a.distPct != null ? a.distPct : 50)}"></div></div>
         <small class="mut">${esc(a.lastDist || '')}</small>
       </div>
       <div>
-        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="sell" ${a.sell ? 'checked' : ''} ${config.CA ? '' : 'disabled'}> <b>Auto-sell</b> <span class="mut">${!config.CA ? 'needs a CA' : a.sell ? 'next in ~' + mins(a.nextSell) : 'off'}</span></label>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="sell" ${a.sell ? 'checked' : ''} ${config.CA || config.QI_MINT ? '' : 'disabled'}> <b>Auto-sell</b> <span class="mut">${!(config.CA || config.QI_MINT) ? 'needs a CA or a $QI mint' : a.sell ? 'next in ~' + mins(a.nextSell) : 'off'}</span> <span class="mut">· each cat sells whichever token it chose in the box</span></label>
         <div class="row"><div><label>each run, every released cat sells this % of its ${esc(config.TICKER)}</label><input type="number" step="0.5" min="0.5" max="100" name="sellPct" value="${esc(a.sellPct != null ? a.sellPct : 1)}"></div><div><label>never more than this % per cat per day</label><input type="number" step="1" min="1" max="100" name="sellDayCap" value="${esc(a.sellDayCap != null ? a.sellDayCap : config.sellCapPct)}"></div></div>
         <small class="mut">${esc(a.lastSell || '')}</small>
       </div>
@@ -182,6 +189,12 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
     <div class="row3">
       <div><label>Sell cap: max % of its stack a cat may sell per day</label><input type="number" step="1" min="0" max="100" name="sellCapPct" value="${esc(config.sellCapPct)}"></div>
       <div><label>Buy size: % of spare SOL a cat spends per buy</label><input type="number" step="1" min="1" max="100" name="buyPct" value="${esc(config.buyPct)}"></div>
+      <div><label>$QI per lab job in the box (scaled by circuit size)</label><input type="number" step="1" min="1" name="QI_PER_JOB" value="${esc(config.QI_PER_JOB || 5000)}"></div>
+    </div>
+    <div class="row3">
+      <div><label>Fallback SOL price of one $QI (used by the box's own sells until the chart is read; 0 = built-in)</label><input type="number" step="any" min="0" name="QI_SOL" value="${esc(config.QI_SOL || 0)}"></div>
+      <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="hidden" name="gasForm" value="1"><input type="checkbox" name="gasAuto" ${config.gas && config.gas.auto ? 'checked' : ''}> <b>Auto gas</b></label><small class="mut">a cat under the minimum is refilled to the floor from the treasury (one real transfer, at most every 10 min per cat)</small></div>
+      <div><div class="row"><div><label>gas floor (SOL)</label><input type="number" step="0.001" min="0.001" name="gasFloor" value="${esc(config.gas ? config.gas.floor : 0.01)}"></div><div><label>refill under (SOL)</label><input type="number" step="0.0005" min="0.0005" name="gasMin" value="${esc(config.gas ? config.gas.min : 0.002)}"></div></div></div>
     </div>
     <button class="btn">Save</button>
   </div></div>
@@ -194,8 +207,8 @@ function renderAdmin({ config, engine, market, wallets, balances, logs, flash, e
   <script>
   (function(){
     var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
-      function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; if(btn&&!btn.dataset.busy) btn.disabled=!(v>0&&on>0&&v>=0.002); }
-      r.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
+      var qi=document.getElementById('dQi'); function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length, q=qi?Number(qi.value)||0:0; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; if(btn&&!btn.dataset.busy) btn.disabled=!(on>0&&((v>0&&v>=0.002)||q>=1)); }
+      r.addEventListener('input',upd); if(qi) qi.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
     var held=${JSON.stringify(Object.fromEntries(engine.ROSTER.map(([n]) => [n, balances && balances.cats && balances.cats[n] && balances.cats[n].qcat || 0])))};
     var sp=document.getElementById('sellPct'); if(sp){ var lbl=document.getElementById('sellLbl'), big=document.getElementById('sellBig'), sn=document.getElementById('sellN'), sq=document.getElementById('sellQ'), sb=document.getElementById('sellBtn');
       function u2(){ lbl.textContent=sp.value+'%'; big.textContent=sp.value+'%'; var on=[].slice.call(document.querySelectorAll('.schk:checked')); sn.textContent=on.length; var q=0; on.forEach(function(c){ q+=(held[c.name.replace('sel_','')]||0)*sp.value/100; }); sq.textContent=Math.round(q).toLocaleString('en-US'); if(sb&&!sb.disabled) sb.disabled=false; sb.disabled=!on.length; }

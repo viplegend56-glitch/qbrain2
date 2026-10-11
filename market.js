@@ -12,6 +12,6 @@ async function fetchToken(ca) {
   const priceUsd = Number(p.priceUsd), priceNative = Number(p.priceNative);
   const mcapUsd = Number(p.marketCap || p.fdv || 0);
   const solUsd = priceUsd && priceNative ? priceUsd / priceNative : null;
-  return { mcapUsd, priceUsd, solUsd, pair: p.pairAddress, dex: p.dexId, url: p.url, liquidityUsd: p.liquidity && p.liquidity.usd, vol24h: p.volume && p.volume.h24 };
+  return { mcapUsd, priceUsd, priceNative, solUsd, pair: p.pairAddress, dex: p.dexId, url: p.url, liquidityUsd: p.liquidity && p.liquidity.usd, vol24h: p.volume && p.volume.h24 };
 }
 module.exports = { fetchToken };

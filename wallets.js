@@ -30,30 +30,35 @@ function generate(names) {
   return { treasury: { pub: treasury.publicKey.toBase58(), secret: bs58.encode(treasury.secretKey) }, cats, CAT_KEYS: cats.map(c => c.secret).join(','), TREASURY_KEY: bs58.encode(treasury.secretKey) };
 }
 
-async function balances(rpcUrl, ws, mint) {
+// balances: SOL, the project's own token (mint = the CA) and $QI (qiMint), for the treasury and every cat
+async function balances(rpcUrl, ws, mint, qiMint) {
   const { Connection, PublicKey, LAMPORTS_PER_SOL } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
   const out = { cats: {}, treasury: null };
-  let mintPk = null; try { if (mint) mintPk = new PublicKey(mint); } catch (_) { mintPk = null; }
+  const pkOf = m => { try { return m ? new PublicKey(m) : null; } catch (_) { return null; } };
+  const mintPk = pkOf(mint), qiPk = pkOf(qiMint);
+  async function tok(pk, mp) {
+    if (!mp) return { ui: null, raw: null, dec: null };
+    const r = await conn.getParsedTokenAccountsByOwner(pk, { mint: mp });
+    let ui = 0, raw = 0, dec = null;
+    for (const a of r.value) { const ta = a.account.data.parsed.info.tokenAmount; ui += Number(ta.uiAmount || 0); raw += Number(ta.amount || 0); dec = ta.decimals; }
+    return { ui, raw, dec };
+  }
   async function one(pub) {
     const pk = new PublicKey(pub);
     const sol = (await conn.getBalance(pk)) / LAMPORTS_PER_SOL;
-    let qcat = null, qcatRaw = null, decimals = null;
-    if (mintPk) {
-      const r = await conn.getParsedTokenAccountsByOwner(pk, { mint: mintPk });
-      qcat = 0; qcatRaw = 0;
-      for (const a of r.value) { const ta = a.account.data.parsed.info.tokenAmount; qcat += Number(ta.uiAmount || 0); qcatRaw += Number(ta.amount || 0); decimals = ta.decimals; }
-    }
-    return { sol, qcat, qcatRaw, decimals };
+    const q = await tok(pk, mintPk), qi = await tok(pk, qiPk);
+    return { sol, qcat: q.ui, qcatRaw: q.raw, decimals: q.dec, qi: qi.ui, qiRaw: qi.raw, qiDec: qi.dec };
   }
   out.treasury = await one(ws.treasury.pub);
   for (const c of ws.cats) out.cats[c.name] = await one(c.pub);
   return out;
 }
 
-// ---------- phase 3: the only two things this server ever signs ----------
-// 1) SOL from the treasury to cat wallets (and nowhere else).
-// 2) Swaps between SOL and the project's own mint, from a cat's wallet, via Jupiter.
+// ---------- the only three things this server ever signs ----------
+// 1) SOL from the treasury to cat wallets (and nowhere else): payroll and gas top-ups.
+// 2) $QI (or the project's own token) from the treasury to cat wallets (and nowhere else).
+// 3) Swaps between SOL and the project's own mint or $QI, from a cat's wallet, via Jupiter.
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS = 1e9;
 
@@ -73,6 +78,49 @@ async function transferSol(rpcUrl, ws, fromKp, outs) {
     tx.add(SystemProgram.transfer({ fromPubkey: fromKp.publicKey, toPubkey: new PublicKey(o.pub), lamports }));
   }
   return sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 });
+}
+
+// ---- SPL tokens, by hand (no extra dependency): the mint's program + decimals, associated accounts, transferChecked ----
+const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnwqMYbqcmChnM', ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+async function mintInfo(rpcUrl, mint) {
+  const { Connection, PublicKey } = libs();
+  const conn = new Connection(rpcUrl, 'confirmed');
+  const info = await conn.getParsedAccountInfo(new PublicKey(mint));
+  if (!info.value) throw new Error('mint not found: ' + mint);
+  const owner = info.value.owner.toBase58();
+  if (owner !== TOKEN_PROGRAM && owner !== TOKEN_2022) throw new Error('that address is not a token mint');
+  const parsed = info.value.data && info.value.data.parsed;
+  const decimals = parsed && parsed.info && typeof parsed.info.decimals === 'number' ? parsed.info.decimals : null;
+  if (decimals == null) throw new Error('could not read the mint\u2019s decimals');
+  return { program: owner, decimals };
+}
+function ataOf(owner, mint, program) { const { PublicKey } = libs(); return PublicKey.findProgramAddressSync([owner.toBuffer(), new PublicKey(program).toBuffer(), mint.toBuffer()], new PublicKey(ATA_PROGRAM))[0]; }
+// outs: [{ pub, raw }] (raw = smallest units). Creates the cat's token account if it has none (idempotent), then transferChecked. Five cats per transaction. Returns the signatures.
+async function transferToken(rpcUrl, ws, fromKp, mint, outs) {
+  const { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } = libs();
+  const conn = new Connection(rpcUrl, 'confirmed');
+  const { program, decimals } = await mintInfo(rpcUrl, mint);
+  const mintPk = new PublicKey(mint), progPk = new PublicKey(program), fromAta = ataOf(fromKp.publicKey, mintPk, program);
+  const sigs = [];
+  for (let i = 0; i < outs.length; i += 5) {
+    const tx = new Transaction();
+    for (const o of outs.slice(i, i + 5)) {
+      assertKnown(ws, o.pub);
+      const raw = BigInt(Math.floor(o.raw)); if (raw <= 0n) continue;
+      const to = new PublicKey(o.pub), toAta = ataOf(to, mintPk, program);
+      tx.add(new TransactionInstruction({ programId: new PublicKey(ATA_PROGRAM), keys: [
+        { pubkey: fromKp.publicKey, isSigner: true, isWritable: true }, { pubkey: toAta, isSigner: false, isWritable: true }, { pubkey: to, isSigner: false, isWritable: false },
+        { pubkey: mintPk, isSigner: false, isWritable: false }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, { pubkey: progPk, isSigner: false, isWritable: false },
+      ], data: Buffer.from([1]) })); // CreateIdempotent
+      const data = Buffer.alloc(10); data[0] = 12; data.writeBigUInt64LE(raw, 1); data[9] = decimals; // TransferChecked
+      tx.add(new TransactionInstruction({ programId: progPk, keys: [
+        { pubkey: fromAta, isSigner: false, isWritable: true }, { pubkey: mintPk, isSigner: false, isWritable: false }, { pubkey: toAta, isSigner: false, isWritable: true }, { pubkey: fromKp.publicKey, isSigner: true, isWritable: false },
+      ], data }));
+    }
+    if (!tx.instructions.length) continue;
+    sigs.push(await sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 }));
+  }
+  return { sigs, decimals };
 }
 
 // Jupiter swap. direction 'sell' = mint → SOL, 'buy' = SOL → mint. amountRaw is in the input token's smallest unit.
@@ -100,4 +148,4 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) 
   return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
 }
 
-module.exports = { load, generate, balances, transferSol, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS };
+module.exports = { load, generate, balances, transferSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS };
