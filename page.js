@@ -115,6 +115,7 @@ function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs
   <div class="panel"><div class="ph"><span>Treasury → cats · payroll</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
     <p class="mut" style="margin:0 0 6px">Claim your creator fees on pump.fun and send them to the treasury address above. They show up here within 30 seconds and the site logs "creator fees landed". Then pick how much to pay out — it is split between the ticked cats by how much quantum work each one has done since the last payout (the % next to each name).</p>
+    <form method="post" action="/admin/payowed" class="inline" style="margin:0 0 14px" onsubmit="return confirm('Pay every cat exactly what it is owed right now?')"><button class="btn gold" ${busy ? 'disabled' : ''}>Pay what is owed now</button> <span class="mut">${(() => { const o = engine.owedAll(); return o.length ? o.reduce((a, x) => a + x.sol, 0).toFixed(4) + ' SOL and ' + o.reduce((a, x) => a + x.qi, 0).toLocaleString('en-US') + ' $QI owed to ' + o.length + ' cats · next timer payout in ' + Math.max(0, Math.round((engine.payouts.next - engine.T) / 60)) + ' min' : 'nothing owed right now'; })()}</span></form>
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (document.getElementById('dQi') ? document.getElementById('dQi').value || 0 : 0) + ' $QI from the treasury to the ticked cats?')">
       <div class="dist">
         <div>
@@ -158,8 +159,8 @@ function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs
     ${walletsReady ? `
     <div class="row">
       <div>
-        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="distribute" ${a.distribute ? 'checked' : ''}> <b>Auto-distribute</b> <span class="mut">${a.distribute ? 'next in ~' + mins(a.nextDist) : 'off'}</span></label>
-        <div class="row"><div><label>keep at least (SOL) in the treasury</label><input type="number" step="0.001" min="0" name="distKeep" value="${esc(a.distKeep != null ? a.distKeep : 0.02)}"></div><div><label>each run, hand out this % of the treasury's $QI (by lab work)</label><input type="number" step="1" min="0" max="100" name="qiPct" value="${esc(a.qiPct != null ? a.qiPct : 10)}"></div><div><label>hand out this % of the rest each run</label><input type="number" step="1" min="1" max="100" name="distPct" value="${esc(a.distPct != null ? a.distPct : 50)}"></div></div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="checkbox" name="distribute" ${a.distribute ? 'checked' : ''}> <b>Autopilot payouts</b> <span class="mut">${a.distribute ? 'on: pays what is owed when the box’s timer fires' : 'off'}</span></label>
+        <div class="row"><div><label>keep at least (SOL) in the treasury</label><input type="number" step="0.001" min="0" name="distKeep" value="${esc(a.distKeep != null ? a.distKeep : 0.02)}"></div><div><label>each run, hand out this % of the treasury's $QI (by lab work)</label><input type="number" step="1" min="0" max="100" name="qiPct" value="${esc(a.qiPct != null ? a.qiPct : 10)}"></div><div><label>extra: also hand out this % of the rest each run (0 = only pay what is owed)</label><input type="number" step="1" min="1" max="100" name="distPct" value="${esc(a.distPct != null ? a.distPct : 50)}"></div></div>
         <small class="mut">${esc(a.lastDist || '')}</small>
       </div>
       <div>
@@ -189,10 +190,11 @@ function renderAdmin({ config, engine, market, marketQi, wallets, balances, logs
     <div class="row3">
       <div><label>Sell cap: max % of its stack a cat may sell per day</label><input type="number" step="1" min="0" max="100" name="sellCapPct" value="${esc(config.sellCapPct)}"></div>
       <div><label>Buy size: % of spare SOL a cat spends per buy</label><input type="number" step="1" min="1" max="100" name="buyPct" value="${esc(config.buyPct)}"></div>
-      <div><label>$QI per lab job in the box (scaled by circuit size)</label><input type="number" step="1" min="1" name="QI_PER_JOB" value="${esc(config.QI_PER_JOB || 5000)}"></div>
+      <div><div class="row"><div><label>a lab job pays at least ($ of $QI)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div><div><label>and at most ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div></div></div>
     </div>
     <div class="row3">
       <div><label>Fallback SOL price of one $QI (used by the box's own sells until the chart is read; 0 = built-in)</label><input type="number" step="any" min="0" name="QI_SOL" value="${esc(config.QI_SOL || 0)}"></div>
+      <div><label>payout timer: pay everything owed every N minutes (the site shows the countdown)</label><input type="number" step="1" min="5" name="payoutEveryMin" value="${esc(config.payoutEveryMin || 20)}"></div>
       <div><label>AI study notes: seconds between AI-written notes (0 = the model writes every one; needs LLM_API_KEY)</label><input type="number" step="1" min="0" name="aiStudyGapSec" value="${esc(config.aiStudyGapSec || 0)}"></div>
       <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px"><input type="hidden" name="gasForm" value="1"><input type="checkbox" name="gasAuto" ${config.gas && config.gas.auto ? 'checked' : ''}> <b>Auto gas</b></label><small class="mut">a cat under the minimum is refilled to the floor from the treasury (one real transfer, at most every 10 min per cat)</small></div>
       <div><div class="row"><div><label>gas floor (SOL)</label><input type="number" step="0.001" min="0.001" name="gasFloor" value="${esc(config.gas ? config.gas.floor : 0.01)}"></div><div><label>refill under (SOL)</label><input type="number" step="0.0005" min="0.0005" name="gasMin" value="${esc(config.gas ? config.gas.min : 0.002)}"></div></div></div>
