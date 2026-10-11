@@ -730,7 +730,7 @@ const PLACES = {
   lab:      { title: 'The lab',       kind: 'quantum jobs · pays $QI',              pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'qi'], desc: '' },
   bazaar:   { title: 'The shop',      kind: 'things to wear · paid to the treasury', pt: [BAZ.x + 1.5, BAZ.y + 1.0], stats: ['spent', 'here', 'items'], desc: '' },
   yard:     { title: 'The yard',      kind: 'play · ' + fmtSol(PLAY) + ' SOL a visit', pt: [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2], stats: ['spent', 'here', 'visits'], desc: '' },
-  vault:    { title: 'The treasury',  kind: 'where the fees land',                  pt: [VAULT.x, VAULT.y], stats: ['treasury', 'fees', 'wages'], desc: '' },
+  vault:    { title: 'The treasury',  kind: 'where the fees land',                  pt: [VAULT.x, VAULT.y], stats: ['fees', 'wages', 'qipaid'], desc: '' },
 };
 const placeStats = {}, placeLogs = {}, placeDay = {};
 for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0 }; placeLogs[k] = []; }
