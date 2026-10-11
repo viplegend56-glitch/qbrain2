@@ -66,11 +66,11 @@ const ST = {
   crates: { label: 'the diner',       spot: () => [rand(M(15.0), M(16.6)), rand(M(15.5), M(16.4))] },
   vent:   { label: 'the heater',      spot: () => [rand(M(11.8), M(12.9)), rand(M(16.3), M(16.9))] },
   trays:  { label: 'the scrapyard',   spot: () => [rand(M(15.6), M(16.2)), rand(M(10.4), M(12.8))] },
-  boxes:  { label: 'the boxes',       spot: () => [rand(M(9.4), M(11.1)), rand(M(7.3), M(8.1))] },
+  boxes:  { label: 'the boxes',       spot: () => [rand(M(9.0), M(12.0)), rand(M(7.4), M(8.9))] },
   loft:   { label: 'the bunks',       spot: () => [rand(M(16.6), M(17.6)), rand(M(5.6), M(6.0))] },
   exchange: { label: 'the exchange',  spot: () => [rand(M(6.9), M(7.6)), rand(M(10.9), M(12.1))] },
   arena:    { label: 'the arena',     spot: () => [rand(M(9.0), M(10.0)), rand(M(12.1), M(13.1))] },
-  lab:      { label: 'the lab',       spot: () => [rand(M(13.6), M(14.6)), rand(M(11.4), M(11.75))] },
+  lab:      { label: 'the lab',       spot: () => [rand(M(13.1), M(15.1)), rand(M(11.3), M(12.1))] },
 };
 const ARENA = { x: M(9.5), y: M(12.6), r: 0.95, slots: [[M(9.0), M(12.95)], [M(10.0), M(12.25)]] };
 const LABELS = [['vault', M(13.2), M(13.3), 2.2], ['rig', M(6.9), M(8.1), 2.7], ['relay', M(14.9), M(7.0), 4.4], ['cryo', M(11.6), M(11.6), 5.4], ['tunnel', M(7.6), M(14.75), 2.8], ['crates', M(15.8), M(14.6), 2.6], ['vent', M(12.3), M(16.5), 1.9], ['trays', M(16.9), M(11.6), 1.5], ['boxes', M(9.9), M(6.5), 1.4], ['loft', M(17.3), M(5.85), 3.4], ['exchange', M(6.1), M(11.5), 2.4], ['arena', M(9.5), M(12.6), 1.6], ['lab', M(14.1), M(10.55), 2.4]];
@@ -270,7 +270,7 @@ const LVL_TITLE = ['stray', 'scrapper', 'hustler', 'trader', 'operator', 'whale'
 const lvlOf = xp => { let l = 1; while (l < LVL_XP.length && xp >= LVL_XP[l]) l++; return l; };
 const lvlTitle = c => LVL_TITLE[Math.min(LVL_TITLE.length, c.lvl || 1) - 1];
 function gainXp(c, n) {
-  c.xp = (c.xp || 0) + n; const nl = lvlOf(c.xp);
+  c.xp = (c.xp || 0) + n * rand(0.7, 1.3); const nl = lvlOf(c.xp);
   if (nl > (c.lvl || 1)) {
     c.lvl = nl; burst(c, '247,200,106', 26); ringFX(c.x, c.y, '247,200,106', 1.5); floatText(c, 'level ' + nl, '#F7C86A');
     log(`${c.name} hit level ${nl}: ${lvlTitle(c)}. Survival costs it ${4 * (nl - 1)}% less now.`, 'gain');
@@ -329,14 +329,14 @@ const PLACES = {
   rig:      { title: 'The rig',         kind: 'job site for miners',       pt: [M(7.2), M(9.6)],   stats: ['here', 'paid', 'visits'],    desc: 'A stack of qubits bolted to the pavement. Miners dig at it all night for steady SOL, and nothing here can go wrong.' },
   relay:    { title: 'The relay',       kind: 'job site for runners',      pt: [M(15.0), M(8.6)],  stats: ['here', 'paid', 'visits'],    desc: 'Two pylons with a live beam between them. Runners carry loads across the wire for better pay, but the wire is slick, worse in the rain, and a slip drops the whole shift’s pay back into the treasury. When lightning hits it, runners earn double.' },
   tunnel:   { title: 'The tunnel',      kind: 'job site for tunnelers',    pt: [M(8.3), M(15.4)],  stats: ['here', 'paid', 'found'],     desc: 'A portal to somewhere nobody talks about. Tunnelers come back with the best pay on the block, but a cat that gets turned around in there drops part of its ' + TK + ' stack on the way out. It ends up in the scrapyard.' },
-  cryo:     { title: 'The cryostat',    kind: 'job site and recovery',     pt: [M(11.6), M(11.6)], stats: ['here', 'paid', 'spent'],     desc: 'The block’s dilution fridge. Coolers keep it cold for pay, and any cat can spend a little SOL to recohere underneath it.' },
-  crates:   { title: 'The diner',       kind: 'food',                      pt: [M(15.8), M(15.6)], stats: ['here', 'spent', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
-  vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['here', 'spent', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
+  cryo:     { title: 'The cryostat',    kind: 'job site and recovery',     pt: [M(11.6), M(11.6)], stats: ['spent', 'here', 'paid'],     desc: 'The block’s dilution fridge. Coolers keep it cold for pay, and any cat can spend a little SOL to recohere underneath it.' },
+  crates:   { title: 'The diner',       kind: 'food',                      pt: [M(15.8), M(15.6)], stats: ['spent', 'here', 'visits'],   desc: 'Sardines, mostly. A meal costs ' + fmtSol(FOOD) + ' SOL at launch and gets dearer as the chart climbs. Most grudges on the block start here.' },
+  vent:     { title: 'The heater',      kind: 'warmth',                    pt: [M(12.3), M(16.6)], stats: ['spent', 'here', 'visits'],   desc: 'The only warm spot on the block. A warm-up costs ' + fmtSol(WARM) + ' SOL. It gets crowded when the weather turns.' },
   trays:    { title: 'The scrapyard',   kind: 'lost and found',            pt: [M(16.0), M(11.6)], stats: ['here', 'found', 'visits'],   desc: 'Where broke cats hunt for food, and where every dropped token on the block ends up. Whatever a decohered or lost cat scatters lands here, and whoever digs it out keeps it.' },
   exchange: { title: 'The exchange',    kind: 'where cats buy back',       pt: [M(6.6), M(11.5)],  stats: ['here', 'bought', 'buysol'],  desc: 'A kiosk with a ticker on the front. Any cat with SOL to spare walks up and buys ' + TK + '. Cats never sell here, there is no sell button. Every buy goes straight to the chart.' },
-  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(9.5), M(12.6)],  stats: ['here', 'spent', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
+  arena:    { title: 'The arena',       kind: 'where cats wager · entry fee',          pt: [M(9.5), M(12.6)],  stats: ['spent', 'here', 'wagered'], desc: 'A ring painted on the pavement. Entry costs a little SOL, paid to the treasury. Two cats put up a stake of ' + TK + ', the box flips a quantum coin weighted by their coherence, and the winner takes the pot. Every wager is a transfer between the two wallets.' },
   boxes:    { title: 'The boxes',       kind: 'shelter',                   pt: [M(10.2), M(7.6)],  stats: ['here', 'visits', 'visits'],  desc: 'Cardboard. Free and dry. Soaked cats wait out the weather here.' },
-  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.3), M(5.85)],  stats: ['here', 'spent', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
+  loft:     { title: 'The bunks',       kind: 'where cats sleep · rent per night',          pt: [M(17.3), M(5.85)],  stats: ['spent', 'here', 'stolen'],  desc: 'Bunks over the corner shop, rent due every night, cheaper the higher a cat\u2019s level. Tired cats climb in and sleep it off. A cat with light paws can sneak in and lift a few thousand ' + TK + ' from a sleeper, if it doesn’t get caught.' },
   lab:      { title: 'The lab',         kind: 'quantum compute',           pt: [M(14.1), M(10.55)], stats: ['here', 'circuits', 'spent'], stage: 'lab',  desc: 'A real quantum computer, rented by the second. When the lab is open, fees buy time on it and coherent cats run circuits: a few qubits, a thousand shots, a result, a job receipt you can check. It doesn\u2019t solve anything useful yet. It is real.' },
   vault:    { title: 'The treasury',    kind: 'where the fees land',       pt: [M(13.2), M(13.3)], stats: ['treasury', 'fees', 'wages'], desc: 'Every trade of ' + TK + ' pays a fee in SOL, and the fees land here. Every shift on the block is paid out of it. When it runs low, shifts pay half.' },
 };
@@ -370,8 +370,8 @@ function makeCat(i) {
     x: sp[0], y: sp[1], tx: sp[0], ty: sp[1], face: Math.random() < 0.5 ? 1 : -1,
     sol: rand(0.0008, 0.008), qcat: CAT_ALLOC, earned: 0, xp: 0, lvl: 1, bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: P0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
     hunger: rand(0, 0.75), coh: rand(0.35, 1), cold: rand(0, 0.6), lonely: rand(0, 0.6),
-    grudge: 0, grudgeOn: null, grudgeWhy: '', starve: 0, tired: rand(0, 0.7),
-    rx: (i + 0.5) / ROSTER.length, rdir: Math.random() < 0.5 ? 1 : -1, rsp: rand(0.012, 0.022),
+    grudge: 0, grudgeOn: null, grudgeWhy: '', starve: 0, tired: rand(0, 0.7), stamina: rand(0.75, 1.35),
+    rx: (i + 0.5) / ROSTER.length, rdir: Math.random() < 0.5 ? 1 : -1, rsp: rand(0.022, 0.036),
     state: 'pause', pauseT: rand(1, 12), act: 'idle', actT: 0, actDur: 0, partner: null, initiator: false,
     thought: 'just woke up', doing: 'looking around', because: 'the box just woke up', weighed: [],
     lastAte: simMin - randi(30, 400), phase: Math.random() * TAU
@@ -415,7 +415,8 @@ function thought(c, act, p) {
   return pick(TH[act]).replace('{p}', p ? p.name : 'someone');
 }
 function decide(c) {
-  const ws = DRIVES.map(d => ({ act: d.act, label: typeof d.label === 'function' ? d.label(c) : d.label, w: clamp(d.w(c) + rand(-0.06, 0.06), 0, 1.5) }));
+  const crowd = act => { const st = act === 'work' ? JOBS[c.job].st : ACTS[act].st; if (!st) return 1; const n = cats.filter(o => o !== c && !asleep(o) && (stationOf(o) === st || (o.state === 'walk' && o.act !== 'wager' && (o.act === 'work' ? JOBS[o.job].st : ACTS[o.act].st) === st))).length; return 1 / (1 + 0.7 * Math.max(0, n - 1)); };
+  const ws = DRIVES.map(d => ({ act: d.act, label: typeof d.label === 'function' ? d.label(c) : d.label, w: clamp(d.w(c) * crowd(d.act) + rand(-0.06, 0.06), 0, 1.5) }));
   ws.sort((a, b) => b.w - a.w);
   let ch = null, partner = null;
   for (const o of ws) {
@@ -511,7 +512,7 @@ function finish(c, p) {
     const slipped = Math.random() < j.risk * (c.job === 'runner' ? 1 + wx.rain : 1);
     if (pay > 0 && !slipped) {
       stats.treasury -= pay; c.sol += pay; c.earned += pay; stats.wages += pay; placeStats[st].paid += pay;
-      floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); gainXp(c, 6);
+      floatText(c, '+' + fmtSol(pay), '#F7C86A'); payFX(c); gainXp(c, 3 + Math.min(12, pay / priceMul() * 2500));
       log(`${c.name} ${j.did.replace('{n}', fmtSol(pay) + ' SOL')}`, 'gain', st); tx(c, 'wage', '+' + fmtSol(pay) + ' SOL', ST[st].label);
     } else if (slipped) {
       if (c.job === 'tunneler') { const drop = c.qcat * rand(0.004, 0.012); c.qcat -= drop; stats.lostPool += drop; placeStats.trays.found += 0; log(`${c.name} ${j.riskWhy} and scattered ${fmtQ(drop)} ${TK}. It ended up in the scrapyard.`, 'loss', st); tx(c, 'lost', '-' + fmtQ(drop) + ' ' + TK, 'the tunnel'); burst(c, '255,79,174', 14); }
@@ -522,21 +523,21 @@ function finish(c, p) {
     stats.treasury -= cost + pay; stats.labSol += cost; placeStats.lab.spent += cost; placeStats.lab.visits++; placeStats.lab.circuits++; stats.circuits++;
     c.sol += pay; c.earned += pay; stats.wages += pay; placeStats.lab.paid += pay;
     const nq = randi(2, 5), bits = Array.from({ length: nq }, () => Math.random() < 0.5 ? '0' : '1').join(''), job = 'qc-' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-    stats.lastJob = { name: c.name, nq, bits, job, t: T }; gainXp(c, 20);
+    stats.lastJob = { name: c.name, nq, bits, job, t: T }; gainXp(c, 15 + nq * 4);
     floatText(c, '|' + bits + '\u27E9', '#78C8FF'); ringFX(LAB.x, LAB.y, '120,200,255', 1.3);
     log(`${c.name} ran a ${nq}-qubit circuit in the lab: 1,024 shots, most common result |${bits}\u27E9, job ${job}. ${fmtSol(cost)} SOL of compute.`, 'link', 'lab'); tx(c, 'circuit', '+' + fmtSol(pay) + ' SOL', job);
   } else if (a === 'eat') {
-    spend(c, costOf(FOOD, c), 'crates', 'a meal'); c.hunger = 0.03; c.lastAte = simMin; gainXp(c, 2);
+    spend(c, costOf(FOOD, c), 'crates', 'a meal'); c.hunger = 0.03; c.lastAte = simMin; gainXp(c, 1);
     if (Math.random() < 0.3) log(`${c.name} ate at the diner`, 'info', 'crates');
   } else if (a === 'hunt') {
     placeStats.trays.visits++;
     if (stats.lostPool > 500) {
       const take = stats.lostPool * rand(0.25, 0.7); stats.lostPool -= take; c.qcat += take; c.found += take; placeStats.trays.found += take;
-      floatText(c, '+' + fmtQ(take), '#F7C86A'); gainXp(c, 8); log(`${c.name} dug ${fmtQ(take)} ${TK} out of the scrapyard`, 'gain', 'trays'); tx(c, 'found', '+' + fmtQ(take) + ' ' + TK, 'the scrapyard');
+      floatText(c, '+' + fmtQ(take) + ' ' + TK, '#F7C86A'); gainXp(c, 10); log(`${c.name} dug ${fmtQ(take)} ${TK} out of the scrapyard`, 'gain', 'trays'); tx(c, 'found', '+' + fmtQ(take) + ' ' + TK, 'the scrapyard');
     }
     if (Math.random() < 0.55) { c.hunger = 0.12; c.lastAte = simMin; if (Math.random() < 0.5) log(`${c.name} caught something in the scrapyard`, 'info', 'trays'); }
   } else if (a === 'recohere') {
-    spend(c, costOf(CRYO, c), 'cryo', 'cryo time'); c.coh = 1; gainXp(c, 2);
+    spend(c, costOf(CRYO, c), 'cryo', 'cryo time'); c.coh = 1; gainXp(c, 1);
     floatText(c, 'coherent', '#B9A6FF');
     if (Math.random() < 0.4) log(`${c.name} recohered under the cryostat`, 'link', 'cryo');
   } else if (a === 'warm') {
@@ -551,7 +552,7 @@ function finish(c, p) {
       stats.buySol += amt; stats.boughtBack += got; stats.buys++; stats.lastTrade = { name: c.name, side: 'bought', sol: amt, q: got, t: T };
       placeStats.exchange.bought += got; placeStats.exchange.buysol += amt; placeStats.exchange.visits++;
       mkt.price *= 1 + amt / (mkt.price * SUPPLY * 0.35);
-      floatText(c, '+' + fmtQ(got), '#5CFFAA'); buyFX(c); gainXp(c, 8);
+      floatText(c, '+' + fmtQ(got) + ' ' + TK, '#5CFFAA'); buyFX(c); gainXp(c, 4 + Math.min(14, got / CAT_ALLOC * 200));
       log(`${c.name} bought ${fmtQ(got)} ${TK} for ${fmtSol(amt)} SOL at the exchange`, 'gain', 'exchange'); tx(c, 'buy', '+' + fmtQ(got) + ' ' + TK, fmtSol(amt) + ' SOL');
     }
   } else if (a === 'sell') {
@@ -561,7 +562,7 @@ function finish(c, p) {
     stats.sold += q; stats.sellSol += got; stats.sells++; stats.lastTrade = { name: c.name, side: 'sold', sol: got, q, t: T };
     placeStats.exchange.visits++;
     mkt.price *= 1 - got / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005;
-    floatText(c, '-' + fmtQ(q), '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, 6);
+    floatText(c, '-' + fmtQ(q) + ' ' + TK, '#FF7878'); ringFX(EXC.x, EXC.y, '255,120,120', 1.1); gainXp(c, broke ? 2 : 4 + Math.min(12, (mkt.price / c.entry - 1) * 40));
     const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at +${Math.round((mkt.price / c.entry - 1) * 100)}%`;
     log(`${c.name} sold ${fmtQ(q)} ${TK} for ${fmtSol(got)} SOL ${why}`, 'loss', 'exchange'); tx(c, 'sell', '-' + fmtQ(q) + ' ' + TK, '+' + fmtSol(got) + ' SOL');
   } else if (a === 'steal') {
@@ -575,7 +576,7 @@ function finish(c, p) {
       } else {
         const take = moveTokens(v, c, v.qcat * rand(0.01, 0.04)); c.stole += take; v.robbed += take; stats.stolen += take; placeStats.loft.stolen += take;
         v.grudge = Math.max(v.grudge, 0.8); v.grudgeOn = c.id; v.grudgeWhy = `${c.name} robbed it while it slept`;
-        floatText(c, '+' + fmtQ(take), '#FF4FAE'); gainXp(c, 12); log(`${c.name} lifted ${fmtQ(take)} ${TK} from ${v.name} while it slept`, 'loss', 'loft'); tx(c, 'stole', '+' + fmtQ(take) + ' ' + TK, 'from ' + v.name);
+        floatText(c, '+' + fmtQ(take) + ' ' + TK, '#FF4FAE'); gainXp(c, 20); log(`${c.name} lifted ${fmtQ(take)} ${TK} from ${v.name} while it slept`, 'loss', 'loft'); tx(c, 'stole', '+' + fmtQ(take) + ' ' + TK, 'from ' + v.name);
       }
     }
   } else if (a === 'wager' && p) {
@@ -585,7 +586,7 @@ function finish(c, p) {
     let take, label;
     if (inSol) { take = Math.min(l.sol, Math.min(c.sol, p.sol) * rand(0.15, 0.35)); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; label = fmtSol(take) + ' SOL'; }
     else { take = moveTokens(l, w, Math.min(c.qcat, p.qcat) * rand(0.02, 0.06)); w.arenaNet += take; l.arenaNet -= take; placeStats.arena.wagered += take; label = fmtQ(take) + ' ' + TK; }
-    w.arenaW++; l.arenaL++; gainXp(w, 15); gainXp(l, 4);
+    w.arenaW++; l.arenaL++; gainXp(w, 25); gainXp(l, 3);
     floatText(w, '+' + label, '#FFC850'); floatText(l, '-' + label, '#FF4FAE'); burst(w, '255,200,80', 22); ringFX(ARENA.x, ARENA.y, '255,200,80', 1.6);
     log(`${w.name} beat ${l.name} in the arena and took ${label}`, 'gain', 'arena'); tx(w, 'wager', '+' + label, 'from ' + l.name);
     say(w, pick(['told you', 'the coin likes me', `thanks ${l.name}`])); if (Math.random() < 0.6) say(l, pick(['rigged', 'double or nothing next time', 'the coin was warm']));
@@ -594,9 +595,9 @@ function finish(c, p) {
   } else if (a === 'scrap' && p) {
     const cw = c.coh + c.sol * 20 + Math.random(), pw = p.coh + p.sol * 20 + Math.random();
     const [w, l] = cw >= pw ? [c, p] : [p, c];
-    const take = moveTokens(l, w, l.qcat * rand(0.01, 0.03)); w.stole += take; l.robbed += take; stats.stolen += take; gainXp(w, 10); gainXp(l, 3);
+    const take = moveTokens(l, w, l.qcat * rand(0.01, 0.03)); w.stole += take; l.robbed += take; stats.stolen += take; gainXp(w, 14); gainXp(l, 2);
     log(take > 0 ? `${w.name} won the scrap with ${l.name} and took ${fmtQ(take)} ${TK}` : `${w.name} won the scrap with ${l.name}`, 'loss');
-    if (take > 0) { floatText(w, '+' + fmtQ(take), '#F7C86A'); tx(w, 'scrap', '+' + fmtQ(take) + ' ' + TK, 'from ' + l.name); }
+    if (take > 0) { floatText(w, '+' + fmtQ(take) + ' ' + TK, '#F7C86A'); tx(w, 'scrap', '+' + fmtQ(take) + ' ' + TK, 'from ' + l.name); }
     l.grudge = 0.4; l.grudgeOn = w.id; l.grudgeWhy = `${w.name} beat it in a scrap`;
     w.grudge = 0; w.grudgeOn = null; w.grudgeWhy = '';
     endPair(c, p); return;
@@ -604,7 +605,7 @@ function finish(c, p) {
     const bonus = Math.min(rand(0.0004, 0.0012) * priceMul(), stats.treasury), b1 = bonus / 2;
     stats.treasury -= bonus; c.sol += b1; p.sol += b1; c.earned += b1; p.earned += b1; stats.wages += bonus;
     c.lonely = 0; p.lonely = 0; const avg = clamp((c.coh + p.coh) / 2 + 0.15); c.coh = avg; p.coh = avg;
-    log(`${c.name} and ${p.name} entangled, talked it over and shared coherence`, 'link'); c.chat = null;
+    log(`${c.name} and ${p.name} entangled, talked it over and shared coherence`, 'link'); c.chat = null; gainXp(c, 5); gainXp(p, 5);
     endPair(c, p); return;
   } else if (a === 'idle') {
     c.coh = clamp(c.coh + 0.05); c.lonely = clamp(c.lonely - 0.1); placeStats.boxes.visits++;
@@ -702,7 +703,7 @@ function update(c, dt) {
   c.coh = clamp(c.coh - (0.0055 * wx.coh + (working ? 0.011 : 0) + (working && c.job === 'tunneler' ? 0.006 : 0)) * R * dt);
   if (!(c.state === 'act' && c.act === 'warm') && !sleeping) c.cold = clamp(c.cold + 0.0065 * wx.cold * R * dt);
   if (!(c.state === 'act' && c.act === 'entangle')) c.lonely = clamp(c.lonely + 0.005 * R * dt);
-  c.tired = clamp(c.tired + (sleeping ? -0.0015 : (0.0012 + (working ? 0.0016 : 0)) * R) * dt);
+  c.tired = clamp(c.tired + (sleeping ? -0.0015 : (0.0012 + (working ? 0.0016 : 0)) * R * (c.stamina || 1)) * dt);
   c.grudge = Math.max(0, c.grudge - 0.0012 * dt); if (c.grudge <= 0) { c.grudgeOn = null; c.grudgeWhy = ''; }
   if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 150) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
   if (c.coh <= 0) {
