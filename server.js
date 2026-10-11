@@ -223,6 +223,7 @@ async function autoTick() {
 }
 setInterval(() => { autoTick().catch(e => console.error('autoTick', e)); }, 20000);
 
+const callSeen = new Map();
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x'); const p = u.pathname;
   try {
@@ -238,6 +239,16 @@ const server = http.createServer(async (req, res) => {
         engine: engine.snapshot(),
         ai: llm.enabled(),
       });
+    }
+    if (req.method === 'POST' && p === '/call') {
+      // a viewer clicked the badge over something on the ground: the cats hear about it (a nudge, not an order). Public, lightly rate-limited per address.
+      const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(), now = Date.now();
+      for (const [k, v] of callSeen) if (now - v > 60000) callSeen.delete(k);
+      if (now - (callSeen.get(ip) || 0) < 3000) return send(res, 429, 'slow down', 'text/plain');
+      callSeen.set(ip, now);
+      let raw = ''; await new Promise(r => { req.on('data', c => { raw += c; if (raw.length > 200) req.destroy(); }); req.on('end', r); });
+      const id = String(raw).replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+      const ok = id ? engine.callTask(id) : false; return send(res, ok ? 200 : 404, ok ? 'ok' : 'gone', 'text/plain');
     }
     if (p.startsWith('/admin')) {
       if (!authed(req, res)) return;

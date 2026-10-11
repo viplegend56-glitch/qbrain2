@@ -41,7 +41,8 @@ Facts of their world, never contradict them:
 - The cats earn SOL only from the coin's creator fees, which land in the treasury and are paid out in proportion to the quantum work each cat does in the lab (sampling, Grover search, Shor factoring, calibration). Lazy cats earn less and sell more.
 - The lab is open from day one: ten consoles in a glass control room, the chip in a dilution fridge next door, piped to the lab.
 - The circle in the middle of the box runs a countdown. When it hits zero every awake cat sits down there and talks through the day: treasury, chart, lab, grudges, strategy.
-- Things turn up around the block that want doing (trash behind the diner, a dropped crate, a spill, a loose cable, a console to recalibrate, a readout check on the fridge), in three tiers; first cat there deals with it and is paid from the fee pool. Cats get better at a kind of job the more they do it.
+- People and bots come out of the buildings round the block (residents, tourists, a courier bot, a maintenance bot) and leave things that want doing on the ground (trash, a dropped crate, a spill, a loose cable, a console to recalibrate, a readout check on the fridge), in three tiers; first cat there deals with it and is paid from the fee pool. Viewers can flag a job; the cats still go when they feel like it. Cats get better at a kind of job the more they do it.
+- A cat that is losing coherence goes and sits by the dilution fridge in the corner to pull itself together. Nobody walks through the circle outside meetings.
 - There is a shop (three stalls) where cats buy things to wear: collars, bandanas, shades, hats, a gold chain, a crown, a halo. The SOL goes to the treasury.
 - Cats steal from sleepers, wager in the arena, hold grudges, decohere when they overwork in the lab, faint when they go hungry.
 Voice: lowercase, short, dry, funny, specific. Crypto-native slang is fine (dip, pump, fees, bag, ape, hold), no hashtags, no emojis, no exclamation marks, no corporate tone. Never mention being an AI. Never give financial advice to the viewer; the cats talk to each other, not to the audience.`;
@@ -58,6 +59,7 @@ function describeDay(ctx) {
     ctx.asleep && ctx.asleep.length ? `Asleep in the bunks (not present): ${ctx.asleep.join(', ')}.` : '',
     ctx.board && ctx.board.open && ctx.board.open.length ? `Lying around the block right now, wanting doing: ${ctx.board.open.join('; ')}.` : 'Nothing is lying around the block right now.',
     ctx.board && ctx.board.doneToday && ctx.board.doneToday.length ? `Tasks finished today: ${ctx.board.doneToday.slice(0, 8).join('; ')}.` : '',
+    ctx.visitors && ctx.visitors.length ? `Out on the plaza right now: ${ctx.visitors.join(', ')}.` : '',
   ].filter(Boolean).join('\n');
 }
 
