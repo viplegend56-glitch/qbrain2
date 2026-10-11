@@ -277,7 +277,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/admin/task') {
         const t = engine.postTask({ kind: b.kind, bounty: Math.max(0, Number(b.bounty) || 0) }, 'the operator');
-        if (!t) return back(res, 'the box already has four things lying about; wait for the cats to clear one', true);
+        if (!t) return back(res, 'the box already has three things lying about; wait for the cats to clear one', true);
         return back(res, `dropped ${t.title} into the box (tier ${t.tier})`);
       }
       if (p === '/admin/release') { if (b.name) engine.setReleased([b.name]); return back(res, b.name + ' released'); }

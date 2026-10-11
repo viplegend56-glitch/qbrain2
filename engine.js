@@ -378,13 +378,13 @@ function nearPlace(x, y) {
 function floorSpot() { return wanderSpot(); }
 const DEST_LABEL = { bin: 'the bin', trays: 'the scrapyard', bazaar: 'the shop', fridge: 'the fridge' };
 const board = { tasks: [], done: [], seq: 0, next: 0, badge: null, badgeCool: 0 }; // badge: the one thing a viewer can flag right now
-const FLAG_COOL = 600, FLAG_AFTER = 300, BOARD_MAX = 4; // the badge shows once something has lain untouched for five minutes; a flag hides it for ten; never more than four things out at once
+const FLAG_COOL = 600, FLAG_AFTER = 300, BOARD_MAX = 3; // the badge shows once something has lain untouched for five minutes; a flag hides it for ten; never more than three things out at once
 // deliveries: a drone comes in high over the harbour side, drops down over a clear bit of the ring, leaves the thing and climbs out again
 const deliveries = []; let deliverySeq = 0;
 const DOCK = { x: M(9.3), y: M(16.8) }; // the sweeper bots' charging pad, left of the heater
 function skyPoint() { return Math.random() < 0.5 ? [BLK + rand(2.5, 5), rand(5, BLK)] : [rand(5, BLK), BLK + rand(2.5, 5)]; }
 function sendDrone(kind) {
-  if (board.tasks.length + deliveries.filter(d => d.state !== 'out').length >= BOARD_MAX) return null; // four things out is the limit, counting what is on its way
+  if (board.tasks.length + deliveries.filter(d => d.state !== 'out').length >= BOARD_MAX) return null; // three things out is the limit, counting what is on its way
   const spot = floorSpot(), from = skyPoint();
   const d = { id: 'D' + (++deliverySeq), kind, x: from[0], y: from[1], z: 5.5, tx: spot[0], ty: spot[1], state: 'in', t0: T, ph: Math.random() * 6 };
   deliveries.push(d); return d;
@@ -409,15 +409,15 @@ function stepDeliveries(dt) {
     }
   }
 }
-// sweeper bots: two squat tracked bots that trundle round the ring sweeping when fewer than three cats are about, and dock again when the cats come back
+// sweeper bots: two squat tracked bots that trundle round the ring sweeping, with the odd trip back to the dock to charge
 const bots = []; let botSeq = 0, nextBot = 0;
 function quietRing() { return !meeting.on && cats.filter(c => !asleep(c) && Math.hypot(c.x - CRY.x, c.y - CRY.y) < 6.5).length < 3; }
 function stepBots(dt) {
   if (!nextBot) nextBot = T + rand(60, 120);
-  if (T >= nextBot) { nextBot = T + rand(40, 90); if (quietRing() && bots.length < 2) { const sp = wanderSpot(); bots.push({ id: 'B' + (++botSeq), bot: true, x: DOCK.x, y: DOCK.y, tx: sp[0], ty: sp[1], state: 'roam', born: T, leaveAt: T + rand(360, 720), face: 1, slide: 0, pauseT: 0, ph: Math.random() * 6, brush: 0 }); } }
+  if (T >= nextBot) { nextBot = T + rand(30, 70); if (bots.length < 2) { const sp = wanderSpot(); bots.push({ id: 'B' + (++botSeq), bot: true, x: DOCK.x, y: DOCK.y, tx: sp[0], ty: sp[1], state: 'roam', born: T, leaveAt: T + rand(600, 1200), face: 1, slide: 0, pauseT: 0, ph: Math.random() * 6, brush: 0 }); } }
   for (let i = bots.length - 1; i >= 0; i--) {
     const b = bots[i];
-    if (b.state === 'roam' && (T > b.leaveAt || (T - b.born > 60 && !quietRing()))) { b.state = 'home'; b.tx = DOCK.x; b.ty = DOCK.y; b.slide = 0; b.pauseT = 0; }
+    if (b.state === 'roam' && T > b.leaveAt) { b.state = 'home'; b.tx = DOCK.x; b.ty = DOCK.y; b.slide = 0; b.pauseT = 0; }
     if (b.pauseT > 0) { b.pauseT -= dt; b.brush += dt * 7; continue; }
     const dist = Math.hypot(b.tx - b.x, b.ty - b.y);
     if (dist < 0.1) { if (b.state === 'home') { bots.splice(i, 1); continue; } const sp = wanderSpot(); b.tx = sp[0]; b.ty = sp[1]; b.pauseT = rand(2, 6); b.slide = 0; continue; }
@@ -441,7 +441,7 @@ const totalSkill = c => Object.values(c.skills || {}).reduce((a, b) => a + b, 0)
 const qualifies = (c, t) => t.tier === 1 || (t.tier === 2 && ((c.lvl || 1) >= 2 || totalSkill(c) >= 8)) || (t.tier === 3 && ((c.lvl || 1) >= 3 || totalSkill(c) >= 24));
 const tasksFor = c => board.tasks.filter(t => t.status === 'open' && qualifies(c, t));
 function postTask(def, poster) {
-  if (board.tasks.length >= BOARD_MAX) return null; // four things out is the limit
+  if (board.tasks.length >= BOARD_MAX) return null; // three things out is the limit
   const kind = TASK_KINDS[def.kind] ? def.kind : pick(Object.keys(TASK_KINDS)), K0 = TASK_KINDS[kind];
   let at = (def && def.at && pushOut(def.at[0], def.at[1], 0.3)[2] === 0 && !nearPlace(def.at[0], def.at[1])) ? def.at : null;
   for (let i = 0; !at && i < 12; i++) { const q = K0.spawn(); if (pushOut(q[0], q[1], 0.34)[2] === 0 && !nearPlace(q[0], q[1])) at = q; } // never up against a structure or on a place
@@ -924,7 +924,6 @@ function finish(c, p) {
     if (Math.random() < 0.55) { c.hunger = 0.12; c.lastAte = simMin; did(c, 'found something to eat in the scrapyard'); if (Math.random() < 0.5) log(`${c.name} caught something in the scrapyard`, 'info', 'trays'); } else did(c, 'went through the scrapyard and found nothing');
   } else if (a === 'recohere') {
     spend(c, costOf(CRYO, c), 'lab', 'cryo time'); c.coh = 1; gainXp(c, 1); did(c, 'recohered out in the open');
-    floatText(c, 'coherent', '#B9A6FF');
     if (Math.random() < 0.4) log(`${c.name} recohered under the circle`, 'link', 'cryo');
   } else if (a === 'warm') {
     spend(c, costOf(WARM, c), 'vent', 'a warm-up'); c.cold = 0; gainXp(c, 1); did(c, 'warmed up at the heater');
