@@ -99,7 +99,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <div class="tile c"><small>market cap</small><b>${usd(snap.mkt.mcapUsd)}</b><small>${market.ok ? 'live · dexscreener · ' + ago(market.at) : 'simulated · ' + esc(market.err || '')}</small></div>
     <div class="tile"><small>treasury wallet</small><b>${tre != null ? sol(tre) : '—'}</b><small>${balances && balances.at ? 'read ' + ago(balances.at) : (wallets.ready ? (env.RPC_URL ? 'reading…' : 'set RPC_URL') : 'no wallets')}${balances && balances.err ? ' · <span class="bad">' + esc(balances.err.slice(0, 60)) + '</span>' : ''}</small></div>
     <div class="tile g"><small>paid to the cats so far</small><b>${sol(snap.stats.wages)}</b><small>${num(snap.stats.qiPaid || 0)} $QI</small></div>
-    <div class="tile"><small>economy</small><b>${ch.mode === 'live' ? 'default' : ch.mode === 'test' ? 'testing' : 'sandbox'}</b><small>prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
+    <div class="tile"><small>economy</small><b>live</b><small>prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
   </div>
 
   <form method="post" action="/admin/config">
@@ -192,20 +192,20 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   </div></div>
 
   <form method="post" action="/admin/chain">
-  <div class="panel"><div class="ph"><span>Economy</span><small class="mut">${ch.mode === 'live' ? '<span class="ok">DEFAULT: every payment the cats make is a real transaction at the real prices</span>' : ch.mode === 'test' ? '<span class="ok">DEFAULT TESTING: real transactions, every price in the box 0.001 SOL</span>' : 'sandbox: the box only, nothing on-chain'}</small></div><div class="pb">
+  <div class="panel"><div class="ph"><span>Economy</span><small class="mut"><span class="ok">every payment the cats make is a real transaction at the prices as set</span></small></div><div class="pb">
     ${walletsReady ? `
-    <p class="mut" style="margin:0 0 10px"><b>Sandbox</b> is the box on its own, nothing leaves a wallet. <b>Default testing</b> sends every transaction for real but makes every price 0.001 SOL (and a filled lab bar pays 20 cents of $QI), on the site too, so the plumbing can be proved for cents. <b>Default</b> is the real prices. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
+    <p class="mut" style="margin:0 0 10px">Every transaction is real, at the prices as set. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; chore wages, lab $QI, salvage $QCATS and casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
     <div class="row3">
-      <div><label>mode</label><select name="mode" style="width:100%;padding:8px 10px;font-size:13px"><option value="off" ${ch.mode === 'off' ? 'selected' : ''}>sandbox — the box only</option><option value="test" ${ch.mode === 'test' ? 'selected' : ''}>default testing — real transactions, every price 0.001 SOL</option><option value="live" ${ch.mode === 'live' ? 'selected' : ''}>default — real transactions at the real prices</option></select></div>
+
       <div><label>price multiplier — every price in the box and on the site times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
-      <div><label>pace — minutes between one cat's paid moves in testing and default (a meal, the heater, a spin, a trade); 0 = no limit. Sandbox ignores it.</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
+      <div><label>pace — minutes between one cat's paid moves (a meal, the heater, a spin, a trade); 0 = no limit</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
     </div>
     <div class="row" style="margin-top:6px"><input type="hidden" name="fundForm" value="1">
       <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin-top:10px"><input type="checkbox" name="fundSwaps" ${ch.fundSwaps !== false ? 'checked' : ''}> <b>The treasury covers a swap the cat cannot afford</b></label><small class="mut">a swap needs about 0.0024 SOL over the amount (a refundable deposit for wrapped SOL, the fee, the priority) and 0.002 more for a first buy's token account. A cat short of that is quietly sent just the shortfall first — a real transfer that shows here with its signature, nothing in the box — then the swap runs.</small></div>
     </div>
     <button class="btn">Save</button>
     </form>
-    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">testing: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">puppet: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
       <form method="post" action="/admin/puppet" class="inline"><div class="row3" style="align-items:end">
         <div><select name="name" style="width:100%;padding:8px 10px;font-size:13px">${engine.ROSTER.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
         <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqi', 'the exchange — buy $QI'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell $QI'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['donate', 'the build fund — put some SOL in'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>

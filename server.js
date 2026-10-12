@@ -34,7 +34,7 @@ const DEFAULTS = {
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
   PACE_MIN: 6,                          // in the real modes: minutes between one cat's paid moves (a meal, a spin, a trade…), so the chain is not hammered
-  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001, fundSwaps: true }, // fundSwaps: a cat that cannot afford a swap's own costs is sent exactly the shortfall by the treasury first, quietly // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, a filled lab bar pays $0.20 of $QI) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
+  chain: { mode: 'live', buyQi: true, maxPaySol: 1, dayCapSol: 25, fundSwaps: true }, // fundSwaps: a cat that cannot afford a swap's own costs is sent exactly the shortfall by the treasury first, quietly // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, a filled lab bar pays $0.20 of $QI) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: false, floor: 0.001, min: 0.002 }, // no gas rule: floor is only the chain's rent minimum; the admin table flags a cat under `min` so you can send it SOL by hand
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
@@ -50,7 +50,7 @@ const DEFAULTS = {
 let config = { ...DEFAULTS };
 try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) }, gas: { ...DEFAULTS.gas, ...(saved.gas || {}) }, chain: { ...DEFAULTS.chain, ...(saved.chain || {}) } }; } catch (_) {}
 if (config.FUND_GOAL === 5 && !config.fundGoalSet) config.FUND_GOAL = 2.5; // the goal came down from 5 to 2.5 SOL; a goal you set yourself in admin is kept
-config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; if (!(config.slippageBps >= 500)) config.slippageBps = 500; // the name, ticker and gas rule come from the code, not from an old saved config
+config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; config.chain.maxPaySol = DEFAULTS.chain.maxPaySol; config.chain.dayCapSol = DEFAULTS.chain.dayCapSol; config.chain.testFlat = DEFAULTS.chain.testFlat; // the safety caps are code, not settings: an old saved value must never shrink them if (!(config.slippageBps >= 500)) config.slippageBps = 500; // the name, ticker and gas rule come from the code, not from an old saved config
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
 const simulateFees = () => !config.CA;
@@ -75,8 +75,8 @@ const hooks = {
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
-const applyChainMode = () => { const ch = config.chain || {}; if (ch.mode === 'dry') ch.mode = 'off'; ch.buyQi = true; const m = ch.mode || 'off'; engine.setLiveTx(m === 'live' || m === 'test'); engine.setDryRun(false); engine.setTestFlat(m === 'test' ? (ch.testFlat || 0.001) : 0); }; applyChainMode();
-const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.testFlat || 0.001) : 0);
+const applyChainMode = () => { const ch = config.chain || (config.chain = {}); ch.mode = 'live'; ch.buyQi = true; ch.maxPaySol = 1; ch.dayCapSol = 25; engine.setLiveTx(true); engine.setDryRun(false); engine.setTestFlat(0); }; applyChainMode(); // one mode: every transaction real, every price as priced. The caps are a fixed safety net against a bug, not a setting.
+const testFlatNow = () => 0;
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
@@ -248,7 +248,7 @@ async function runIntent(i) {
       const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, [{ pub: catW.pub, sol: amt }], `${config.TICKER} · ${i.cat} · SOL to swap with`, true);
       chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig, true); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
     }
-    const feeCap = ch.mode === 'test' ? 100000 : 300000; // lamports of priority at most: a tenth of a cent in testing
+    const feeCap = 300000; // lamports of priority at most
     const meta = await mintMeta(mint), sopts = { maxFeeLamports: feeCap, decimals, program: meta.program, slippageBps: config.slippageBps };
     const raw = i.dir === 'buy' ? Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)) : Math.floor(i.q * Math.pow(10, decimals)); if (raw < 1) throw new Error('nothing to sell');
     const r = await wallets.swapAny(RPC_URL, catW.kp, mint, i.dir, raw, config.slippageBps, sopts);
@@ -512,11 +512,11 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
       if (p === '/admin/chain') {
-        const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
+        const ch = config.chain;
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
         if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
         if ('fundForm' in b) ch.fundSwaps = !!b.fundSwaps;
-        applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL);
+        applyChainMode(); saveConfig(); return back(res, 'economy saved · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }
       if (p === '/admin/distribute') {

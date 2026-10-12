@@ -2750,7 +2750,7 @@ function noteDeposit(sol, sig, from) {
   // SOL you sent to the treasury yourself: shown in the box with its signature, kept out of the fee total
   if (!(sol > 0)) return;
   feeFX(sol);
-  log(`You put ${fmtSol(sol)} SOL in the treasury${from ? ' from ' + String(from).slice(0, 4) + '…' + String(from).slice(-4) : ''}.`, 'gain', 'vault'); tx(null, 'deposit', '+' + fmtSol(sol) + ' SOL', 'from your wallet'); if (sig) txs[0].sig = sig;
+  log(`${fmtSol(sol)} SOL arrived in the treasury.`, 'gain', 'vault'); tx(null, 'deposit', '+' + fmtSol(sol) + ' SOL', 'into the treasury'); if (sig) txs[0].sig = sig;
 }
 function noteFees(sol, sig) {
   if (!(sol > 0)) return;
