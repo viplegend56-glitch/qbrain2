@@ -28,9 +28,9 @@ const DEFAULTS = {
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
-  chain: { mode: 'off', buyQi: true, maxPaySol: 0.2, dayCapSol: 2, testFlat: 0.001 }, // mode: off = sandbox (the box only) · dry (log what would be sent) · test (real transactions, every payment testFlat SOL, lab pay a hundredth) · live (the real deal)
+  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001 }, // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, lab pay a hundredth) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
-  gas: { auto: true, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; under `min` the treasury refills it
+  gas: { auto: false, floor: 0.01, min: 0.002 }, // every cat keeps `floor` SOL for fees; the admin table flags a cat under `min` so you can send it SOL by hand
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
   SOL_USD: 150, START_MC_USD: 3100,
   sellCapPct: 5,          // max % of its stack a cat may sell per day (enforced once the cats trade for real)
@@ -69,7 +69,8 @@ const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() 
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
 engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery((config.payoutEveryMin || 20) * 60); engine.setPriceMul(config.PRICE_MUL || 1);
-const applyChainMode = () => { const m = (config.chain || {}).mode || 'off'; engine.setLiveTx(m === 'live' || m === 'dry' || m === 'test'); engine.setDryRun(m === 'dry'); engine.setTestFlat(m === 'test' ? (config.chain.testFlat || 0.001) : 0); }; applyChainMode();
+const applyChainMode = () => { const ch = config.chain || {}; if (ch.mode === 'dry') ch.mode = 'off'; ch.buyQi = true; const m = ch.mode || 'off'; engine.setLiveTx(m === 'live' || m === 'test'); engine.setDryRun(false); engine.setTestFlat(m === 'test' ? (ch.testFlat || 0.001) : 0); }; applyChainMode();
+const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.testFlat || 0.001) : 0);
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
   logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
@@ -191,7 +192,7 @@ async function topUpGas() {
   } catch (e) { console.error('gas top-up failed', e.message); for (const o of outs) gasLast[o.name] = now; }
   finally { busy = false; }
 }
-setInterval(() => { topUpGas().catch(e => console.error('topUpGas', e)); }, 45000);
+// (no automatic gas top-ups: the admin table shows 'needs SOL' and you send it by hand)
 
 // ---------- persistence ----------
 setInterval(saveState, 30000);
@@ -355,35 +356,10 @@ const when = () => Date.now() + (5 + Math.random() * Math.max(0, (config.auto.ma
 const stamp = () => new Date().toISOString().slice(11, 16) + ' UTC';
 async function autoTick() {
   const a = config.auto, ws = wallets.load();
-  if (!ws.ready || !RPC_URL) return;
-  const now = Date.now();
-  if (a.distribute) { if (!a.nextDist || a.nextDist > now + a.maxMin * 60000) { a.nextDist = when(); saveConfig(); } }
-  if (a.sell && (config.CA || config.QI_MINT)) { if (!a.nextSell || a.nextSell > now + a.maxMin * 60000) { a.nextSell = when(); saveConfig(); } }
-  if (busy) return;
-  if (a.distribute && engine.payoutDue()) { // the box's payout timer: pay exactly what is owed
+  if (!ws.ready || !RPC_URL || busy) return;
+  if (a.distribute && engine.payoutDue()) { // automatic payouts: when the box's timer fires, pay exactly what is owed
     busy = true;
     try { a.lastDist = stamp() + ' · payout: ' + await payOwed(); } catch (e) { a.lastDist = stamp() + ' · payout failed: ' + e.message; console.error('payout', e); engine.settle([]); }
-    finally { busy = false; saveConfig(); }
-  }
-  if (a.distribute && a.distPct > 0 && now >= a.nextDist) {
-    a.nextDist = when(); busy = true;
-    try {
-      await pollBalances();
-      const tre = balances.treasury && balances.treasury.sol, names = engine.cats.map(c => c.name);
-      const amount = Math.floor(Math.max(0, (tre || 0) - a.distKeep - 0.005) * a.distPct / 100 * 1000) / 1000;
-      const tq = balances.treasury && balances.treasury.qi, qi = config.QI_MINT && typeof tq === 'number' ? Math.floor(tq * (a.qiPct || 0) / 100) : 0;
-      if (names.length && (amount >= 0.002 || qi >= 10)) { const b = { sol: amount >= 0.002 ? amount : 0, qi: qi >= 10 ? qi : 0 }; for (const n of names) b['dist_' + n] = 'on'; a.lastDist = stamp() + ' · ' + await distribute(b); }
-      else a.lastDist = stamp() + ' · skipped (treasury ' + (tre == null ? 'unread' : tre.toFixed(4) + ' SOL, nothing above the keep amount' + (config.QI_MINT ? ', no $QI to hand out' : '')) + ')';
-    } catch (e) { a.lastDist = stamp() + ' · failed: ' + e.message; console.error('auto-distribute', e); }
-    finally { busy = false; saveConfig(); }
-  }
-  if (a.sell && (config.CA || config.QI_MINT) && now >= a.nextSell && !busy) {
-    a.nextSell = when(); busy = true;
-    try {
-      const names = engine.cats.map(c => c.name).filter(n => { const b = balances.cats[n]; if (!b) return false; return tokFor(n, 'auto') === 'qi' ? b.qi > 0 : (b.qcat > 0 && soldToday(n) + a.sellPct <= a.sellDayCap + 1e-9); });
-      if (names.length) { const r = await sellMany(names, a.sellPct, 'auto'); a.lastSell = stamp() + ' · ' + r.msg; }
-      else a.lastSell = stamp() + ' · skipped (every cat is at the daily cap or holds no tokens)';
-    } catch (e) { a.lastSell = stamp() + ' · failed: ' + e.message; console.error('auto-sell', e); }
     finally { busy = false; saveConfig(); }
   }
 }
@@ -399,7 +375,7 @@ const server = http.createServer(async (req, res) => {
       const ws = wallets.load();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' } },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -430,12 +406,12 @@ const server = http.createServer(async (req, res) => {
         engine.setSimulateFees(simulateFees()); engine.setQiConfig(0, config.QI_SOL); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery(config.payoutEveryMin * 60); engine.setPriceMul(config.PRICE_MUL);
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved');
       }
-      if (p === '/admin/auto') {
-        const a = config.auto;
-        a.distribute = !!b.distribute; a.sell = !!b.sell && !!(config.CA || config.QI_MINT);
-        for (const k of ['distKeep', 'distPct', 'qiPct', 'sellPct', 'sellDayCap', 'maxMin']) if (k in b && b[k] !== '') a[k] = Number(b[k]);
-        a.maxMin = Math.max(5, a.maxMin || 20); a.nextDist = a.distribute ? when() : 0; a.nextSell = a.sell ? when() : 0;
-        saveConfig(); return back(res, 'autopilot ' + (a.distribute || a.sell ? 'on: ' + [a.distribute ? 'distribute' : '', a.sell ? 'sell' : ''].filter(Boolean).join(' + ') : 'off'));
+      if (p === '/admin/payouts') { // the payouts section: automatic on/off, the timer, the lab pay range
+        const a = config.auto; a.distribute = !!b.auto; a.sell = false; a.distPct = 0;
+        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'payoutEveryMin']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.payoutEveryMin = Math.max(5, config.payoutEveryMin || 20);
+        engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPayoutEvery(config.payoutEveryMin * 60);
+        saveConfig(); return back(res, 'payouts: ' + (a.distribute ? 'automatic, every ' + config.payoutEveryMin + ' min' : 'manual') + ' · lab pay $' + config.LAB_PAY_MIN_USD + '–$' + config.LAB_PAY_MAX_USD);
       }
       if (p === '/admin/task') {
         const t = engine.postTask({ kind: b.kind, bounty: Math.max(0, Number(b.bounty) || 0) }, 'the operator');
@@ -447,9 +423,9 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
       if (p === '/admin/chain') {
-        const ch = config.chain; ch.mode = ['off', 'dry', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = !!b.buyQi; if (b.testFlat !== '' && b.testFlat != null) ch.testFlat = Math.max(0.0001, Number(b.testFlat));
-        if (b.maxPaySol !== '' && b.maxPaySol != null) ch.maxPaySol = Math.max(0.001, Number(b.maxPaySol)); if (b.dayCapSol !== '' && b.dayCapSol != null) ch.dayCapSol = Math.max(0.01, Number(b.dayCapSol));
-        applyChainMode(); saveConfig(); return back(res, 'economy mode: ' + ({ off: 'sandbox', dry: 'dry-run', test: 'real testing', live: 'the real deal' })[ch.mode]);
+        const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
+        if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
+        applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') {
         if (busy) return back(res, 'another transaction is still running', true);

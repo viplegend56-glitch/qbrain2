@@ -68,21 +68,78 @@ function assertKnown(ws, pub) {
 
 const MEMO_PROGRAM = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 function memoIx(text) { const { PublicKey, TransactionInstruction } = libs(); return new TransactionInstruction({ programId: new PublicKey(MEMO_PROGRAM), keys: [], data: Buffer.from(String(text).slice(0, 200), 'utf8') }); }
+
+// ---- sending ----
+// A Solana transaction is only valid for ~150 blocks (60–90 s) after its blockhash. The library default sends it a few
+// times and gives up, so on a busy network a zero-tip transfer dies with "block height exceeded". Here every transaction
+// gets a priority fee read from the network plus a compute budget, is re-broadcast every 2 s until it confirms, and is
+// re-signed with a fresh blockhash (up to 3 times) if one does expire. Before anything is called failed, the signature
+// is looked up once more, so a payment that did land is never reported as lost.
+const PRIO = { min: 20000, max: 1500000, fallback: 150000 }; // micro-lamports per compute unit (1.5M × 50k CU = 0.000075 SOL at most)
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function priorityFee(conn) {
+  try {
+    const fees = await conn.getRecentPrioritizationFees();
+    const vals = fees.map(f => f.prioritizationFee).filter(v => v > 0).sort((a, b) => a - b);
+    if (!vals.length) return PRIO.fallback;
+    const p75 = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.75))];
+    return Math.min(PRIO.max, Math.max(PRIO.min, p75 * 2));
+  } catch { return PRIO.fallback; }
+}
+const isConfirmed = st => !!st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized');
+async function statusOf(conn, sig, history) {
+  try { const r = await conn.getSignatureStatuses([sig], history ? { searchTransactionHistory: true } : undefined); return r.value && r.value[0]; } catch { return null; }
+}
+// Broadcasts an already-signed transaction until it confirms or its blockhash expires. Returns 'ok' | 'expired'; throws on an on-chain error.
+async function broadcast(conn, raw, sig, lastValidBlockHeight) {
+  for (let n = 0; n < 60; n++) {
+    const st = await statusOf(conn, sig);
+    if (st && st.err) throw new Error('failed on chain: ' + JSON.stringify(st.err));
+    if (isConfirmed(st)) return 'ok';
+    let height = 0; try { height = await conn.getBlockHeight('confirmed'); } catch {}
+    if (height && height > lastValidBlockHeight) break;
+    try { await conn.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }); } catch {}
+    await sleep(2000);
+  }
+  await sleep(1500);
+  const st = await statusOf(conn, sig, true);
+  if (st && st.err) throw new Error('failed on chain: ' + JSON.stringify(st.err));
+  return isConfirmed(st) ? 'ok' : 'expired';
+}
+// ixs: the instructions; signers[0] pays. Adds the compute budget, signs with a fresh blockhash, broadcasts, retries on expiry. Returns the signature.
+async function sendTx(conn, ixs, signers, cuLimit) {
+  const { Transaction, ComputeBudgetProgram } = libs();
+  const price = await priorityFee(conn);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const bh = await conn.getLatestBlockhash('confirmed');
+    const tx = new Transaction({ recentBlockhash: bh.blockhash, feePayer: signers[0].publicKey });
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: Math.round(price * attempt) }));
+    for (const ix of ixs) tx.add(ix);
+    tx.sign(...signers);
+    const raw = tx.serialize();
+    const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 0 }); // a preflight failure (no funds, bad account) throws here and is not retried
+    const r = await broadcast(conn, raw, sig, bh.lastValidBlockHeight);
+    if (r === 'ok') return sig;
+    console.warn(`tx ${sig.slice(0, 8)}… expired (attempt ${attempt}), re-signing with a fresh blockhash`);
+  }
+  throw new Error('transaction expired 3 times (network congested or RPC slow) — nothing was sent');
+}
+
 // outs: [{ pub, sol }] — one transaction, several transfers, an optional memo so Solscan shows what it was. Returns the signature.
 // A transfer to an account that may not exist yet (a fresh cat wallet) must be at least the rent minimum; one to the treasury or a funded cat can be any size.
 async function transferSol(rpcUrl, ws, fromKp, outs, memo, allowSmall) {
-  const { Connection, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } = libs();
+  const { Connection, PublicKey, SystemProgram } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
-  const tx = new Transaction();
+  const ixs = [];
   for (const o of outs) {
     assertKnown(ws, o.pub);
     const lamports = Math.floor(o.sol * LAMPORTS);
     if (lamports < 900000 && !allowSmall) throw new Error(`each transfer must be at least 0.0009 SOL (rent); ${o.pub.slice(0, 4)}… would get ${o.sol}`);
     if (lamports < 1000) throw new Error('transfer too small');
-    tx.add(SystemProgram.transfer({ fromPubkey: fromKp.publicKey, toPubkey: new PublicKey(o.pub), lamports }));
+    ixs.push(SystemProgram.transfer({ fromPubkey: fromKp.publicKey, toPubkey: new PublicKey(o.pub), lamports }));
   }
-  if (memo) tx.add(memoIx(memo));
-  return sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 });
+  if (memo) ixs.push(memoIx(memo));
+  return sendTx(conn, ixs, [fromKp], 30000 + 5000 * outs.length);
 }
 
 // ---- SPL tokens, by hand (no extra dependency): the mint's program + decimals, associated accounts, transferChecked ----
@@ -102,13 +159,13 @@ async function mintInfo(rpcUrl, mint) {
 function ataOf(owner, mint, program) { const { PublicKey } = libs(); return PublicKey.findProgramAddressSync([owner.toBuffer(), new PublicKey(program).toBuffer(), mint.toBuffer()], new PublicKey(ATA_PROGRAM))[0]; }
 // outs: [{ pub, raw }] (raw = smallest units). Creates the cat's token account if it has none (idempotent), then transferChecked. Five cats per transaction. Returns the signatures.
 async function transferToken(rpcUrl, ws, fromKp, mint, outs, memo) {
-  const { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } = libs();
+  const { Connection, PublicKey, SystemProgram, TransactionInstruction } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
   const { program, decimals } = await mintInfo(rpcUrl, mint);
   const mintPk = new PublicKey(mint), progPk = new PublicKey(program), fromAta = ataOf(fromKp.publicKey, mintPk, program);
   const sigs = [];
   for (let i = 0; i < outs.length; i += 5) {
-    const tx = new Transaction();
+    const ixs = [], tx = { add: ix => ixs.push(ix), instructions: ixs };
     for (const o of outs.slice(i, i + 5)) {
       assertKnown(ws, o.pub);
       const raw = BigInt(Math.floor(o.raw)); if (raw <= 0n) continue;
@@ -122,9 +179,9 @@ async function transferToken(rpcUrl, ws, fromKp, mint, outs, memo) {
         { pubkey: fromAta, isSigner: false, isWritable: true }, { pubkey: mintPk, isSigner: false, isWritable: false }, { pubkey: toAta, isSigner: false, isWritable: true }, { pubkey: fromKp.publicKey, isSigner: true, isWritable: false },
       ], data }));
     }
-    if (!tx.instructions.length) continue;
+    if (!ixs.length) continue;
     if (memo) tx.add(memoIx(memo));
-    sigs.push(await sendAndConfirmTransaction(conn, tx, [fromKp], { commitment: 'confirmed', maxRetries: 3 }));
+    sigs.push(await sendTx(conn, ixs, [fromKp], 40000 + 45000 * Math.ceil(ixs.length / 2))); // an account creation + a transfer per cat
   }
   return { sigs, decimals };
 }
@@ -147,10 +204,11 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) 
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
   tx.sign([kp]);
   const conn = new Connection(rpcUrl, 'confirmed');
-  const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
-  const bh = await conn.getLatestBlockhash('confirmed');
-  const conf = await conn.confirmTransaction({ signature: sig, blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight }, 'confirmed');
-  if (conf.value && conf.value.err) throw new Error('swap failed on chain: ' + JSON.stringify(conf.value.err));
+  const raw = tx.serialize();
+  const bh = await conn.getLatestBlockhash('confirmed'); // Jupiter stamped the blockhash moments ago; this height is a close upper bound for when it expires
+  const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 0 });
+  const r = await broadcast(conn, raw, sig, bh.lastValidBlockHeight);
+  if (r !== 'ok') throw new Error('swap expired before it confirmed (network congested) — nothing was swapped, try again');
   return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
 }
 

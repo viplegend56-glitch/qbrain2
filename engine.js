@@ -637,7 +637,9 @@ const fmtQi = n => fmtQ(n);
 const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how readily each personality parts with its $QI when broke; the rest hold and sell a slice of $QCATS instead
 // survival gets dearer as the chart climbs: x1 at the starting cap, x4 at 16x, x8 at 64x, capped at x40
 const priceMul = () => (Number(CONFIG.PRICE_MUL) > 0 ? Number(CONFIG.PRICE_MUL) : 1); // every price in the box times this; set by hand in the brain's admin (x1 by default)
-const costOf = (base, c) => base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
+const liveTx = () => CONFIG.LIVE_TX === true; // set by the brain once it is executing for real
+const testFlat = () => (Number(CONFIG.TEST_FLAT) > 0 ? Number(CONFIG.TEST_FLAT) : 0); // the brain's 'default testing' mode: every price in the box is this flat amount of SOL
+const costOf = (base, c) => testFlat() ? (base > 0 ? testFlat() : 0) : base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
 const spare = c => Math.max(0, c.sol - costOf(RESERVE, c));
 // ---- skills: a cat gets better at each kind of job the more it does it. Fewer failed runs, bigger circuits, faster work.
 // It is slow on purpose: the tenth job of a kind is a small step, the hundredth is noticeable, the thousandth is a different cat.
@@ -712,7 +714,7 @@ const TH = {
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
 
-const fmtSol = v => (Number(v) || 0).toFixed(2); // two decimals, everywhere, by request
+const fmtSol = v => { const n = Number(v) || 0; return n !== 0 && Math.abs(n) < 0.005 ? n.toFixed(3) : n.toFixed(2); }; // x.xx everywhere; only a testing-mode price (0.001) gets a third place so it does not read as 0.00 // two decimals, everywhere, by request
 const fmtQ = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'K' : Math.round(v).toLocaleString('en-US'));
 const fmtUsd = v => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? '$' + Math.round(v / 1e3) + 'K' : v >= 1e4 ? '$' + (v / 1e3).toFixed(1) + 'K' : v >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + Math.round(v));
 const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
@@ -1821,8 +1823,8 @@ function problemFor(c, pr) {
 function setNote(id, text) { const e = research.find(x => x.id === id); if (!e || !text) return false; e.text = text; e.ai = true; const c = cats.find(x => x.name === e.cat); if (c && c.notes) { const n = c.notes.find(x => x.id === id); if (n) n.text = text; } return true; }
 // ---------- on-chain intents: when the wallets are live, every payment the box decides becomes a transaction the brain sends ----------
 const intents = []; let intentSeq = 0; const intentLog = []; // queued, newest last; intentLog: what happened, newest first
-const liveTx = () => CONFIG.LIVE_TX === true; // set by the brain once it is executing for real (or in dry-run)
-const testFlat = () => (Number(CONFIG.TEST_FLAT) > 0 ? Number(CONFIG.TEST_FLAT) : 0); // real-testing mode: every payment the cats make is this flat amount of SOL, so the plumbing can be tested for cents
+// (liveTx / testFlat are defined with the prices, above)
+// real-testing mode: every payment the cats make is this flat amount of SOL, so the plumbing can be tested for cents
 function queueIntent(i) { i.id = 'I' + (++intentSeq); i.at = T; i.t = clock(simMin); i.state = 'queued'; intents.push(i); if (intents.length > 500) intents.shift(); return i; }
 function intentDone(id, sig) { const k = intents.findIndex(x => x.id === id); if (k < 0) return false; const i = intents.splice(k, 1)[0]; i.state = 'done'; i.sig = sig || null; intentLog.unshift(i); if (intentLog.length > 200) intentLog.pop();
   const row = txs.find(x => x.intent === id); if (row && sig) row.sig = sig; const c = cats.find(x => x.name === i.cat); if (c) { const h = (c.hist || []).find(x => x.intent === id); if (h && sig) h.sig = sig; } return true; }
