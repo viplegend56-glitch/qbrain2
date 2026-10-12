@@ -323,7 +323,7 @@ function send(res, status, body, type = 'application/json', extra = {}) {
   res.writeHead(status, h); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 const redirect = (res, to) => send(res, 303, '', 'text/plain', { Location: to });
-const back = (res, msg, bad) => redirect(res, '/admin?' + (bad ? 'err=' : 'msg=') + encodeURIComponent(msg));
+const back = (res, msg, bad) => (res.viaFetch ? send(res, 200, { ok: !bad, msg }) : redirect(res, '/admin?' + (bad ? 'err=' : 'msg=') + encodeURIComponent(msg))); // the admin page's buttons call in the background and get a note back; a plain form post still gets the old redirect
 function readBody(req) { return new Promise(r => { let d = ''; req.on('data', c => { d += c; if (d.length > 1e6) req.destroy(); }); req.on('end', () => { const out = {}; try { if ((req.headers['content-type'] || '').includes('json')) Object.assign(out, JSON.parse(d || '{}')); else for (const [k, v] of new URLSearchParams(d)) out[k] = v; } catch (_) {} r(out); }); }); }
 function authed(req, res) {
   if (!ADMIN_PASSWORD) { send(res, 503, 'Set ADMIN_PASSWORD in the environment to enable /admin.', 'text/plain'); return false; }
@@ -471,6 +471,7 @@ const server = http.createServer(async (req, res) => {
       if (!authed(req, res)) return;
       if (req.method === 'GET' && p === '/admin') return send(res, 200, adminPage({ flash: u.searchParams.get('msg') || '', err: u.searchParams.get('err') || '' }), 'text/html');
       if (req.method !== 'POST') return send(res, 404, 'not found', 'text/plain');
+      res.viaFetch = req.headers['x-requested-with'] === 'fetch';
       const b = await readBody(req);
       if (p === '/admin/config') {
         const notes0 = [];
@@ -499,8 +500,6 @@ const server = http.createServer(async (req, res) => {
         if (!t) return back(res, 'the box already has three things lying about; wait for the cats to clear one', true);
         return back(res, `dropped ${t.title} into the box (tier ${t.tier})`);
       }
-      if (p === '/admin/release') { if (b.name) engine.setReleased([b.name]); return back(res, b.name + ' released'); }
-      if (p === '/admin/unrelease') { const ok = b.name && engine.unrelease(b.name); return back(res, ok ? b.name + ' taken out' : 'not in the box', !ok); }
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
       if (p === '/admin/pause') { // transactions paused: the cats stop spending and earning and nothing is sent; the operator's own jobs (Distribute, Pull back) still run
@@ -548,25 +547,8 @@ const server = http.createServer(async (req, res) => {
         });
         return back(res, 'queued — see Pending');
       }
-      if (p === '/admin/topup') { // every ticked cat below the target gets the difference from the treasury, in one transaction
-        const ws = wallets.load(); if (!ws.ready || !RPC_URL) return back(res, 'wallets or RPC not ready', true);
-        const target = Math.max(0.002, Math.min(5, Number(b.target) || 0)); if (!(target > 0)) return back(res, 'enter a target balance', true);
-        const names = wallets.ROSTER_NAMES.filter(n => b['dist_' + n]); if (!names.length) return back(res, 'no cat is ticked', true);
-        queueJob('topup', `top up ${names.length} cats to ${target.toFixed(3)} SOL`, async () => {
-          await pollBalances();
-          const outs = names.map(n => ({ name: n, pub: ws.cats.find(c => c.name === n).pub, sol: Math.round((target - ((balances.cats[n] || {}).sol || 0)) * 1e6) / 1e6 })).filter(o => o.sol >= 0.0002);
-          if (!outs.length) return 'every ticked cat is already at or above ' + target.toFixed(3) + ' SOL';
-          const need = outs.reduce((a, o) => a + o.sol, 0), tre = balances.treasury && balances.treasury.sol;
-          if (typeof tre === 'number' && need > tre - 0.01) throw new Error(`treasury has ${tre.toFixed(4)} SOL; ${need.toFixed(4)} needed`);
-          const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs, `${config.TICKER} · top-up`, true);
-          for (const o of outs) { engine.noteFund(o.name, o.sol, sig); chainNote({ id: 'T', type: 'topup', cat: 'treasury', to: o.name, sol: o.sol, memo: 'top-up to ' + target.toFixed(3) + ' SOL', ok: true, sig }); }
-          config.lastTreasurySol = (tre || 0) - need; saveConfig(); pollBalances();
-          return `topped up ${outs.map(o => o.name + ' +' + o.sol.toFixed(4)).join(', ')} · ${sig.slice(0, 8)}…`;
-        });
-        return back(res, 'queued — see Pending');
-      }
       if (p === '/admin/puppet') { const act = String(b.act || ''), tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
-      if (p === '/admin/reset') { if (b.confirm !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
+      if (p === '/admin/reset') { if ((b.word || b.confirm) !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
       if (p === '/admin/wallets/generate') {
         return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html'); // a fresh set, shown once; nothing changes until the host's TREASURY_KEY and CAT_KEYS are replaced and the service restarts
       }

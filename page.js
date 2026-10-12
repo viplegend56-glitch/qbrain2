@@ -23,6 +23,8 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   .sub{color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:12.5px;margin-bottom:20px}
   .flash{background:rgba(92,255,170,.12);border:1px solid rgba(92,255,170,.5);padding:8px 12px;margin:0 0 16px;font-family:"IBM Plex Mono",monospace;font-size:13px;word-break:break-word}
   .flash.bad{background:rgba(255,79,174,.1);border-color:rgba(255,79,174,.6)}
+  .toast{position:fixed;right:18px;bottom:18px;z-index:50;max-width:min(560px,calc(100vw - 36px));background:#0E1530;border:1px solid rgba(92,255,170,.6);box-shadow:0 10px 30px rgba(0,0,0,.5);padding:10px 14px;font-family:"IBM Plex Mono",monospace;font-size:13px;word-break:break-word;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none}
+  .toast.on{opacity:1;transform:none;pointer-events:auto}.toast.bad{border-color:rgba(255,79,174,.7)}.toast.busy{border-color:rgba(247,200,106,.6)}
   .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
   .tile{border:1px solid var(--line);background:var(--panel);padding:12px 14px}.tile small{display:block;color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:11px}.tile b{font:700 20px "Chakra Petch",sans-serif;color:var(--gold)}
   .tile.c b{color:var(--cyan)}.tile.g b{color:var(--green)}.tile.m b{color:var(--magenta)}
@@ -58,7 +60,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     const w = wallets.ready ? wallets.cats[i] : null;
     const b = balances && balances.cats && balances.cats[name];
     return `<tr><td><b>${esc(name)}</b><br><span class="mut">${esc(job)}</span></td>
-      <td>${c ? `<span class="ok">in the box</span><br><form class="inline" method="post" action="/admin/unrelease" onsubmit="return confirm('Take ${esc(name)} out of the box?')"><input type="hidden" name="name" value="${esc(name)}"><button class="btn ghost mini">take out</button></form>` : `<span class="mut">at ${usd(engine.UNLOCK_MC[i])} MC</span><br><form class="inline" method="post" action="/admin/release"><input type="hidden" name="name" value="${esc(name)}"><button class="btn ghost mini">release now</button></form>`}</td>
+      <td>${c ? `<span class="ok">in the box</span>` : `<span class="mut">on its way in</span>`}</td>
       <td>${(() => { const t = c ? c.trait : trait; return esc(engine.TRAITS[t] ? engine.TRAITS[t].label : t); })()}</td>
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
@@ -90,7 +92,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   const walletsReady = wallets.ready && env.RPC_URL;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>brain · admin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet"><style>${css}</style></head><body><div class="wrap">
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet"><style>${css}</style></head><body><div class="wrap" id="app">
   <h1>${esc(config.NAME)} <span>· brain</span></h1>
   <div class="sub">day ${snap.day} · ${esc(snap.clock)} in the box · up ${Math.round(process.uptime() / 60)} min · rpc ${env.RPC_URL ? '<span class="ok">set</span>' : '<span class="bad">RPC_URL not set</span>'} · wallets ${wallets.ready ? '<span class="ok">loaded</span>' : '<span class="bad">' + esc(wallets.reason) + '</span>'} · fees ${env.simulateFees ? '<span class="mut">simulated (no CA yet)</span>' : '<span class="ok">real</span>'} · ai dialogue ${env.llm && env.llm.enabled ? '<span class="ok">on</span> <span class="mut">(' + esc(env.llm.model) + (env.llm.calls ? ' · ' + env.llm.ok + '/' + env.llm.calls + ' ok' : '') + ')</span>' + (env.llm.lastErr ? ' <span class="bad">' + esc(env.llm.lastErr.slice(0, 80)) + '</span>' : '') : '<span class="mut">off (set LLM_API_KEY)</span>'}${busy ? ' · <span class="bad">transaction running…</span>' : ''}</div>
   ${flash ? `<div class="flash">${esc(flash)}</div>` : ''}${err ? `<div class="flash bad">${esc(err)}</div>` : ''}
@@ -113,7 +115,6 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' $QI' : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
-    <p class="mut" style="margin:0 0 6px">Hand out SOL (split by chores done) and the ${esc(config.TICKER)} starting stack (the same amount to every ticked cat) from the treasury. $QI is paid automatically per lab task and is not handed out here.</p>
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (Number(document.getElementById('dQcat').value) || 0).toLocaleString('en-US') + ' ${esc(config.TICKER)} per cat from the treasury to the ticked cats?')">
       <div class="dist">
         <div>
@@ -123,8 +124,6 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
           <label style="margin-top:10px">${esc(config.TICKER)} to give <b>each</b> ticked cat — treasury holds ${treQcat != null ? num(treQcat) + ' ' + esc(config.TICKER) : (config.CA ? 'reading…' : 'no CA set')}</label>
           <input type="number" name="qcatEach" id="dQcat" min="0" step="1" value="0" ${treQcat != null ? `max="${Math.floor(treQcat)}" placeholder="${esc(config.START_QCATS || 10000)}"` : 'disabled'} style="max-width:220px">
           <div class="chk" style="margin-top:12px">${distChecks}</div>${allNone('dchk')}
-          <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)"><label style="margin-top:0">or: top every ticked cat up to this balance (SOL) — only the ones below it, only the difference, one transaction</label>
-            <div style="display:flex;gap:10px;align-items:center"><input type="number" id="tuTarget" step="0.001" min="0.002" max="5" value="0.02" style="max-width:160px"> <button type="button" class="btn ghost" id="tuBtn" style="margin-top:0" ${busy ? 'disabled' : ''}>Top up</button></div></div>
         </div>
         <div style="text-align:right"><div class="big"><span id="dAmt">0</span> SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px"><span id="dN">0</span> cats · <span id="dQcatTot">0</span> ${esc(config.TICKER)} in all</div>
           <button class="btn gold" id="dBtn" ${busy ? 'disabled data-busy="1"' : ''}>Distribute</button></div>
@@ -134,7 +133,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
     ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
-    <p class="mut" style="margin:0 0 6px">Everything here is paid on its own, from the treasury, the moment it is earned; the price multiplier (Economy) scales all of it. <b>Chores</b> pay SOL: two meals' worth for a small one, three and a half for a medium, five for a big one. <b>The lab</b> pays $QI when a cat fills a bar, within the range below. <b>The scrapyard</b> pays ${esc(config.TICKER)} at the chart price: a tier-1 job a dollar and a half, tier 2 two and a half, tier 3 five. <b>Payroll</b>: every 30 minutes, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll; a cat with SOL in paw gets nothing. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ', due: ' + esc(due.join(', ')) : ', nobody due as things stand'; })()}. A payout that cannot be sent is retried every ten minutes.</p>
+    <p class="mut" style="margin:0 0 6px">All automatic, from the treasury, scaled by the multiplier. Chores pay SOL, the lab pays $QI (range below), the scrapyard pays ${esc(config.TICKER)} ($1.50 / $2.50 / $5 by tier), payroll every 30 min refunds a cat with no SOL what it spent. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ': ' + esc(due.join(', ')) : ''; })()}.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
         <div class="row">
@@ -179,14 +178,6 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     </form>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
-  <div class="panel"><div class="ph"><span>Pending</span><small class="mut">your jobs run first, one at a time; the cats' own transactions wait behind them · ${busy ? '<span class="bad">one is running now</span>' : 'idle'}</small></div><div class="pb">
-    ${(() => { const q = adminJobs.filter(j => j.state === 'queued' || j.state === 'running'), done = adminJobs.filter(j => j.state === 'done' || j.state === 'failed').slice(-5).reverse(), cats = engine.intents.slice(0, 12);
-      return `<div class="row">
-        <div><label>your jobs</label>${q.length ? `<table>${q.map(j => `<tr><td>${j.state === 'running' ? '<span class="ok">running</span>' : 'queued'}</td><td>${esc(j.label)}</td><td class="mut">${ago(j.at)}</td></tr>`).join('')}</table>` : '<div class="mut">nothing queued</div>'}
-          ${done.length ? `<label>last results</label><table>${done.map(j => `<tr><td>${j.state === 'done' ? '<span class="ok">done</span>' : '<span class="bad">failed</span>'}</td><td style="word-break:break-word">${esc(j.label)} — ${esc(String(j.result || '').slice(0, 220))}</td></tr>`).join('')}</table>` : ''}</div>
-        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? Math.round(i.qi).toLocaleString('en-US') + ' $QI' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
-      </div>`; })()}
-  </div></div>
 
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut"><span class="ok">every payment the cats make is a real transaction at the prices as set</span></small></div><div class="pb">
     ${walletsReady ? `
@@ -215,17 +206,33 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Box log</span><small class="mut">latest first</small></div><div class="pb log">${logs.map(l => `<div><span class="t">${esc(l.t)}</span><span class="${esc(l.kind)}">${esc(l.text)}</span></div>`).join('') || '<span class="mut">nothing yet</span>'}</div></div>
 
-  <div class="foot"><span>saved to ${esc(env.DATA_DIR)}</span><form method="post" action="/admin/reset" class="inline" onsubmit="return confirm('Reset the box to day zero? Cats, ledger and releases are wiped. Wallets and settings stay.')"><input type="text" name="confirm" placeholder="type RESET"> <button>reset the box</button></form></div>
+  <div class="panel"><div class="ph"><span>Pending</span><small class="mut">your jobs run first, one at a time; the cats' own transactions wait behind them · ${busy ? '<span class="bad">one is running now</span>' : 'idle'}</small></div><div class="pb">
+    ${(() => { const q = adminJobs.filter(j => j.state === 'queued' || j.state === 'running'), done = adminJobs.filter(j => j.state === 'done' || j.state === 'failed').slice(-5).reverse(), cats = engine.intents.slice(0, 12);
+      return `<div class="row">
+        <div><label>your jobs</label>${q.length ? `<table>${q.map(j => `<tr><td>${j.state === 'running' ? '<span class="ok">running</span>' : 'queued'}</td><td>${esc(j.label)}</td><td class="mut">${ago(j.at)}</td></tr>`).join('')}</table>` : '<div class="mut">nothing queued</div>'}
+          ${done.length ? `<label>last results</label><table>${done.map(j => `<tr><td>${j.state === 'done' ? '<span class="ok">done</span>' : '<span class="bad">failed</span>'}</td><td style="word-break:break-word">${esc(j.label)} — ${esc(String(j.result || '').slice(0, 220))}</td></tr>`).join('')}</table>` : ''}</div>
+        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? Math.round(i.qi).toLocaleString('en-US') + ' $QI' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
+      </div>`; })()}
+  </div></div>
+
+  <div class="foot"><span>saved to ${esc(env.DATA_DIR)}</span><form method="post" action="/admin/reset" class="inline" onsubmit="return window.confirm('Reset the box to day zero? Cats, ledger and releases are wiped. Wallets and settings stay.')"><input type="text" name="word" placeholder="type RESET"> <button>reset the box</button></form></div>
   </div>
+  <div class="toast" id="toast"></div>
   <script>
-  (function(){
+  function initAdmin(){
     var r=document.getElementById('dRange'); if(r){ var out=document.getElementById('dSol'), amt=document.getElementById('dAmt'), n=document.getElementById('dN'), btn=document.getElementById('dBtn');
       var qi=document.getElementById('dQcat'), qt=document.getElementById('dQcatTot'); function upd(){ var v=Number(r.value), on=document.querySelectorAll('.dchk:checked').length, q=qi?Number(qi.value)||0:0; out.value=v.toFixed(3); amt.textContent=v.toFixed(3); n.textContent=on; if(qt) qt.textContent=(q*on).toLocaleString('en-US'); if(btn&&!btn.dataset.busy) btn.disabled=!(on>0&&((v>0&&v>=0.002)||q>=1)); }
       r.addEventListener('input',upd); if(qi) qi.addEventListener('input',upd); document.querySelectorAll('.dchk').forEach(function(c){c.addEventListener('change',upd)}); upd(); }
-    var tu=document.getElementById('tuBtn'); if(tu){ tu.addEventListener('click',function(){ var t=Number(document.getElementById('tuTarget').value)||0, on=[].slice.call(document.querySelectorAll('.dchk:checked')); if(!(t>0)||!on.length) return; if(!confirm('Top up '+on.length+' cats to '+t.toFixed(3)+' SOL from the treasury?')) return; var f=document.createElement('form'); f.method='post'; f.action='/admin/topup'; var add=function(n,v){ var i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; f.appendChild(i); }; add('target',t); on.forEach(function(c){ add(c.name,'on'); }); document.body.appendChild(f); f.submit(); }); }
     document.querySelectorAll('[data-all],[data-none]').forEach(function(b){ b.addEventListener('click',function(){ var cls=b.dataset.all||b.dataset.none, on=!!b.dataset.all; document.querySelectorAll('.'+cls).forEach(function(c){ if(!c.disabled) c.checked=on; c.dispatchEvent(new Event('change')); }); }); });
+    armForms();
     document.querySelectorAll('.addr').forEach(function(a){ a.addEventListener('click',function(){ var t=a.dataset.copy; (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){a.classList.add('did');setTimeout(function(){a.classList.remove('did')},1200)}).catch(function(){prompt('address',t)}); }); });
-  })();
+  }
+  // every button talks to the brain in the background: no reload, no jump; the page's numbers refresh in place and a note pops up bottom-right
+  var toastT=null; function toast(msg,bad,busy){ var t=document.getElementById('toast'); if(!t) return; t.textContent=msg; t.className='toast on'+(bad?' bad':'')+(busy?' busy':''); clearTimeout(toastT); if(!busy) toastT=setTimeout(function(){ t.className='toast'; }, bad?12000:6000); }
+  function refreshPage(){ return fetch('/admin',{headers:{'X-Requested-With':'fetch'},credentials:'same-origin'}).then(function(r){ return r.text(); }).then(function(html){ var y=window.scrollY, doc=new DOMParser().parseFromString(html,'text/html'), fresh=doc.getElementById('app'), app=document.getElementById('app'); if(!fresh||!app) return; var open={}; app.querySelectorAll('input[type=checkbox]').forEach(function(c){ if(c.name) open[c.name]=c.checked; }); app.innerHTML=fresh.innerHTML; app.querySelectorAll('input[type=checkbox]').forEach(function(c){ if(c.name in open) c.checked=open[c.name]; }); initAdmin(); window.scrollTo(0,y); requestAnimationFrame(function(){ window.scrollTo(0,y); setTimeout(function(){ window.scrollTo(0,y); },60); }); }); }
+  function armForms(){ document.querySelectorAll('form[method="post"]').forEach(function(f){ if(f.dataset.armed||f.action.indexOf('wallets/generate')>=0) return; f.dataset.armed='1'; f.addEventListener('submit',function(e){ if(e.defaultPrevented) return; e.preventDefault(); var fd=new FormData(f); if(e.submitter&&e.submitter.name) fd.append(e.submitter.name,e.submitter.value); var btns=f.querySelectorAll('button'); btns.forEach(function(b){ b.disabled=true; }); toast('working…',false,true);
+    fetch(f.action,{method:'POST',body:new URLSearchParams(fd),headers:{'X-Requested-With':'fetch'},credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){ toast(j.msg||'done',!j.ok); return refreshPage(); }).catch(function(err){ toast('could not reach the brain: '+err.message,true); btns.forEach(function(b){ b.disabled=false; }); }); }); }); }
+  initAdmin();
   </script>
   </body></html>`;
 }

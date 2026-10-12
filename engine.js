@@ -748,7 +748,7 @@ function sellTok(c) { // what a selling cat parts with: a forced choice (testing
   const starving = c.sol < costOf(FOOD, c) && c.hunger > 0.9; if (c.trait === 'loyal' && !starving) return QI;
   return Math.random() < (SELL_QI[c.trait] || 0.5) ? QI : TK;
 }
-function buyTok(c) { if (c.forceTok) return c.forceTok === 'qi' ? QI : TK; if (c.trait === 'loyal') return TK; return Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4) ? QI : TK; }
+function buyTok(c) { if (c.forceTok) return c.forceTok === 'qi' ? QI : TK; if (liveTx() && !qcatLive()) return QI; /* for real, with no CA yet, there is no $QCATS to buy */ if (c.trait === 'loyal') return TK; return Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4) ? QI : TK; }
 const shortOfSol = c => c.sol < costOf(FOOD, c) * 4;
 // what an act costs to start, so a cat never sets off for something it cannot pay for (forced trips from the admin puppet are let through)
 function canAfford(c, act) {
@@ -2723,7 +2723,7 @@ function update(c, dt) {
 let realMcap = null;      // when set, the chart follows the real market cap instead of the random walk
 let nextFee = rand(20, 50);
 let externalFees = 0;     // SOL dropped into the treasury from outside (real fee claims)
-function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; mkt.pinned = false; return; } realMcap = v; mkt.pinned = true; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; }
+function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; mkt.pinned = false; return; } const first = realMcap == null; realMcap = v; mkt.pinned = true; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; if (first) { mkt.mom = 0; mkt.hist = []; for (const c of cats) c.entry = mkt.price; } } // the first real read replaces the placeholder: every cat's entry price starts at the real chart, so nobody 'takes profit' on a number that never existed
 function setPaused(p) { CONFIG.PAUSED = !!p; } // transactions paused: no money moves, no wages, needs stand still; the cats keep wandering
 function dropFees(sol) { if (!(sol > 0)) return; stats.treasury += sol; stats.fees += sol; externalFees += sol; if (stats.treasury >= 0.02) stats.low = false; feeFX(sol); log(`Creator fees dropped ${fmtSol(sol)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); }
 function setReleased(names) { for (const n of names) { benched.delete(n); const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
@@ -2808,7 +2808,7 @@ function qcatGrant(list, sig) {
   let total = 0, n = 0;
   for (const { name, q } of list) {
     const c = cats.find(x => x.name === name); if (!c || !(q > 0)) continue;
-    c.qcat = (c.qcat || 0) + q; total += q; n++;
+    if (!(c.qcat > 0)) c.entry = mkt.price; c.qcat = (c.qcat || 0) + q; total += q; n++; // a stack handed out is priced at today's chart
     payFX(c); floatText(c, '+' + fmtQ(q) + ' ' + TK, '#5CFFAA');
     txSig(c, 'grant', '+' + fmtQ(q) + ' ' + TK, 'from the treasury', sig);
   }
@@ -2875,7 +2875,7 @@ function snapshot() {
 for (let i = 0; i < ROSTER.length; i++) if (UNLOCK_MC[i] <= 0) cats.push(makeCat(i));
 for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b) { a.grudge = rand(0.5, 0.9); a.grudgeOn = b.id; a.grudgeWhy = `${b.name} still owes it from last night`; } }
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
-log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
+log(`The box woke up. ${cats.length === 10 ? 'All ten cats are in.' : cats.map(c => c.name).join(' and ') + (cats.length === 1 ? ' is' : ' are') + ' in.'}`, 'info');
 stepWeather(0);
 return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, get paused() { return isPaused(); }, get payrollNext() { return payrollNext; }, payrollDue(name) { const c = cats.find(x => x.name === name); return !!c && payrollDue(c); }, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
