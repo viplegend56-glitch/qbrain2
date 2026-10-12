@@ -75,7 +75,7 @@ const hooks = {
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
-const applyChainMode = () => { const ch = config.chain || (config.chain = {}); ch.mode = 'live'; ch.buyQi = true; ch.maxPaySol = 1; ch.dayCapSol = 25; engine.setLiveTx(true); engine.setDryRun(false); engine.setTestFlat(0); }; applyChainMode(); // one mode: every transaction real, every price as priced. The caps are a fixed safety net against a bug, not a setting.
+const applyChainMode = () => { const ch = config.chain || (config.chain = {}); ch.mode = 'live'; ch.buyQi = true; ch.maxPaySol = 1; ch.dayCapSol = 25; ch.fundSwaps = true; engine.setLiveTx(true); engine.setDryRun(false); engine.setTestFlat(0); }; applyChainMode(); // one mode: every transaction real, every price as priced. The caps are a fixed safety net against a bug, not a setting.
 const testFlatNow = () => 0;
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
@@ -515,7 +515,6 @@ const server = http.createServer(async (req, res) => {
         const ch = config.chain;
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
         if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
-        if ('fundForm' in b) ch.fundSwaps = !!b.fundSwaps;
         applyChainMode(); saveConfig(); return back(res, 'economy saved · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }

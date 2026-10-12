@@ -402,7 +402,7 @@ const SCRAP_JOBS = [ // title, tier, what comes out of it
 ];
 const scrapPayBase = () => (Number(CONFIG.SCRAP_PAY) > 0 ? Number(CONFIG.SCRAP_PAY) : 100); // $QCATS a tier-1 job pays; tier 2 two and a half times that, tier 3 five times
 // a salvage job pays half a meal's worth of $QCATS at the chart price (tier 2 one and a quarter meals, tier 3 two and a half), capped at 25,000; with no chart yet, the admin's flat figure by tier
-const scrapPay = tier => { const f = [0, 1, 2.5, 5][tier]; if (mkt.pinned && mkt.price > 0) return Math.max(1, Math.min(25000, Math.round(costOf(FOOD) * 0.5 * f / mkt.price))); return Math.round(scrapPayBase() * f); };
+const scrapPay = tier => { const f = [0, 1, 2.5, 5][tier]; if (mkt.pinned && mkt.price > 0) return Math.max(1, Math.min(25000, Math.round(costOf(FOOD) * 0.5 * f / mkt.price))); return Math.round(scrapPayBase() * f * priceMul()); };
 const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
 function stepScrap() {
   if (!board.scrap) { board.scrap = []; board.scrapDone = []; }
@@ -636,6 +636,9 @@ const spendGas = c => { c.gas = Math.max(0, (c.gas == null ? GAS_FLOOR : c.gas) 
 const QI = '$QI';
 const labPayMin = () => (Number(CONFIG.LAB_PAY_MIN_USD) > 0 ? Number(CONFIG.LAB_PAY_MIN_USD) : 5) * priceMul(), labPayMax = () => (Number(CONFIG.LAB_PAY_MAX_USD) > 0 ? Number(CONFIG.LAB_PAY_MAX_USD) : 15) * priceMul(); // a filled bar pays between these, in dollars' worth of $QI; the admin's figures are for x1 and follow the price multiplier
 const qiUsd = () => qiSol() * (Number(CONFIG.SOL_USD) || 150); // dollars per $QI, from the chart once it is wired in
+const qcatUsd = () => (mkt.pinned && mkt.price > 0 ? mkt.price * (Number(CONFIG.SOL_USD) || 0) : 0); // dollars per $QCATS from the chart; 0 until there is one
+const usdOf = (n, perUnit) => (perUnit > 0 ? '$' + (n * perUnit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+const qcatWorth = n => { const u = usdOf(n, qcatUsd()); return u ? `${u} of ${TK} (${fmtQ(n)} now)` : `${fmtQ(n)} ${TK}`; }; // '$0.75 of $QCATS (25.0K now)', or just the count before the chart is read
 const qiFor = usd => Math.max(1, Math.round(usd / Math.max(1e-12, qiUsd()))); // how many $QI that many dollars is right now
 const qiPerJob = () => qiFor((labPayMin() + labPayMax()) / 2);
 // payouts: a cat is paid the moment its work is done — SOL for a chore, $QI for a lab task. In the box that is instant; in the real modes it is a
@@ -1128,7 +1131,7 @@ function finish(c, p) {
     } else c.task = null;
   } else if (a === 'gamble') {
     // a slice of spare SOL on one spin against the house. The house is the treasury: losses go in, wins come out. The odds favour the house a little.
-    const stake = testFlat() ? Math.min(c.sol, testFlat()) : Math.min(c.sol * 0.5, clamp(c.sol * rand(0.1, 0.25) * (c.tr.gamble > 1 ? 1.5 : 1), 0.01, 0.05)), jackpot = Math.random() < 0.08, won = jackpot || Math.random() < 0.42;
+    const stake = testFlat() ? Math.min(c.sol, testFlat()) : Math.min(c.sol * 0.5, clamp(c.sol * rand(0.1, 0.25) * (c.tr.gamble > 1 ? 1.5 : 1), costOf(0.01), costOf(0.05))), jackpot = Math.random() < 0.08, won = jackpot || Math.random() < 0.42;
     c.casinoT = T; c.lastPaidT = T; placeStats.casino.visits++; placeStats.casino.wagered += stake;
     if (won) {
       const pay = Math.min(stake * (jackpot ? 3 : 1), feePool() ? stats.treasury * 0.1 : Infinity); // the winnings on top of the stake back
@@ -1232,7 +1235,7 @@ function finish(c, p) {
     const pc = clamp(0.5 + (c.coh - p.coh) * 0.4, 0.15, 0.85);
     const [w, l] = Math.random() < pc ? [c, p] : [p, c];
     // the stake is SOL, always: a slice of whatever the poorer of the two can put up
-    const take = testFlat() ? Math.min(l.sol, testFlat()) : Math.max(0, Math.min(l.sol, Math.max(0.005, Math.min(c.sol, p.sol) * rand(0.15, 0.35)))); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; placeStats.arena.wagered += take; placeStats.arena.fights = (placeStats.arena.fights || 0) + 1;
+    const take = testFlat() ? Math.min(l.sol, testFlat()) : Math.max(0, Math.min(l.sol, Math.max(costOf(0.005), Math.min(c.sol, p.sol) * rand(0.15, 0.35)))); l.sol -= take; w.sol += take; w.arenaSol += take; l.arenaSol -= take; placeStats.arena.wagered += take; placeStats.arena.fights = (placeStats.arena.fights || 0) + 1;
     const label = fmtSol(take) + ' SOL';
     w.arenaW++; l.arenaL++; gainXp(w, 25); gainXp(l, 3); w.wagerT = T; l.wagerT = T; w.lastPaidT = T; l.lastPaidT = T;
     burst(w, '255,200,80', 22); ringFX(ARENA.x, ARENA.y, '255,200,80', 1.6);

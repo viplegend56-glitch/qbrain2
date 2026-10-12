@@ -200,9 +200,6 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       <div><label>price multiplier — every price in the box and on the site times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
       <div><label>pace — minutes between one cat's paid moves (a meal, the heater, a spin, a trade); 0 = no limit</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
     </div>
-    <div class="row" style="margin-top:6px"><input type="hidden" name="fundForm" value="1">
-      <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin-top:10px"><input type="checkbox" name="fundSwaps" ${ch.fundSwaps !== false ? 'checked' : ''}> <b>The treasury covers a swap the cat cannot afford</b></label><small class="mut">a swap needs about 0.0024 SOL over the amount (a refundable deposit for wrapped SOL, the fee, the priority) and 0.002 more for a first buy's token account. A cat short of that is quietly sent just the shortfall first — a real transfer that shows here with its signature, nothing in the box — then the swap runs.</small></div>
-    </div>
     <button class="btn">Save</button>
     </form>
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">puppet: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
