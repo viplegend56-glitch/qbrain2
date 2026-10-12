@@ -62,7 +62,7 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
       <td>${(() => { const t = c ? c.trait : trait; return esc(engine.TRAITS[t] ? engine.TRAITS[t].label : t); })()}</td>
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
-      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + num(b.qi) + ' $QI' : (config.QI_MINT ? '' : '<br><span class="mut">set the $QI mint</span>')}` : '<span class="mut">—</span>'}</td>
+      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}${(() => { const floor = config.gas && config.gas.floor || 0.01, sp = Math.max(0, b.sol - floor); return ch.mode === 'off' ? '' : sp < 0.001 ? ' <span class="bad">empty</span>' : ` <span class="mut">${sp.toFixed(4)} to spend</span>`; })()}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + num(b.qi) + ' $QI' : (config.QI_MINT ? '' : '<br><span class="mut">set the $QI mint</span>')}` : '<span class="mut">—</span>'}</td>
 </tr>`;
   }).join('');
 
@@ -112,7 +112,7 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
 
   <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' $QI' : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
-    <p class="mut" style="margin:0 0 6px">Hand out SOL (split by chores done) and $QI (split by lab work done) from the treasury to the ticked cats, on top of whatever they are owed.</p>
+    <p class="mut" style="margin:0 0 6px">Hand out SOL (split by chores done) and $QI (split by lab work done) from the treasury to the ticked cats, on top of what each task already paid them.</p>
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (document.getElementById('dQi') ? document.getElementById('dQi').value || 0 : 0) + ' $QI from the treasury to the ticked cats?')">
       <div class="dist">
         <div>
@@ -129,24 +129,23 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
     </form>` : `<p class="mut">${!wallets.ready ? 'Generate wallets below, paste the keys into the host\u2019s environment variables, redeploy.' : 'Set RPC_URL (your Helius URL) in the environment.'}</p>`}
   </div></div>
 
-  <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">${a.distribute ? '<span class="ok">automatic</span> · every ' + esc(config.payoutEveryMin || 20) + ' min' : 'manual'}${a.lastDist ? ' · last: ' + esc(a.lastDist) : ''}</small></div><div class="pb">
-    ${walletsReady ? (() => { const o = engine.owedAll(), os = o.reduce((x, y) => x + y.sol, 0), oq = o.reduce((x, y) => x + y.qi, 0), nx = Math.max(0, Math.round((engine.payouts.next - engine.T) / 60)); return `
-    <p class="mut" style="margin:0 0 6px">Chores earn SOL and lab tasks earn $QI as the cats work; it piles up as "owed" and is paid in one go when the timer fires. The treasury buys the $QI it owes through Jupiter at payout time, with SOL from the fees.</p>
+  <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
+    ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
+    <p class="mut" style="margin:0 0 6px">A chore pays SOL and a lab task pays $QI the moment the cat finishes it: one transfer from the treasury, shown in the box only once it has landed. The treasury buys the $QI it lacks through Jupiter first, with SOL from the fees. A payout that cannot be sent is retried every ten minutes.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
-        <div class="row3">
-          <div><label>timer: pay everything owed every (minutes)</label><input type="number" step="1" min="5" name="payoutEveryMin" value="${esc(config.payoutEveryMin || 20)}"></div>
+        <div class="row">
           <div><label>a lab task pays at least ($ of $QI)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
           <div><label>and at most ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin-top:10px"><input type="checkbox" name="auto" ${a.distribute ? 'checked' : ''}> <b>Automatic payouts</b> <span class="mut">the brain pays what is owed itself, every time the timer fires</span></label>
         <button class="btn">Save</button>
       </form>
-      <form method="post" action="/admin/payowed" style="text-align:right" onsubmit="return confirm('Pay every cat exactly what it is owed right now?')">
-        <div class="big">${os.toFixed(4)} SOL</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px">${num(oq)} $QI · owed to ${o.length} cat${o.length === 1 ? '' : 's'} · timer fires in ${nx} min</div>
-        <button class="btn gold" ${busy || !o.length ? 'disabled' : ''}>Pay now</button>
+      <form method="post" action="/admin/payowed" style="text-align:right">
+        <div class="big">${wait}</div><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px">on their way now · ${un.length} could not be sent</div>
+        <button class="btn gold" ${busy || !un.length ? 'disabled' : ''}>Retry now</button>
       </form>
-    </div>`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+    </div>
+    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : Math.round(u.qi).toLocaleString('en-US') + ' $QI'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
@@ -156,6 +155,24 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
     </span></div>
     <div class="pb">
     <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th></tr>${catRows}</table>
+  </div></div>
+
+  <div class="panel"><div class="ph"><span>Pull back to treasury</span><small class="mut">everything the ticked cats hold, sent to the treasury wallet — for a reset, or when you are done testing</small></div><div class="pb">
+    ${walletsReady ? `
+    <form method="post" action="/admin/collect" onsubmit="return confirm('Send everything ticked from the ticked cats to the treasury wallet? The cats end up empty.')">
+      <div class="dist">
+        <div>
+          <div class="chk" style="grid-template-columns:repeat(3,auto);justify-content:start;gap:18px;margin-bottom:8px">
+            <label><input type="checkbox" name="colSol" checked> all SOL</label>
+            <label class="${config.CA ? '' : 'off'}"><input type="checkbox" name="colQcat" ${config.CA ? 'checked' : 'disabled'}> all ${esc(config.TICKER)}${config.CA ? '' : ' <span class="mut">(no CA)</span>'}</label>
+            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> all $QI${config.QI_MINT ? '' : ' <span class="mut">(no $QI CA)</span>'}</label>
+          </div>
+          <div class="chk">${engine.ROSTER.map(([name]) => `<label><input type="checkbox" name="col_${esc(name)}" class="cchk" checked> ${esc(name)}</label>`).join('')}</div>${allNone('cchk')}
+        </div>
+        <div style="text-align:right"><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px">tokens first, then the SOL to the last lamport<br>(a wallet left at zero is simply empty, not broken)</div>
+          <button class="btn warn" ${busy ? 'disabled' : ''}>Send to treasury</button></div>
+      </div>
+    </form>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
   <form method="post" action="/admin/chain">
@@ -168,7 +185,7 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
     </div>
     <button class="btn">Save</button>
     <div style="margin-top:12px"><small class="mut">queued now: ${engine.intents.length} · last results, newest first</small>
-    ${chainLog.length ? `<table style="margin-top:6px"><tr><th>when</th><th>what</th><th>SOL</th><th>result</th></tr>${chainLog.slice(0, 20).map(e => `<tr><td>${ago(e.at)}</td><td>${esc(e.cat)} → ${esc(e.to)} · ${esc(e.memo)}</td><td>${sol(e.sol)}</td><td>${e.ok ? `<span class="ok">sent</span> ${addr(e.sig)}` : `<span class="bad">${esc(e.err)}</span>`}</td></tr>`).join('')}</table>` : '<div class="mut" style="margin-top:6px">nothing yet</div>'}</div>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+    ${chainLog.length ? `<table style="margin-top:6px"><tr><th>when</th><th>what</th><th>SOL</th><th>result</th></tr>${chainLog.slice(0, 20).map(e => `<tr><td>${ago(e.at)}</td><td>${esc(e.cat)} → ${esc(e.to)} · ${esc(e.memo)}</td><td>${e.sol != null ? sol(e.sol) : ''}</td><td>${e.ok ? `<span class="ok">sent</span> ${addr(e.sig)}` : `<span class="bad">${esc(e.err)}</span>`}</td></tr>`).join('')}</table>` : '<div class="mut" style="margin-top:6px">nothing yet</div>'}</div>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
   </form>
 

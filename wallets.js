@@ -106,15 +106,17 @@ async function broadcast(conn, raw, sig, lastValidBlockHeight) {
   if (st && st.err) throw new Error('failed on chain: ' + JSON.stringify(st.err));
   return isConfirmed(st) ? 'ok' : 'expired';
 }
-// ixs: the instructions; signers[0] pays. Adds the compute budget, signs with a fresh blockhash, broadcasts, retries on expiry. Returns the signature.
+// ixs: the instructions, or a function (feeLamports) => instructions for a transfer that must leave an exact amount behind; signers[0] pays.
+// Adds the compute budget, signs with a fresh blockhash, broadcasts, retries on expiry. Returns the signature.
 async function sendTx(conn, ixs, signers, cuLimit) {
   const { Transaction, ComputeBudgetProgram } = libs();
   const price = await priorityFee(conn);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const bh = await conn.getLatestBlockhash('confirmed');
+    const micro = Math.round(price * attempt), fee = 5000 * signers.length + Math.ceil(cuLimit * micro / 1e6); // base fee per signature + the priority fee, exactly as the chain charges it
     const tx = new Transaction({ recentBlockhash: bh.blockhash, feePayer: signers[0].publicKey });
-    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: Math.round(price * attempt) }));
-    for (const ix of ixs) tx.add(ix);
+    tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: micro }));
+    for (const ix of (typeof ixs === 'function' ? ixs(fee) : ixs)) tx.add(ix);
     tx.sign(...signers);
     const raw = tx.serialize();
     const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 0 }); // a preflight failure (no funds, bad account) throws here and is not retried
@@ -140,6 +142,16 @@ async function transferSol(rpcUrl, ws, fromKp, outs, memo, allowSmall) {
   }
   if (memo) ixs.push(memoIx(memo));
   return sendTx(conn, ixs, [fromKp], 30000 + 5000 * outs.length);
+}
+// Everything a wallet holds, to one of the known addresses: balance minus the exact fee, so the wallet lands on zero (the chain refuses to leave dust under the rent minimum). Returns { sig, sol }.
+async function sweepSol(rpcUrl, ws, fromKp, toPub, memo) {
+  const { Connection, PublicKey, SystemProgram } = libs();
+  assertKnown(ws, toPub);
+  const conn = new Connection(rpcUrl, 'confirmed');
+  const bal = await conn.getBalance(fromKp.publicKey, 'confirmed');
+  const cu = 30000; let sent = 0;
+  const sig = await sendTx(conn, fee => { sent = bal - fee; if (sent < 1000) throw new Error(`only ${(bal / LAMPORTS).toFixed(6)} SOL here, not enough to cover the fee`); return [SystemProgram.transfer({ fromPubkey: fromKp.publicKey, toPubkey: new PublicKey(toPub), lamports: sent })].concat(memo ? [memoIx(memo)] : []); }, [fromKp], cu);
+  return { sig, sol: sent / LAMPORTS };
 }
 
 // ---- SPL tokens, by hand (no extra dependency): the mint's program + decimals, associated accounts, transferChecked ----
@@ -212,4 +224,4 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) 
   return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
 }
 
-module.exports = { load, generate, balances, transferSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+module.exports = { load, generate, balances, transferSol, sweepSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
