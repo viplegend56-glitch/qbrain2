@@ -25,7 +25,9 @@ const DEFAULTS = {
   NAME: 'Quantum Cats', TICKER: 'QCATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   QI_MINT: process.env.QI_MINT || '',   // $QI: what the lab pays. The treasury wallet holds the supply.
-  LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
+  LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
+  GOAL_MUL: 1,                          // every bar in the lab times this: 2 makes the pay twice as hard to reach
+  SCRAP_PAY: 100,                       // $QCATS a tier-1 salvage job pays (tier 2 two and a half times, tier 3 five times), from the treasury's own supply
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
@@ -75,10 +77,10 @@ const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
-  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); applyChainMode();
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100); applyChainMode();
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
-  if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); }
+  if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); const tc = balances.treasury && balances.treasury.qcat; engine.setQcatPool(typeof tc === 'number' ? tc : null, !!config.CA && typeof tc === 'number'); }
 }
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
@@ -130,13 +132,15 @@ async function pollBalances() {
   try {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA, config.QI_MINT)) };
     const t = balances.treasury && balances.treasury.sol;
-    { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); }
+    { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const tc = balances.treasury && balances.treasury.qcat; engine.setQcatPool(typeof tc === 'number' ? tc : null, !!config.CA && typeof tc === 'number'); }
     if (['live', 'test'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats); // the wallets are the truth once the box is paying for real
     if (typeof t === 'number') {
       engine.setTreasury(t);
       // a rise in the treasury is creator fees landing — except for what the cats themselves just paid in (meals, stakes, entries), which is counted and taken off first
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005 + catsPaidIn) {
-        const d = t - config.lastTreasurySol - catsPaidIn; config.feesSeenSol += d; engine.noteFees(d);
+        const d = t - config.lastTreasurySol - catsPaidIn; config.feesSeenSol += d;
+        let sig = null; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); } catch (_) {}
+        engine.noteFees(d, sig);
       }
       catsPaidIn = 0;
       if (config.lastTreasurySol !== t) { config.lastTreasurySol = t; saveConfig(); }
@@ -147,7 +151,19 @@ setInterval(pollBalances, 30000); pollBalances();
 
 // ---------- the executor: one queued intent at a time, as a real transaction (or a log line in dry-run) ----------
 const chainLog = []; let chainSpentToday = { day: '', sol: 0 };
-function chainNote(e) { chainLog.unshift({ ...e, at: Date.now() }); if (chainLog.length > 100) chainLog.pop(); }
+const ourSigs = new Set(); // every signature this brain produced, so money arriving from elsewhere can be told apart
+function chainNote(e) { if (e.sig) ourSigs.add(e.sig); chainLog.unshift({ ...e, at: Date.now() }); if (chainLog.length > 100) chainLog.pop(); }
+// admin jobs (Distribute, Pull back, Retry): queued, run one at a time ahead of the cats' own transactions, never refused for "busy"
+const adminJobs = []; let adminSeq = 0;
+function queueJob(kind, label, run) { const j = { id: 'A' + (++adminSeq), kind, label, run, state: 'queued', at: Date.now(), result: null }; adminJobs.push(j); return j; }
+async function jobTick() {
+  if (busy) return; const j = adminJobs.find(x => x.state === 'queued'); if (!j) return;
+  busy = true; j.state = 'running'; j.started = Date.now();
+  try { j.result = await j.run(); j.state = 'done'; console.log('admin job', j.kind, j.result); }
+  catch (e) { j.result = 'failed: ' + e.message; j.state = 'failed'; console.error('admin job failed', j.kind, e); }
+  finally { j.ended = Date.now(); busy = false; while (adminJobs.filter(x => x.state !== 'queued' && x.state !== 'running').length > 12) { const k = adminJobs.findIndex(x => x.state !== 'queued' && x.state !== 'running'); adminJobs.splice(k, 1); } }
+}
+setInterval(() => { jobTick().catch(e => console.error('jobTick', e)); }, 1500);
 async function runIntent(i) {
   const ws = wallets.load(); if (!ws.ready || !RPC_URL) throw new Error('wallets or RPC not ready');
   const catW = ws.cats.find(c => c.name === i.cat); if (!catW) throw new Error('unknown cat ' + i.cat);
@@ -184,6 +200,16 @@ async function runIntent(i) {
     if (balances.treasury) balances.treasury.qi = tq - qi;
     return sigs[0];
   }
+  if (i.type === 'qcat') { // treasury -> cat: $QCATS for a salvage job, from the treasury's own supply (nothing is bought)
+    if (!config.CA) throw new Error('no CA set');
+    const q = Math.round(i.q || 0); if (q < 1) throw new Error('nothing to pay');
+    const tq = balances.treasury && balances.treasury.qcat, dec = balances.treasury && balances.treasury.decimals;
+    if (typeof tq !== 'number' || dec == null) throw new Error('treasury $' + config.TICKER + ' balance not read yet');
+    if (q > tq) throw new Error(`treasury holds ${Math.floor(tq).toLocaleString('en-US')} ${config.TICKER}, cannot pay ${q.toLocaleString('en-US')}`);
+    const { sigs } = await wallets.transferToken(RPC_URL, ws, ws.treasury.kp, config.CA, [{ pub: catW.pub, raw: Math.floor(q * Math.pow(10, dec)) }], memo);
+    if (balances.treasury) balances.treasury.qcat = tq - q;
+    return sigs[0];
+  }
   if (i.type === 'swap') { // the cat's own wallet, through Jupiter: SOL -> token (buy) or token -> SOL (sell)
     const mint = i.tok === 'qi' ? config.QI_MINT : config.CA; if (!mint) throw new Error(`no ${i.tok === 'qi' ? '$QI' : config.TICKER} CA set`);
     const dec = i.tok === 'qi' ? (balances.treasury && balances.treasury.qiDec) : (balances.treasury && balances.treasury.decimals);
@@ -212,13 +238,13 @@ async function runIntent(i) {
 }
 async function chainTick() {
   const ch = config.chain || {}; if (!['live', 'dry', 'test'].includes(ch.mode)) return;
-  if (busy) return;
+  if (busy || adminJobs.some(x => x.state === 'queued')) return; // the operator's jobs go first
   const i = engine.takeIntent(); if (!i) return;
   engine.markIntent(i.id, 'sending');
   if (ch.mode === 'dry') { engine.intentDone(i.id, null); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, dry: true }); return; }
   busy = true;
-  const who = i.type === 'wage' || i.type === 'qi' ? 'treasury' : i.cat, to = i.type === 'wage' || i.type === 'qi' ? i.cat : i.type === 'swap' ? 'jupiter' : (i.to || 'treasury');
-  const amt = i.type === 'qi' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.memo;
+  const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : (i.to || 'treasury');
+  const amt = i.type === 'qi' || i.type === 'qcat' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.type === 'qcat' ? `${Math.round(i.q).toLocaleString('en-US')} ${config.TICKER} · ${i.memo}` : i.memo;
   try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
   finally { busy = false; }
@@ -276,7 +302,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -394,7 +420,7 @@ const server = http.createServer(async (req, res) => {
       const ws = wallets.load();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -432,10 +458,10 @@ const server = http.createServer(async (req, res) => {
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved' + (notes.length ? ' · ' + notes.join(' · ') : ''), notes.some(n => /not a token mint|not found|not a known/.test(n)));
       }
       if (p === '/admin/payouts') { // the lab pay range
-        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
-        if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD;
-        engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD);
-        saveConfig(); return back(res, 'lab pay $' + config.LAB_PAY_MIN_USD + '–$' + config.LAB_PAY_MAX_USD + ' of $QI per task');
+        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'GOAL_MUL', 'SCRAP_PAY']) if (k in b && b[k] !== '') config[k] = Number(b[k]); config.SCRAP_PAY = Math.max(1, Math.round(config.SCRAP_PAY || 100)); engine.setScrapPay(config.SCRAP_PAY);
+        if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.GOAL_MUL = Math.max(0.1, Math.min(20, config.GOAL_MUL || 1));
+        engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setGoalMul(config.GOAL_MUL);
+        saveConfig(); return back(res, 'a filled bar pays $' + config.LAB_PAY_MIN_USD + '–$' + config.LAB_PAY_MAX_USD + ' of $QI · bars x' + config.GOAL_MUL);
       }
       if (p === '/admin/task') {
         const t = engine.postTask({ kind: b.kind, bounty: Math.max(0, Number(b.bounty) || 0) }, 'the operator');
@@ -454,27 +480,23 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }
       if (p === '/admin/distribute') {
-        if (busy) return back(res, 'another transaction is still running', true);
-        busy = true; try { return back(res, await distribute(b)); } catch (e) { console.error('distribute failed', e); return back(res, 'distribute failed: ' + e.message, true); } finally { busy = false; }
+        const what = [b.sol > 0 ? Number(b.sol).toFixed(3) + ' SOL' : '', Number(b.qcatEach) > 0 ? Math.floor(Number(b.qcatEach)).toLocaleString('en-US') + ' ' + config.TICKER + ' each' : ''].filter(Boolean).join(' + ') || 'nothing';
+        const j = queueJob('distribute', `distribute ${what}`, () => distribute(b)); const ahead = adminJobs.filter(x => x.state === 'queued' && x !== j).length + (busy ? 1 : 0);
+        return back(res, `queued: ${j.label}` + (ahead ? ` (${ahead} ahead of it)` : ' (starts now)') + ' — see Pending');
       }
       if (p === '/admin/sell') {
-        if (busy) return back(res, 'another transaction is still running', true);
-        busy = true;
-        try {
-          const released = new Set(engine.cats.map(c => c.name));
-          const names = b.name ? [b.name] : wallets.ROSTER_NAMES.filter(n => released.has(n) && b['sel_' + n]);
-          if (!names.length) return back(res, 'no cat is ticked', true);
-          const r = await sellMany(names, b.pct, b.tok || 'qcats');
-          return back(res, r.msg, !r.done.length);
-        } finally { busy = false; }
+        const released = new Set(engine.cats.map(c => c.name));
+        const names = b.name ? [b.name] : wallets.ROSTER_NAMES.filter(n => released.has(n) && b['sel_' + n]);
+        if (!names.length) return back(res, 'no cat is ticked', true);
+        queueJob('sell', `sell ${b.pct}% of ${names.length} cats' ${b.tok || 'qcats'}`, async () => (await sellMany(names, b.pct, b.tok || 'qcats')).msg);
+        return back(res, 'queued — see Pending');
       }
       if (p === '/admin/collect') { // everything the ticked cats hold, back to the treasury
-        if (busy) return back(res, 'another transaction is still running', true);
         const ws = wallets.load(); if (!ws.ready || !RPC_URL) return back(res, 'wallets or RPC not ready', true);
         const names = wallets.ROSTER_NAMES.filter(n => b['col_' + n]); if (!names.length) return back(res, 'no cat is ticked', true);
         const what = { sol: !!b.colSol, qcat: !!b.colQcat && !!config.CA, qi: !!b.colQi && !!config.QI_MINT }; if (!what.sol && !what.qcat && !what.qi) return back(res, 'nothing ticked to send', true);
-        busy = true; const parts = [], errs = [];
-        try {
+        queueJob('collect', `pull ${[what.sol ? 'SOL' : '', what.qcat ? config.TICKER : '', what.qi ? '$QI' : ''].filter(Boolean).join(' + ')} back from ${names.length} cats`, async () => {
+          const parts = [], errs = [];
           await pollBalances();
           for (const n of names) {
             const catW = ws.cats.find(c => c.name === n), bal = balances.cats[n] || {};
@@ -485,9 +507,11 @@ const server = http.createServer(async (req, res) => {
             } catch (e) { errs.push(`${n}: ${e.message}`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: 'back to the treasury', ok: false, err: String(e.message).slice(0, 160) }); console.error('collect', n, e.message); }
           }
           pollBalances();
-          return back(res, (parts.length ? 'sent to the treasury — ' + parts.join(' · ') : 'nothing to send') + (errs.length ? ' · failed: ' + errs.join(' · ') : ''), !parts.length && errs.length > 0);
-        } finally { busy = false; }
+          return (parts.length ? 'sent to the treasury — ' + parts.join(' · ') : 'nothing to send') + (errs.length ? ' · failed: ' + errs.join(' · ') : '');
+        });
+        return back(res, 'queued — see Pending');
       }
+      if (p === '/admin/puppet') { const act = String(b.act || ''), tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
       if (p === '/admin/reset') { if (b.confirm !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
       if (p === '/admin/wallets/generate') {
         const ws = wallets.load(); if (ws.ready) return back(res, 'wallets already set', true);

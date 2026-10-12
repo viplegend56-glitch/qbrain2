@@ -143,6 +143,13 @@ async function transferSol(rpcUrl, ws, fromKp, outs, memo, allowSmall) {
   if (memo) ixs.push(memoIx(memo));
   return sendTx(conn, ixs, [fromKp], 30000 + 5000 * outs.length);
 }
+// the newest signatures touching an address (newest first), so money that arrived from outside can be linked
+async function recentSigs(rpcUrl, pub, limit) {
+  const { Connection, PublicKey } = libs();
+  const conn = new Connection(rpcUrl, 'confirmed');
+  const list = await conn.getSignaturesForAddress(new PublicKey(pub), { limit: limit || 10 }, 'confirmed');
+  return (list || []).filter(x => !x.err).map(x => x.signature);
+}
 // Everything a wallet holds, to one of the known addresses: balance minus the exact fee, so the wallet lands on zero (the chain refuses to leave dust under the rent minimum). Returns { sig, sol }.
 async function sweepSol(rpcUrl, ws, fromKp, toPub, memo) {
   const { Connection, PublicKey, SystemProgram } = libs();
@@ -230,4 +237,4 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) 
   return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
 }
 
-module.exports = { load, generate, balances, transferSol, sweepSol, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };

@@ -67,7 +67,7 @@ const LAB = { x: M(9.4), y: M(6.6), w: 3.6, d: 3.0 };                          /
 const FRIDGE = { x: M(5.2), y: M(5.65), r: 0.62 };                             // the dilution fridge, tucked into the top corner, piped to the lab
 const VAULT = { x: M(16.9), y: M(8.9) };                                       // the treasury, on the right edge between the bunks and the scrapyard
 const LOFT = { x: M(16.3), y: M(5.3), w: 2.0, d: 1.1 };                        // the bunks, over the corner shop
-const TRAYS = { x: M(16.7), y: M(11.5), w: 0.6, d: 3.2 };                      // the scrapyard strip along the right edge
+const TRAYS = { x: M(16.2), y: M(11.2), w: 1.3, d: 3.7 };                      // the scrapyard: a fenced yard along the right edge, with a gantry over it
 const CRATES = { x: M(14.9), y: M(16.0), w: 1.6, d: 0.8 };                     // the diner counter
 const DINER_STOOLS = [0, 1, 2, 3].map(i => [CRATES.x + 0.08 + i * 0.48, CRATES.y + 1.3]); // four stools along the front of the counter
 const VENT = { x: M(10.7), y: M(16.6) };                                       // the heater grate (1.4 x 0.85)
@@ -100,7 +100,7 @@ const ST = {
   cryo:   { label: 'the circle',      spot: () => wanderSpot() },
   crates: { label: 'the diner',       spot: me => { const taken = cats.filter(c => c !== me && c.act === 'eat').map(c => [c.tx, c.ty]); const free = DINER_STOOLS.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); if (!free.length) return [rand(CRATES.x + 0.1, CRATES.x + 1.5), CRATES.y + 1.95]; const q = pick(free); return [q[0], q[1]]; } }, // no free stool: eat standing, behind the stools
   vent:   { label: 'the heater',      spot: () => [rand(VENT.x + 0.26, VENT.x + 1.4), rand(VENT.y + 0.26, VENT.y + 1.04)] },
-  trays:  { label: 'the scrapyard',   spot: () => [rand(TRAYS.x - 1.3, TRAYS.x - 0.5), rand(TRAYS.y + 0.5, TRAYS.y + 2.9)] },
+  trays:  { label: 'the scrapyard',   spot: () => [rand(TRAYS.x - 1.0, TRAYS.x - 0.45), rand(TRAYS.y + 0.4, TRAYS.y + 3.3)] },
   loft:   { label: 'the bunks',       spot: () => [rand(LOFT.x + 0.4, LOFT.x + 1.7), rand(LOFT.y + 0.4, LOFT.y + 0.9)] },
   exchange: { label: 'the exchange',  spot: me => { const taken = cats.filter(c => c !== me && (c.act === 'sell' || c.act === 'buy')).map(c => [c.tx, c.ty]); const free = EXC_SPOTS.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); const q = pick(free.length ? free : EXC_SPOTS); return [q[0], q[1]]; } },
   casino:   { label: 'the casino',    spot: me => { const taken = cats.filter(c => c !== me && c.act === 'gamble').map(c => [c.tx, c.ty]); const free = CASINO_SPOTS.filter(q => !taken.some(t => Math.hypot(t[0] - q[0], t[1] - q[1]) < 0.2)); const q = pick(free.length ? free : CASINO_SPOTS); return [q[0], q[1]]; } },
@@ -372,7 +372,7 @@ function nearPlace(x, y) {
   if (!placeSpots) placeSpots = [
     ...MEET_ORDER.map(i => [...chairAt(i), 0.7]), ...LAB_CONSOLES.map(q => [q[0], q[1], 0.8]), ...DINER_STOOLS.map(q => [q[0], q[1], 0.8]), [CRATES.x + 0.8, CRATES.y + 1.95, 1.1],
     ...BAZ_SPOTS.map(q => [q[0], q[1], 0.8]), ...BINS.map(b => { const d = DEST.bin(b[0], b[1]); return [d[0], d[1], 0.7]; }),
-    [ARENA.x, ARENA.y, ARENA.r + 0.6], ...EXC_SPOTS.map(q => [q[0], q[1], 0.8]), ...CASINO_SPOTS.map(q => [q[0], q[1], 0.8]), [VENT.x + 0.83, VENT.y + 0.65, 1.1], [TRAYS.x - 0.9, TRAYS.y + 1.7, 1.7], [LOFT.x + 1.05, LOFT.y + 0.65, 1.4],
+    [ARENA.x, ARENA.y, ARENA.r + 0.6], ...EXC_SPOTS.map(q => [q[0], q[1], 0.8]), ...CASINO_SPOTS.map(q => [q[0], q[1], 0.8]), [VENT.x + 0.83, VENT.y + 0.65, 1.1], [TRAYS.x - 0.75, TRAYS.y + 1.85, 2.1], [LOFT.x + 1.05, LOFT.y + 0.65, 1.4],
     [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2, 1.9], [FRIDGE.x + 0.9, FRIDGE.y + 1.1, 1.4], [VAULT.x, VAULT.y, 1.0],
     [CRY.x - 3.6, CRY.y - 3.6, 1.4], // the bit of floor the countdown over the beacon hangs in front of on screen, so nothing hides behind the clock
     [DOCK.x, DOCK.y, 1.1],
@@ -382,7 +382,32 @@ function nearPlace(x, y) {
 }
 function floorSpot() { return wanderSpot(); }
 const DEST_LABEL = { bin: 'the bin', trays: 'the scrapyard', bazaar: 'the shop', fridge: 'the fridge' };
-const board = { tasks: [], done: [], seq: 0, next: 0, badge: null, badgeCool: 0 }; // badge: the one thing a viewer can flag right now
+const board = { tasks: [], done: [], seq: 0, next: 0, badge: null, badgeCool: 0, scrap: [], scrapDone: [], scrapNext: 0, scrapSeq: 0 }; // badge: the one thing a viewer can flag right now; scrap: the salvage jobs on the yard's bench
+// ---------- the scrapyard: old quantum hardware washes up at the harbour and ends up here; the cats strip it for parts the lab can use, and the treasury pays them in $QCATS from its own supply ----------
+const SCRAP_JOBS = [ // title, tier, what comes out of it
+  ['strip a dead cryostat for its cables', 2, 'two hundred metres of coax and a working pump'], ['sort a crate of unlabelled qubit boards', 1, 'eleven boards, four of them alive'], ['recover an amplifier from a drowned rack', 2, 'one HEMT amplifier, tested cold'],
+  ['untangle a mile of coax', 1, 'coax, coiled and labelled'], ['test a tray of Josephson junctions', 3, 'a tray of junctions, three in ten good'], ['rebuild one readout board from two broken ones', 3, 'one readout board, eight channels'],
+  ['salvage the magnetic shielding off a fridge can', 2, 'mu-metal, enough for one can'], ['log a pallet of parts into the book', 1, 'forty-two lines in the inventory'], ['strip the gold off a dead chip carrier', 2, 'a gram of gold and a story'],
+  ['pull the sapphire window out of a wrecked cryostat', 3, 'one sapphire window, uncracked'], ['sort the attenuators by value', 1, 'a drawer of attenuators, 10 to 60 dB'], ['reclaim the helium lines from the old fridge', 2, 'copper line, flushed and capped'],
+  ['scrape a flux-trapped chip clean', 2, 'one chip, three resonators still ringing'], ['rewind a dead solenoid', 3, 'a solenoid that holds a field'], ['bag the broken ferrite isolators', 1, 'a bag of isolators, labelled broken'],
+  ['dismantle a crashed drone for its battery', 1, 'one battery, one motor, a lesson'], ['weigh in a crate of lead bricks', 1, 'lead, for the shielding'], ['recover a working mixing-chamber plate', 3, 'the plate a whole fridge sits on'],
+  ['sort the SMA connectors from the fakes', 1, 'two hundred connectors, half of them real'], ['test a spool of superconducting wire', 2, 'niobium-titanium, good to nine kelvin'], ['pull the circulators out of a flooded line', 2, 'four circulators, two still isolate'],
+  ['strip a wrecked control rack for its DACs', 3, 'sixteen channels of arbitrary waveform, somehow fine'], ['sort a bucket of mixed cryogenic bolts', 1, 'bolts, by size, brass and steel apart'], ['clean a tray of sample holders', 1, 'twelve holders, gold still bright'],
+  ['recover the window from a dead laser head', 2, 'one window, one lesson about dust'], ['salvage a turbo pump off the quay', 3, 'a pump that spins, for now'],
+];
+const scrapPayBase = () => (Number(CONFIG.SCRAP_PAY) > 0 ? Number(CONFIG.SCRAP_PAY) : 100); // $QCATS a tier-1 job pays; tier 2 two and a half times that, tier 3 five times
+const scrapPay = tier => Math.round(scrapPayBase() * [0, 1, 2.5, 5][tier]);
+const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
+function stepScrap() {
+  if (!board.scrap) { board.scrap = []; board.scrapDone = []; }
+  if (board.scrap.length < 4 && T >= (board.scrapNext || 0)) {
+    const [title, tier, out] = pick(SCRAP_JOBS);
+    if (!board.scrap.some(j => j.title === title)) board.scrap.push({ id: 'S' + (++board.scrapSeq), title, tier, out, pay: scrapPay(tier), dur: 45 + tier * 30, posted: T, t: clock(simMin), status: 'open', by: null });
+    board.scrapNext = T + rand(300, 720);
+  }
+}
+const scrapFor = c => (board.scrap || []).filter(j => j.status === 'open' && qualifies(c, j));
+function releaseScrap(c) { if (!c || !c.scrapJob) return; const j = (board.scrap || []).find(x => x.id === c.scrapJob); if (j && j.by === c.name && j.status === 'taken') { j.status = 'open'; j.by = null; } c.scrapJob = null; }
 const FLAG_COOL = 600, FLAG_AFTER = 300, BOARD_MAX = 3; // the badge shows once something has lain untouched for five minutes; a flag hides it for ten; never more than three things out at once
 // deliveries: a drone comes in high over the harbour side, drops down over a clear bit of the ring, leaves the thing and climbs out again
 const deliveries = []; let deliverySeq = 0;
@@ -472,6 +497,7 @@ function postTask(def, poster) {
   return t;
 }
 function releaseTask(c) {
+  releaseScrap(c);
   if (!c || !c.task) return;
   const t = board.tasks.find(x => x.id === c.task);
   if (t && t.by === c.name && (t.status === 'taken' || t.status === 'carried')) { if (t.status === 'carried') { if (nearPlace(c.x, c.y) || pushOut(c.x, c.y, 0.34)[2] > 0) { const q = floorSpot(); t.x = q[0]; t.y = q[1]; } else { t.x = c.x; t.y = c.y; } } t.status = 'open'; t.by = null; t.since = T; } // dropped where it stood (or the nearest bit of clear floor, so it never blocks a place)
@@ -519,7 +545,7 @@ function recordEvent(kind, text) { if (!dayCur) dayStart(); dayCur.events.push({
 const itemsFor = c => ITEMS.filter(it => !(c.items || []).includes(it.key) && (shop.stock[it.key] == null || shop.stock[it.key] > 0) && spare(c) >= costOf(it.price, c) * 1.3);
 const ACTS = {
   eat:      { st: 'crates',   dur: 50,   verb: 'eating at the diner',          walk: 'heading to the diner',          color: '247,200,106', name: 'eat' },
-  hunt:     { st: 'trays',    dur: 60,   verb: 'hunting in the scrapyard',    walk: 'creeping toward the scrapyard', color: '255,138,92', name: 'hunt' },
+  salvage:  { st: 'trays',    dur: 90,   verb: 'salvaging in the scrapyard',  walk: 'heading to the scrapyard',      color: '154,123,255', name: 'salvage' },
   work:     {                 dur: 100,                                                                                     color: '92,242,255', name: 'work' },
   recohere: { st: 'plaza',    dur: 75,   verb: 'recohering out in the open',  walk: 'drifting out into the open',    color: '154,123,255', name: 'recohere' },
   warm:     { st: 'vent',     dur: 60,   verb: 'warming up at the heater',        walk: 'heading for the heater',            color: '255,138,92', name: 'warm up' },
@@ -555,6 +581,7 @@ function chatFor(c, p) {
   if (lessons.length) pool.push([`remember what we said about ${lessons[0].text.split(':')[0]}`, `vaguely`, `${lessons[0].text}`, `right. that.`]);
   if (c.notes && c.notes.length && Math.random() < 0.5) pool.push(pick(LAB_CHATS).map(l => fillTalk(l, c, p)));
   if (Math.random() < 0.5) pool.push(pick(CHATS_MORE).map(l => fillTalk(l, c, p)));
+  if (Math.random() < 0.35) { const f = pick(QFACTS); pool.push([f[1], pick(MEET_FACT_REACT), pick(['it is on the ladder', 'topic ' + (CURRICULUM.findIndex(t => t[0] === f[0]) + 1), 'the simulator showed me', 'read the note'])]); }
   return pool.length && Math.random() < 0.85 ? pick(pool) : pick(CHATS);
 }
 const CHATS = [
@@ -619,7 +646,19 @@ function paid(c, sol, qi, sig, memo) {
   payouts.log.unshift({ t: clock(simMin), day: dayNo(), at: T, name: c.name, sol, qi, memo: memo || '', sig: sig || null }); if (payouts.log.length > 300) payouts.log.length = 300;
   if (Math.random() < 0.15) say(c, pick(['paid', 'the treasury came through', 'that is my cut', 'wages in', QI + ' in']));
 }
-function retryUnpaid() { const n = payouts.unpaid.length; if (!n || !liveTx()) return 0; const list = payouts.unpaid.splice(0, n); for (const u of list) queueIntent({ type: u.sol > 0 ? 'wage' : 'qi', cat: u.cat, sol: u.sol, qi: u.qi, memo: u.memo, place: u.place, retry: (u.retry || 0) + 1 }); return n; }
+function payQcat(c, q, memo) {
+  q = Math.round(Math.max(0, q || 0)); if (!q) return;
+  if (!qcatLive()) stats.qcatPool = Math.max(0, (stats.qcatPool || 0) - q);
+  if (liveTx()) { queueIntent({ type: 'qcat', cat: c.name, q, memo, place: 'trays' }); return; }
+  paidQcat(c, q, null, memo);
+}
+function paidQcat(c, q, sig, memo) {
+  q = Math.max(0, q || 0); if (!q) return;
+  c.qcat += q; c.qcatEarned = (c.qcatEarned || 0) + q; stats.qcatPaid = (stats.qcatPaid || 0) + q; placeStats.trays.paid = (placeStats.trays.paid || 0) + q;
+  txWith(c, 'scrap', '+' + fmtQ(q) + ' ' + TK, memo || 'salvage', sig); floatText(c, '+' + fmtQ(q) + ' ' + TK, '#5CFFAA'); payFX(c);
+  payouts.n++; payouts.last = T; payouts.log.unshift({ t: clock(simMin), day: dayNo(), at: T, name: c.name, sol: 0, qi: 0, qcat: q, memo: memo || '', sig: sig || null }); if (payouts.log.length > 300) payouts.log.length = 300;
+}
+function retryUnpaid() { const n = payouts.unpaid.length; if (!n || !liveTx()) return 0; const list = payouts.unpaid.splice(0, n); for (const u of list) queueIntent({ type: u.sol > 0 ? 'wage' : u.qcat > 0 ? 'qcat' : 'qi', cat: u.cat, sol: u.sol, qi: u.qi, q: u.qcat, memo: u.memo, place: u.place, retry: (u.retry || 0) + 1 }); return n; }
 let unpaidNext = 0;
 function stepPayout() { if (!payouts.unpaid.length || T < unpaidNext) return; unpaidNext = T + 600; retryUnpaid(); }
 const txWith = (c, type, amount, note, sig) => { tx(c, type, amount, note); if (sig) txs[0].sig = sig; };
@@ -648,6 +687,9 @@ const LVL_TITLE = ['stray', 'scrapper', 'hustler', 'trader', 'operator', 'whale'
 const lvlOf = xp => { let l = 1; while (l < LVL_XP.length && xp >= LVL_XP[l]) l++; return l; };
 const lvlTitle = c => LVL_TITLE[Math.min(LVL_TITLE.length, c.lvl || 1) - 1];
 function gainXp(c, n) {
+  const before = c.lvl || 1; const r = gainXp0(c, n); if ((c.lvl || 1) > before) c.lvlT = T; return r;
+}
+function gainXp0(c, n) {
   c.xp = (c.xp || 0) + n * rand(0.7, 1.3); const nl = lvlOf(c.xp);
   if (nl > (c.lvl || 1)) {
     c.lvl = nl; burst(c, '247,200,106', 26); ringFX(c.x, c.y, '247,200,106', 1.5); floatText(c, 'level ' + nl, '#F7C86A'); did(c, `hit level ${nl}: ${LVL_TITLE[nl - 1]}`);
@@ -655,28 +697,39 @@ function gainXp(c, n) {
     say(c, pick(['levelled', 'getting good at this', 'level ' + nl + '. noted', 'the box respects me now']));
   }
 }
+// trading: a cat trades when it feels like it, not only when it is broke. The trait sets the itch, the chart nudges it, cooldowns keep it to a few trades a day. Only $QI and $QCATS, ever.
+const TRADE_ITCH = { degen: 1.0, greedy: 0.8, patient: 0.4, loyal: 0.25 };
+const tradeItch = c => (TRADE_ITCH[c.trait] || 0.5) * clamp((T - Math.max(c.lastSellT || -1e9, c.lastBuyT || -1e9)) / 5400); // builds back over an hour and a half
+function sellTok(c) { // what a selling cat parts with: a forced choice (testing), else whatever it holds, else by trait; diamond paws keeps its $QCATS unless starving
+  if (c.forceTok) return c.forceTok === 'qi' ? QI : TK;
+  const hasQi = (c.qi || 0) >= 1, hasQc = (c.qcat || 0) >= 1; if (!hasQi && !hasQc) return null; if (!hasQi) return TK; if (!hasQc) return QI;
+  const starving = c.sol < costOf(FOOD, c) && c.hunger > 0.9; if (c.trait === 'loyal' && !starving) return QI;
+  return Math.random() < (SELL_QI[c.trait] || 0.5) ? QI : TK;
+}
+function buyTok(c) { if (c.forceTok) return c.forceTok === 'qi' ? QI : TK; if (c.trait === 'loyal') return TK; return Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4) ? QI : TK; }
 function sellUrge(c) {
-  if (c.qcat < 2000 && !(c.qi >= 1)) return 0;
+  if (!((c.qi || 0) >= 1 || (c.qcat || 0) >= 1)) return 0;
+  if (c.forced === 'sell') return 1.5;
+  const meal = costOf(FOOD, c), qiVal = (c.qi || 0) * qiSol(), qcVal = (c.qcat || 0) * mkt.price;
   let w = 0;
-  // low on SOL with $QI in the bag: sell a slice before it is an emergency (at most every fifteen minutes)
-  if ((c.qi || 0) * qiSol() > costOf(FOOD, c) * 6 && c.sol < costOf(FOOD, c) * 4 && T > (c.topupT || 0)) w = 0.6 + c.hunger * 0.4;
-  if (T < (c.brokeCool || 0) && c.hunger < 0.7) return w; // sold $QCATS to eat not long ago: live on it before going back
-  if (c.sol < costOf(FOOD, c) && c.hunger > 0.5 && c.tr.label !== 'diamond paws') w = 0.6 + c.hunger * 0.5; // broke and hungry: sell enough to eat
-  if (c.sol < costOf(FOOD, c) && c.hunger > 0.9) w = Math.max(w, 1.1);                                       // even diamond paws eat
-  if (T < (c.sellCool || 0)) return w; // recently took profit or bailed: sit on the rest for a while
+  // needs SOL: only when what it holds is worth a couple of meals, and not straight after the last top-up (selling dust feeds nobody)
+  if (c.sol < meal * 4 && T > (c.topupT || 0) && T > (c.brokeCool || 0) && (qiVal > meal * 2 || qcVal > meal * 2)) w = 0.6 + c.hunger * 0.5;
+  if (c.sol < meal && c.hunger > 0.9 && (qiVal > meal || qcVal > meal)) w = Math.max(w, 1.1); // even diamond paws eats
+  if (T < (c.sellCool || 0)) return w; // recently sold: sit on the rest for a while
   if (c.tr.tp && mkt.price > c.entry * c.tr.tp) w = Math.max(w, 0.7);
   if (c.tr.panic && mkt.mom < -0.004) w = Math.max(w, 0.62);
+  w = Math.max(w, 0.38 * tradeItch(c) + (mkt.mom > 0.002 ? 0.12 : 0)); // the itch: a sliver now and then, chart or no chart
   return w;
 }
 const anyoneAsleep = c => cats.some(o => o !== c && asleep(o));
 const DRIVES = [
   { act: 'eat',      label: 'hungry',                   w: c => c.hunger * 1.25 * (menuFor(c).length ? 1 : 0.15) },
-  { act: 'hunt',     label: 'broke and hungry',         w: c => c.hunger * (c.sol < costOf(FOOD, c) ? 1.2 : 0.3) + (stats.lostPool > 2000 ? 0.25 : 0) },
+  { act: 'salvage',  label: c => (c.hunger > 0.6 && c.sol < costOf(FOOD, c) ? 'broke and hungry' : scrapFor(c).length ? 'a job on the yard bench, paid in ' + TK : 'nothing on the bench'), w: c => (scrapFor(c).length ? 0.32 + 0.12 * (c.trait === 'greedy' || c.trait === 'loyal' ? 1 : 0) + 0.1 * Math.min(2, skillLvl(skillOf(c, 'salvage'))) + (qcatPool() >= scrapPay(1) ? 0.2 : 0) : 0) * (c.ethic || 1) * (c.coh < 0.35 ? 0.3 : 1) + (c.hunger > 0.6 && c.sol < costOf(FOOD, c) ? 0.5 + c.hunger * 0.6 : 0) },
   { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= CRYO ? 1 : 0.45) },
   { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= warmCost(3, c) ? 1 : 0.4) },
   { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (c.coh < 0.4 ? 0.2 : 1) * (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
-  { act: 'buy',      label: 'spare SOL',                w: c => (T < (c.buyCool || 0) ? 0 : 1) * clamp(spare(c) / 0.1) * 0.7 * c.tr.eager * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40) ) },
-  { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : 'taking profit'), w: c => sellUrge(c) },
+  { act: 'buy',      label: c => (mkt.mom < -0.002 ? 'buying the dip' : 'feels like buying'), w: c => c.forced === 'buy' ? 1.5 : (T < (c.buyCool || 0) ? 0 : 1) * (spare(c) > 0 ? 0.22 + 0.4 * clamp(spare(c) / 0.05) : 0) * c.tr.eager * (0.5 + tradeItch(c)) * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40)) },
+  { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? 'taking profit' : 'selling a sliver'), w: c => sellUrge(c) },
   { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
   { act: 'wager',    label: 'feeling lucky',            w: c => (c.sol > costOf(FOOD, c) * 2 + 0.01 ? 1 : 0) * (0.06 + 0.26 * c.tr.gamble) * (c.qcat > 5000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) * (T - (c.wagerT || -1e9) > 900 ? 1 : 0.25) },
@@ -690,7 +743,7 @@ const DRIVES = [
 ];
 const TH = {
   eat: ['the diner smells like sardines', 'food first, then the lab', 'could eat a whole fish'],
-  hunt: ['something is moving in the cables', 'broke and hungry is a bad mix', 'somebody dropped tokens in the scrapyard'],
+  salvage: ['parts for the lab. paid in the coin.', 'the yard bench, then the lab', 'somebody has to strip the cryostat', 'coax by the mile', 'the gantry is free', 'tier three on the bench. mine.'],
   recohere: ['half of me is somewhere else', 'everything feels blurry', 'the beacon hums like a purr'],
   warm: ['the heater is the only warm thing out here', 'paws are freezing', 'one more cold night'],
   work: ['the lab pays tonight', 'a job now, buy later', 'every circuit is a few more lamports', 'the fee pool looks fat'],
@@ -720,7 +773,7 @@ const PLACES = {
   cryo:     { title: 'The circle',    kind: 'where the box meets',                 pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'], desc: 'The meeting is the last ten minutes of every day. Recohering out here costs ' + fmtSol(CRYO) + ' SOL.' },
   crates:   { title: 'The diner',     kind: 'food · paid to the treasury',          pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'], desc: '' },
   vent:     { title: 'The heater',    kind: 'warmth · by the minute',               pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'], desc: '' },
-  trays:    { title: 'The scrapyard', kind: 'free food, if you can find it',        pt: [TRAYS.x - 0.7, TRAYS.y + 1.6], stats: ['here', 'found', 'visits'], desc: 'Where a broke cat goes instead of the diner: a hunt turns up something to eat about half the time, for free. Every token a decohered cat scatters lands here too, and whoever digs it out keeps it.' },
+  trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x - 0.7, TRAYS.y + 1.85], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up at the harbour and ends up here: dead cryostats, coax by the mile, boards nobody labelled. Jobs go up on the bench; a cat takes one, strips it for parts the lab can use, and the treasury pays it in ' + TK + ' from its own supply the moment it is done.' },
   exchange: { title: 'The exchange', kind: 'where cats sell $QI or ' + TK + ' for SOL, and buy', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'buysol'], desc: '' },
   casino:   { title: 'The casino',    kind: 'the house is the treasury',            pt: [CASINO.x + 0.5, CASINO.y], stats: ['here', 'wagered', 'spent'], desc: '' },
   arena:    { title: 'The arena',     kind: 'wagers in SOL · entry ' + fmtSol(ARENA_FEE) + ' SOL', pt: [ARENA.x, ARENA.y], stats: ['spent', 'here', 'wagered'], desc: '' },
@@ -731,7 +784,7 @@ const PLACES = {
   vault:    { title: 'The treasury',  kind: 'where the fees land',                  pt: [VAULT.x, VAULT.y], stats: ['fees', 'wages', 'qipaid'], desc: '' },
 };
 const placeStats = {}, placeLogs = {}, placeDay = {};
-for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0 }; placeLogs[k] = []; }
+for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0, jobs: 0 }; placeLogs[k] = []; }
 let insMode = 'stray', placeKey = null, hoverLabel = null, remote = null;
 const labelHits = [], taskHits = []; let hoverTask = null, badgeId = null; const flaggedAt = {}; // id -> when this viewer flagged it
 const stationOf = c => c.act === 'work' ? JOBS[c.job].st : c.act === 'task' ? (c.taskPlace || null) : (ACTS[c.act] ? ACTS[c.act].st : null);
@@ -740,7 +793,7 @@ const onSeat = c => c.state === 'act' && (c.act === 'eat' || c.act === 'meet' ||
 const hereAt = k => cats.filter(c => c.state === 'act' && stationOf(c) === k);
 
 const cats = [];
-const stats = { circuits: 0, labSol: 0, qiPool: 500000000, escrow: 0, qiPaid: 0, qiSold: 0, qiSellSol: 0, gasPaid: 0, keys: 0, huntSol: 0, huntShifts: 0, lastJob: null, treasury: rand(0.004, 0.012), fees: 0, wages: 0, upkeep: 0, buySol: 0, boughtBack: 0, buys: 0, sold: 0, sellSol: 0, sells: 0, stolen: 0, lostPool: 0, low: false, lastTrade: null };
+const stats = { circuits: 0, labSol: 0, qiPool: 500000000, qcatPool: 500000, qcatPaid: 0, salvaged: 0, escrow: 0, qiPaid: 0, qiSold: 0, qiSellSol: 0, gasPaid: 0, keys: 0, huntSol: 0, huntShifts: 0, lastJob: null, treasury: rand(0.004, 0.012), fees: 0, wages: 0, upkeep: 0, buySol: 0, boughtBack: 0, buys: 0, sold: 0, sellSol: 0, sells: 0, stolen: 0, lostPool: 0, low: false, lastTrade: null };
 const P0 = CONFIG.START_MC_USD / CONFIG.SOL_USD / SUPPLY; // SOL per token at the starting market cap
 const mkt = { price: P0, p0: P0, hist: [], mom: 0, acc: 0, nextMove: rand(180, 400), last: 0, pinned: false }; // pinned: the chart follows the real market cap, so the cats' own trades don't move it
 const txs = [];
@@ -783,7 +836,7 @@ function findPartner(c, act) {
 function because(c, act, p) {
   switch (act) {
     case 'eat': { const h = Math.round((simMin - c.lastAte) / 60); return h >= 1 ? `nothing to eat in ${h} hour${h > 1 ? 's' : ''}` : 'stomach has been growling'; }
-    case 'hunt': return c.sol < costOf(FOOD, c) ? `only ${fmtSol(c.sol)} SOL and a meal costs ${fmtSol(costOf(FOOD, c))}` : `${fmtQ(stats.lostPool)} ${TK} lying in the scrapyard`;
+    case 'salvage': { const j = (board.scrap || []).find(x => x.id === c.scrapJob) || scrapFor(c)[0]; return j ? `${j.title} is on the bench, tier ${j.tier}, ${fmtQ(j.pay)} ${TK} on it` : 'something on the yard bench'; }
     case 'recohere': return `coherence down to ${Math.round(c.coh * 100)}%`;
     case 'warm': return (wx.rain > 0.3 ? 'soaked through, ' : wx.snow > 0.3 ? 'snow in its fur, ' : '') + `cold for ${Math.max(5, Math.round(c.cold * 90))} minutes`;
     case 'work': return c.sol < costOf(FOOD, c) * 3 ? `only ${fmtSol(c.sol)} SOL left and the lab pays from the fee pool` : (feePool() ? `${fmtSol(stats.treasury)} SOL sitting in the fee pool` : 'every job is a bigger cut of the next payout');
@@ -809,6 +862,7 @@ function fillTalk(line, c, p) {
     .replace(/\{lost\}/g, fmtQ(stats.lostPool)).replace(/\{qi\}/g, fmtQi(c.qi || 0)).replace(/\{p\}/g, p ? p.name : 'you');
 }
 function thought(c, act, p) {
+  if (act === 'work' && Math.random() < 0.25) return pick(QFACTS)[1];
   if (act === 'idle' && wx.snow > 0.3) return pick(['snow again', 'the box is the only dry thing']);
   if (act === 'idle' && wx.rain > 0.3) return pick(['wet fur is the worst', 'waiting out the rain', 'the box is dry at least']);
   if (act === 'work' && JOBS[c.job].st === 'lab' && T < labBoostUntil) return 'the lab is surging: double pay';
@@ -837,9 +891,10 @@ function decide(c) {
   for (const o of ws) {
     if (o.act === 'scrap' || o.act === 'entangle' || o.act === 'wager') { partner = findPartner(c, o.act); if (!partner) continue; }
     if (paced(c, o.act)) continue;
-    if (o.act === 'buy' && spare(c) < 0.02) continue;
+    if (o.act === 'buy' && c.forced !== 'buy' && spare(c) < (testFlat() || 0.006)) continue;
     if (o.act === 'shop' && !itemsFor(c).length) continue;
     if (o.act === 'task' && !tasksFor(c).length) continue;
+    if (o.act === 'salvage' && !scrapFor(c).length && !(c.hunger > 0.6 && c.sol < costOf(FOOD, c))) continue;
     if (o.act === 'sell' && sellUrge(c) <= 0) continue;
     ch = o; break;
   }
@@ -873,10 +928,33 @@ function decide(c) {
     c.doing = `heading for ${t.title}`; c.because = `tier ${t.tier}, nobody else got there first${t.bounty ? ', ' + fmtSol(t.bounty) + ' SOL on it' : ''}`;
     c.tx = t.x; c.ty = t.y; c.state = 'walk'; c.slide = 0; c.stuckP = null; c.stuckN = 0; return;
   }
+  if (ch.act === 'salvage') { const j = scrapFor(c).sort((a, b) => b.tier - a.tier)[0]; if (j) { j.status = 'taken'; j.by = c.name; j.taken = T; c.scrapJob = j.id; c.because = `${j.title}: tier ${j.tier}, ${fmtQ(j.pay)} ${TK} on it`; } else c.because = 'broke and hungry; the yard sometimes has something'; }
   const key = ch.act === 'work' ? JOBS[c.job].st : ACTS[ch.act].st;
   const sp = ST[key].spot(c);
   c.tx = sp[0]; c.ty = sp[1]; c.state = 'walk'; c.slide = 0; c.stuckP = null; c.stuckN = 0;
   c.doing = ch.act === 'work' ? `heading to ${ST[key].label}` : ACTS[ch.act].walk;
+}
+// testing: the operator sends a cat to a place and it does the thing, pacing and urges be damned. 'wake' and 'sleep' as named.
+function puppet(name, act, opt = {}) {
+  const c = cats.find(x => x.name === name); if (!c) return 'no such cat';
+  if (act === 'wake') { if (!asleep(c)) return c.name + ' is already awake'; wake(c, 'the operator'); return c.name + ' is up'; }
+  if (c.act === 'meet' && meeting.on) return c.name + ' is in the meeting; try after it';
+  if (!ACTS[act] && act !== 'work' && act !== 'task') return 'no such thing to do: ' + act;
+  releaseTask(c); if (asleep(c)) wake(c, 'the operator'); c.partner = null; c.initiator = false;
+  c.forced = act === 'buy' || act === 'sell' ? act : null; c.forceTok = opt.tok || null;
+  if (act === 'wager' || act === 'scrap' || act === 'entangle') {
+    const p = pick(cats.filter(o => o !== c && !asleep(o) && o.act !== 'meet' && o.act !== 'wager')); if (!p) return 'nobody free to pair with';
+    c.act = act; c.actT = 0; c.because = 'the operator pointed'; c.thought = pick(['fine. going.', 'orders', 'who is steering me']);
+    if (act === 'wager') { c.partner = p.id; c.initiator = true; c.state = 'walk'; c.arrived = false; c.tx = ARENA.slots[0][0]; c.ty = ARENA.slots[0][1]; c.doing = `heading to the arena to wager ${p.name}`; releaseTask(p); p.partner = c.id; p.initiator = false; p.state = 'walk'; p.act = 'wager'; p.arrived = false; p.tx = ARENA.slots[1][0]; p.ty = ARENA.slots[1][1]; p.doing = `heading to the arena to take ${c.name}’s bet`; return `${c.name} is off to the arena with ${p.name}`; }
+    c.partner = p.id; c.initiator = true; c.state = 'walk'; c.doing = (act === 'scrap' ? 'going after ' : 'looking for ') + p.name; c.tx = p.x; c.ty = p.y; return `${c.name} is off to find ${p.name}`;
+  }
+  if (act === 'task') { const t = tasksFor(c).sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y))[0]; if (!t) return 'nothing on the ground it qualifies for'; t.status = 'taken'; t.by = c.name; t.taken = T; c.task = t.id; c.taskPlace = 'plaza'; c.act = 'task'; c.actT = 0; c.because = 'the operator pointed'; c.doing = `heading for ${t.title}`; c.tx = t.x; c.ty = t.y; c.state = 'walk'; c.slide = 0; c.stuckP = null; c.stuckN = 0; return `${c.name} is off to deal with ${t.title}`; }
+  if (act === 'salvage') { const j = scrapFor(c).sort((a, b) => b.tier - a.tier)[0]; if (!j) return 'nothing on the yard bench it qualifies for'; j.status = 'taken'; j.by = c.name; j.taken = T; c.scrapJob = j.id; }
+  c.act = act; c.actT = 0; c.because = 'the operator pointed'; c.thought = pick(['fine. going.', 'orders are orders', 'who is steering me', 'as the brain wishes']); c.weighed = [{ act, label: 'sent by the operator', w: 1.5, win: true }];
+  const key = act === 'work' ? JOBS[c.job].st : ACTS[act].st, sp = ST[key].spot(c);
+  c.tx = sp[0]; c.ty = sp[1]; c.state = 'walk'; c.slide = 0; c.stuckP = null; c.stuckN = 0; c.doing = act === 'work' ? `heading to ${ST[key].label}` : ACTS[act].walk;
+  log(`${c.name} was sent ${c.doing.replace(/^heading /, '')} by the operator.`, 'info', key);
+  return `${c.name}: ${c.doing}`;
 }
 function arrive(c, p) {
   if (c.act === 'wager') {
@@ -907,6 +985,7 @@ function arrive(c, p) {
   }
   c.state = 'act'; c.actT = 0;
   if (c.act === 'work') { c.actDur = ACTS.work.dur; c.doing = JOBS[c.job].verb; }
+  else if (c.act === 'salvage') { const j = (board.scrap || []).find(x => x.id === c.scrapJob); if (!j) { c.actDur = 40; c.doing = 'going through the crates'; } else { c.actDur = j.dur; c.doing = `at the bench: ${j.title}`; placeStats.trays.visits++; (placeDay.trays || (placeDay.trays = { visits: 0, spent: 0 })).visits++; } }
   else if (c.act === 'task') { const t = board.tasks.find(x => x.id === c.task); if (!t) { c.actDur = 1; c.doing = 'looking around'; } else if (t.carry && t.status === 'taken') { c.actDur = 2.5; c.doing = `picking up ${t.title}`; } else if (t.carry) { c.actDur = 2.5; c.doing = `dropping ${t.title} at ${DEST_LABEL[t.carry]}`; } else { c.actDur = t.dur / (1 + 0.08 * skillLvl(skillOf(c, 'tasks'))); c.doing = `dealing with ${t.title}`; } }
   else { c.actDur = ACTS[c.act].dur; c.doing = ACTS[c.act].verb; }
   if (c.act === 'warm') { // pick a session by how cold it is and what it can pay for, pay up front, and stay for the whole thing
@@ -969,24 +1048,17 @@ function finish(c, p) {
     // the lab pays $QI, not SOL: a fixed rate per job, more for bigger circuits and a practised cat. While the box runs on its own it pays
     // straight out of the lab's pool; once the real $QI wallet is wired in, jobs only build up a share of the next payout.
     // what the job is worth: between the minimum and the maximum, by circuit size (and a little more at higher levels); double during a lab surge
-    let usd = labPayMin() + (labPayMax() - labPayMin()) * clamp((diff - 0.8) / 1.4) * (1 + 0.03 * ((c.lvl || 1) - 1)); if (T < labBoostUntil && st === 'lab') usd *= 2; usd = Math.min(usd, labPayMax() * 2); if (testFlat()) usd *= 0.01; // real testing: a hundredth of the money
-    let pay = qiFor(usd); if (!qiLive()) { pay = Math.min(pay, stats.qiPool); stats.qiPool -= pay; }
     placeStats[st].visits++; c.coh = clamp(c.coh - 0.06);
     const slipped = Math.random() < j.risk * (1 - c.coh * 0.5) / (1 + sk * 0.35); // a coherent cat makes fewer mistakes, and so does a practised one
     const run = runCircuit(j.kind, nq), bits = run.bits, job = 'q-' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'); run.job = job; c.lastRun = run;
+    goalEvent(c, { type: 'job', kind: j.kind, nq, slipped, run }); // the bar moves (or, on a slip, a streak bar resets)
     if (!slipped) {
       c.qjobs++; c.qwork += diff; c.qnq += nq; c.qmax = Math.max(c.qmax || 0, nq); learn(c, j.kind, 1); if (st === 'lab') { placeStats.lab.circuits++; stats.circuits++; stats.lastJob = { name: c.name, nq, bits, job, kind: j.kind, t: T, desc: run.desc }; }
       did(c, `ran a ${nq}-qubit ${j.kind} job (${job}) → |${bits}⟩`);
       gainXp(c, 3 + nq * 1.5);
       if (st === 'lab') studySession(c, run);
       const receipt = `${c.name} ran a ${nq}-qubit ${j.kind} job (${job}): ${run.desc}; ${run.shots.toLocaleString('en-US')} shots, most common result |${bits}\u27E9 at ${run.top[0] ? run.top[0].pct : 0}%.`;
-      if (pay > 0) {
-        c.qiJobPay = (c.qiJobPay || 0) + pay;
-        log(`${receipt} Worth ${fmtQi(pay)} ${QI} (about $${usd.toFixed(2)})${liveTx() ? ', on its way from the treasury.' : ', paid.'}`, 'link', 'lab');
-        payCat(c, 0, pay, job, 'lab');
-      } else {
-        log(`${receipt} The lab\u2019s ${QI} pool is empty; nothing to pay.`, 'link', 'lab');
-      }
+      { const g = c.goal; log(`${receipt}${g ? ' Bar \u201c' + g.title + '\u201d: ' + fmt(g.prog) + ' of ' + fmt(g.target) + '.' : ''}`, 'link', 'lab'); }
     } else { learn(c, j.kind, 0.5); log(`${c.name}: ${j.riskWhy} (${job}). No pay.`, 'loss', st); did(c, `a ${nq}-qubit ${j.kind} job failed (${job})`); }
   } else if (a === 'task') {
     const t = board.tasks.find(x => x.id === c.task);
@@ -1044,41 +1116,50 @@ function finish(c, p) {
       c.lastAte = simMin; gainXp(c, 1 + (m.xp || 0)); c.meals = (c.meals || 0) + 1; c.lastMeal = m.name; did(c, `ate ${m.name} at the diner (${fmtSol(cost)} SOL)`);
       if (Math.random() < 0.4) log(`${c.name} had ${m.name} at the diner`, 'info', 'crates');
     }
-  } else if (a === 'hunt') {
-    placeStats.trays.visits++;
-    if (stats.lostPool > 500 && !liveTx()) {
-      const take = stats.lostPool * rand(0.25, 0.7); stats.lostPool -= take; c.qcat += take; c.found += take; placeStats.trays.found += take;
-      floatText(c, '+' + fmtQ(take) + ' ' + TK, '#F7C86A'); gainXp(c, 10); log(`${c.name} dug ${fmtQ(take)} ${TK} out of the scrapyard`, 'gain', 'trays'); tx(c, 'found', '+' + fmtQ(take) + ' ' + TK, 'the scrapyard');
+  } else if (a === 'salvage') {
+    const j = (board.scrap || []).find(x => x.id === c.scrapJob); c.scrapJob = null;
+    if (!j) { if (c.hunger > 0.5 && Math.random() < 0.6) { c.hunger = 0.15; c.lastAte = simMin; c.meals = (c.meals || 0) + 1; did(c, 'found something to eat among the crates in the scrapyard'); if (Math.random() < 0.5) log(`${c.name} found something to eat in the scrapyard crates`, 'info', 'trays'); } else did(c, 'went through the yard and found nothing'); }
+    else {
+      const tier = j.tier, pay = qcatPool() >= j.pay ? j.pay : 0;
+      j.status = 'done'; j.doneBy = c.name; j.at = T; j.atClock = clock(simMin); j.day = dayNo(); j.paid = pay; j.tookMin = Math.round((T - (j.taken || T)) / 60);
+      board.scrapDone.unshift(j); if (board.scrapDone.length > 40) board.scrapDone.pop(); board.scrap = board.scrap.filter(x => x !== j);
+      c.salvaged = (c.salvaged || 0) + 1; stats.salvaged = (stats.salvaged || 0) + 1; placeStats.trays.jobs = (placeStats.trays.jobs || 0) + 1; learn(c, 'salvage', 1); gainXp(c, 5 + 6 * tier); c.coh = clamp(c.coh - 0.03 * tier);
+      did(c, `${j.title} in the scrapyard: ${j.out}` + (pay ? `, paid ${fmtQ(pay)} ${TK}` : ''));
+      if (dayCur) dayCur.scrap = (dayCur.scrap || 0) + 1;
+      log(`${c.name} ${j.title} (tier ${tier}): ${j.out}. ${pay ? `Paid ${fmtQ(pay)} ${TK} from the treasury${liveTx() ? ', on its way' : ''}.` : `The treasury holds no ${TK} to pay it with.`}`, pay ? 'gain' : 'info', 'trays');
+      recordEvent('scrap', `${c.name} ${j.title} in the scrapyard${pay ? ' for ' + fmtQ(pay) + ' ' + TK : ''}`);
+      if (Math.random() < 0.4) say(c, pick(['parts for the lab', 'that was alive. still is.', 'coax everywhere', 'paid in the coin. good.', 'the yard pays', 'one more crate']));
+      if (pay > 0) payQcat(c, pay, j.title);
     }
-    if (Math.random() < 0.55) { c.hunger = 0.12; c.lastAte = simMin; did(c, 'found something to eat in the scrapyard'); if (Math.random() < 0.5) log(`${c.name} caught something in the scrapyard`, 'info', 'trays'); } else did(c, 'went through the scrapyard and found nothing');
   } else if (a === 'recohere') {
     spend(c, costOf(CRYO, c), 'lab', 'cryo time'); c.coh = 1; gainXp(c, 1); did(c, 'recohered out in the open');
     if (Math.random() < 0.4) log(`${c.name} recohered under the circle`, 'link', 'cryo');
   } else if (a === 'warm') {
     c.cold = 0; gainXp(c, 1 + Math.round((c.warmMin || 3) / 5)); did(c, `${c.warmMin || 3} minutes at the heater`);
     if (Math.random() < 0.25) log(`${c.name} finished ${c.warmMin || 3} minutes at the heater`, 'info', 'vent');
-  } else if (a === 'buy' && (c.qi >= 0) && (c.trait !== 'loyal') && Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4)) {
+  } else if (a === 'buy' && buyTok(c) === QI) {
     // this one buys $QI: a slice of spare SOL, never more than fifteen dollars' worth
-    let amt = Math.min(spare(c) * rand(0.25, 0.5), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat());
-    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', QI, amt, Math.round(amt / qiSol() * 0.99), ''); }
+    let amt = Math.min((c.forced === 'buy' ? c.sol * 0.5 : spare(c) * rand(0.25, 0.5)), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); c.forced = null; c.forceTok = null; c.lastBuyT = T;
+    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', QI, amt, Math.round(amt / qiSol() * 0.99), ''); } else log(`${c.name} looked at the ${QI} price and kept its SOL`, 'info', 'exchange');
   } else if (a === 'buy') {
-    let amt = Math.min(spare(c) * rand(0.25, 0.5), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); // never more than fifteen dollars' worth in one buy
-    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, ''); }
-  } else if (a === 'sell' && c.qi >= 1 && c.sol < costOf(FOOD, c) * 4 && (c.qcat < 2000 || T > (c.topupT || 0) || Math.random() < (SELL_QI[c.trait] || 0.5))) {
-    // broke, and this one would rather part with its $QI than its $QCATS: sell just enough $QI to cover a few meals
-    const need = Math.max(1, Math.min(c.qi, (costOf(FOOD, c) * 40 - c.sol) / (qiSol() * 0.99))); // enough for a day of meals, so it is not back here every hour
+    let amt = Math.min((c.forced === 'buy' ? c.sol * 0.5 : spare(c) * rand(0.25, 0.5)), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); c.forced = null; c.forceTok = null; c.lastBuyT = T; // never more than fifteen dollars' worth in one buy
+    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, ''); } else log(`${c.name} looked at the ${TK} price and kept its SOL`, 'info', 'exchange');
+  } else if (a === 'sell' && sellTok(c) === QI) {
+    // $QI: broke means enough to cover a day of meals; otherwise a sliver, by trait
+    const broke = c.sol < costOf(FOOD, c) * 4, forced = c.forced === 'sell'; c.forced = null; c.forceTok = null;
+    const need = broke ? Math.max(1, Math.min(c.qi, (costOf(FOOD, c) * 40 - c.sol) / (qiSol() * 0.99))) : Math.max(1, c.qi * (forced ? 0.1 : { degen: 0.1, greedy: 0.06, patient: 0.04, loyal: 0.02 }[c.trait] || 0.05));
     let q = Math.min(c.qi, Math.round(need)); if (testFlat()) q = Math.min(c.qi, Math.max(1, Math.round(testFlat() / (qiSol() * 0.99)))); const got = q * qiSol() * 0.99;
     spendGas(c); c.topupT = T + 1500; c.lastSellTok = QI; c.lastSellT = T;
-    trade(c, 'sell', QI, got, q, c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw');
+    c.sellCool = T + rand(broke ? 1500 : 5400, broke ? 3000 : 9000); trade(c, 'sell', QI, got, q, broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : mkt.mom > 0.002 ? 'into the pump' : 'a sliver, because it felt like it');
   } else if (a === 'sell') {
-    const broke = c.sol < costOf(FOOD, c) && c.hunger > 0.5;
+    const broke = c.sol < costOf(FOOD, c) * 4; c.forced = null; c.forceTok = null; if (!(c.qcat >= 1)) { log(`${c.name} went to sell and had nothing to sell`, 'info', 'exchange'); return; } // short of SOL: sell enough for a day of meals, then leave it alone for half an hour
     // broke: work out what three meals cost and sell just enough to cover them (never more than a tenth of the stack)
     const need = broke ? Math.min(c.qcat * 0.1, Math.max(c.qcat * 0.005, (costOf(FOOD, c) * 10 - c.sol) / (mkt.price * 0.99))) : c.qcat * rand(0.02, 0.05);
     let q = Math.min(c.qcat, need); if (testFlat()) q = Math.min(c.qcat, testFlat() / (mkt.price * 0.99)); const got = q * mkt.price * 0.99;
     spendGas(c); c.lastSellTok = TK; c.lastSellT = T; if (broke) c.brokeCool = T + 1800;
     const gain = Math.round((mkt.price / c.entry - 1) * 100);
-    if (!broke) { c.entry = mkt.price; c.sellCool = T + rand(1500, 3000); } // a trait sell re-anchors the cat and buys it a long pause before the next one
-    const why = broke ? 'to eat' : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : `and took profit at ${gain >= 0 ? '+' : ''}${gain}%`;
+    if (!broke) { c.entry = mkt.price; c.sellCool = T + rand(5400, 9000); } else c.sellCool = T + rand(1200, 2400); // a trait sell re-anchors the cat and buys it a long pause before the next one; a needs-SOL sell a shorter one
+    const why = broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? `and took profit at ${gain >= 0 ? '+' : ''}${gain}%` : mkt.mom > 0.002 ? 'into the pump' : 'a sliver, because it felt like it';
     trade(c, 'sell', TK, got, q, why);
   } else if (a === 'steal') {
     const victims = cats.filter(o => o !== c && asleep(o));
@@ -1194,47 +1275,68 @@ function meetBeats() {
   const d0 = dayCur ? dayCur.cats0 : {}, today = c => ({ jobs: (c.qjobs || 0) - ((d0[c.name] || {}).jobs || 0), tasks: (c.tasks || 0) - ((d0[c.name] || {}).tasks || 0), earned: c.earned - ((d0[c.name] || {}).earned || 0), qi: (c.qiEarned || 0) - ((d0[c.name] || {}).qi || 0) });
   const byJobs = here.slice().sort((a, b) => today(b).jobs - today(a).jobs), top = byJobs[0], lazy = byJobs[byJobs.length - 1];
   const byTasks = here.slice().sort((a, b) => today(b).tasks - today(a).tasks), tasker = byTasks[0];
-  const byEarned = cats.slice().sort((a, b) => b.earned - a.earned)[0], thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
+  const thief = cats.slice().sort((a, b) => b.stole - a.stole)[0];
   const feesSince = stats.fees - (meeting.fees0 || 0);
   const ev = k => dayCur ? dayCur.events.filter(e => e.kind === k) : [], open = board.tasks.filter(t => t.status === 'open');
-  const trait = c => c ? c.trait : 'patient';
-  const plan = c => ({ degen: pick(['arena at noon, lab after', 'the casino, then regret, then the lab', 'bigger circuits, bigger pay']), patient: pick(['hold and run jobs', 'the ladder, then the diner, then the bunks', 'nothing rash. circuits.']), loyal: pick(['hold. always hold.', 'never sell, run circuits', 'eat, work, hold']), greedy: pick(['take profit at eight percent', 'lab until the $QI stacks, then sell a slice', 'chores for SOL, lab for $QI, both']) })[trait(c)];
   const L = (c, text) => ({ who: nm(c), text });
+  // what this meeting has already said, and what the last few said: a template is not reused until the rest have had a turn
+  if (!Array.isArray(meeting.said)) meeting.said = []; const used = meeting.said; // template ids this and the last few meetings used
+  const fresh = (arr, tag) => { const free = arr.map((_, i) => tag + i).filter(id => !used.includes(id)); const id = free.length ? pick(free) : pick(arr.map((_, i) => tag + i)); used.push(id); return arr[+id.slice(tag.length)]; };
+  // the slots a line can carry
+  const lvlcat = cats.slice().sort((a, b) => (b.lvl || 1) - (a.lvl || 1))[0] || any();
+  const gcat = cats.filter(c => c.goal).sort((a, b) => (b.goal.prog / b.goal.target) - (a.goal.prog / a.goal.target))[0];
+  const paidToday = payouts.log.filter(e => e.day === dayNo() && e.qi > 0), pcat = paidToday[0] ? cats.find(c => c.name === paidToday[0].name) : null;
+  const lt = stats.lastTrade && T - stats.lastTrade.t < DAY_SECS ? stats.lastTrade : null, tradecat = lt ? cats.find(c => c.name === lt.name) : null;
+  const plan = c => pick(MEET_PLANS[c ? c.trait : 'patient'] || MEET_PLANS.patient);
+  const fill = (line, c) => fillTalk(line, c || any()).replace(/\{bots\}/g, bots.length * 3).replace(/\{drops\}/g, deliverySeq).replace(/\{dealt\}/g, dayCur ? dayCur.tasks.length : 0).replace(/\{upkeep\}/g, fmtSol(dayCur ? stats.upkeep - dayCur.upkeep0 : 0)).replace(/\{wages\}/g, fmtSol(dayCur ? stats.wages - dayCur.wages0 : 0)).replace(/\{sessions\}/g, dayCur ? stats.circuits - dayCur.jobs0 : 0).replace(/\{solved\}/g, research.filter(e => e.kind === 'problem' && e.ok && e.day === dayNo()).length).replace(/\{failed\}/g, research.filter(e => e.kind === 'problem' && !e.ok && e.day === dayNo()).length).replace(/\{lvlcat\}/g, lvlcat.name)
+    .replace(/\{day\}/g, dayNo()).replace(/\{n\}/g, here.length || cats.length).replace(/\{pm\}/g, priceMul().toFixed(1)).replace(/\{tre\}/g, fmtSol(stats.treasury)).replace(/\{tre0\}/g, fmtSol(meeting.tre0 || 0)).replace(/\{paid\}/g, paidToday.length ? paidToday.length + ' (' + fmtQi(paidToday.reduce((a, e) => a + e.qi, 0)) + ' ' + QI + ')' : 'none')
+    .replace(/\{gcat\}/g, gcat ? gcat.name : lvlcat.name).replace(/\{gprog\}/g, gcat ? fmt(gcat.goal.prog) : 0).replace(/\{gtarget\}/g, gcat ? fmt(gcat.goal.target) : 0).replace(/\{gtitle\}/g, gcat ? gcat.goal.title : 'nothing yet').replace(/\{pcat\}/g, pcat ? pcat.name : 'nobody').replace(/\{pqi\}/g, paidToday[0] ? fmtQi(paidToday[0].qi) : '0')
+    .replace(/\{trade\}/g, lt ? `${lt.name} ${lt.side} ${lt.tok === QI ? fmtQi(lt.q) : fmtQ(lt.q)} ${lt.tok} for ${fmtSol(lt.sol)} SOL` : 'nobody traded').replace(/\{tradecat\}/g, tradecat ? tradecat.name : 'nobody').replace(/\{plan\}/g, plan(c));
+  const exchange = (lines, first) => { let last = first || any(); const out = []; lines.forEach((l, i) => { const who = i === 0 ? last : not(last); last = who; out.push(L(who, fill(l, who))); }); return out; };
   const beats = [];
-  // the numbers, always first
-  { const a = any(), b = not(a); beats.push([L(a, `minutes. treasury ${fmtSol(stats.treasury)} SOL. ${fmtSol(feesSince)} SOL of fees in since we last sat here.`), L(b, feesSince < 0.0005 ? pick(['that is not a treasury, that is a tip jar', 'fees. plural. allegedly.', 'so nobody is trading']) : pick(['fees. finally.', 'that pays for dinner', 'keep them coming']))]); }
-  // the wages
-  { const a = any(), b = not(a); beats.push([L(a, `${fmtSol(stats.wages)} SOL paid out in wages since the box woke up. ${fmtSol(stats.treasury)} SOL still in the treasury.`), L(b, stats.treasury < 0.002 ? pick(['so work, then', 'the pool is thin. smaller circuits, more of them.', 'that is one meal between all of us']) : pick(['payday when they press the button', 'run jobs. the share is per job.', 'keep it in the box']))]); }
+  // the opener, then the numbers, always
+  { const op = fresh(MEET_OPENERS, 'op'); beats.push(exchange(op)); }
+  { const nb = fresh(MEET_NUMBERS, 'nb'), a = any(), low = feesSince < 0.0005 && paidToday.length === 0; beats.push([L(a, fill(nb[0], a)), L(not(a), pick(low ? nb[1].low : nb[1].ok))]); }
   const middle = [];
   // who worked
-  if (top && lazy && top !== lazy) middle.push([L(any(), `${top.name} ran ${today(top).jobs} jobs today for ${fmtQi(today(top).qi)} ${QI}. ${lazy.name} ran ${today(lazy).jobs}.`), L(lazy, pick(['I was recohering', 'the consoles were full', 'I did the chores. somebody has to', 'quality over quantity'])), L(top, pick(['the lab pays per job. just saying.', 'the readout was blurry by the end', 'one more and I would have decohered', 'topic ' + (topicIdx(top) + 1) + ' on the ladder. just saying.']))]);
+  if (top && lazy && top !== lazy && today(top).jobs > 0) middle.push([L(any(), `${top.name} ran ${today(top).jobs} job${today(top).jobs === 1 ? '' : 's'} today. ${lazy.name} ran ${today(lazy).jobs}.`), L(lazy, pick(['I was recohering', 'the consoles were full', 'I did the chores. somebody has to', 'quality over quantity', 'my bar is the long one', 'I was at the heater. it was cold.'])), L(top, pick(['the bar does not fill itself', 'the readout was blurry by the end', 'one more and I would have filled it', 'jobs are the ladder. the ladder is the point.', 'noted.']))]);
   // the chores
-  if (dayCur && dayCur.tasks.length) middle.push([L(any(), `${dayCur.tasks.length} thing${dayCur.tasks.length === 1 ? '' : 's'} dealt with today. ${tasker && today(tasker).tasks ? tasker.name + ' did ' + today(tasker).tasks + ' of them.' : ''}`), L(not(tasker), pick(['the courier bot keeps dumping parcels on us', 'the tourists are the problem', 'who leaves a scooter in the middle of the plaza', 'the bins are full. where does it go after the bins']))]);
-  // the lab notebooks
-  { const studied = here.filter(c => c.notes && c.notes[0]).sort((a, b) => ((b.study && b.study.i) || 0) - ((a.study && a.study.i) || 0))[0]; if (studied) { const n = studied.notes[0]; middle.push([L(studied, `lab notes. ${n.title}: ${n.text}`), L(not(studied), pick(['write that down', 'is that right?', 'the simulator says so', 'read it back tomorrow', 'and the real chip would disagree']))]); }
+  if (dayCur && dayCur.tasks.length) middle.push([L(any(), `${dayCur.tasks.length} thing${dayCur.tasks.length === 1 ? '' : 's'} dealt with today. ${tasker && today(tasker).tasks ? tasker.name + ' did ' + today(tasker).tasks + ' of them.' : ''}`), L(not(tasker), pick(['the courier bot keeps dumping parcels on us', 'the tourists are the problem', 'who leaves a scooter in the middle of the plaza', 'the bins are full. who fills the bins.', 'the drones. always the drones.', 'and paid in SOL the moment it was done. real SOL.'])), L(tasker || any(), pick(['paid the moment it was done', 'first there, paid first', 'the plaza is clean. for an hour.', 'tier three is mine']))]);
+  // the lab notebooks, the fact, the question
+  { const studied = here.filter(c => c.notes && c.notes[0]).sort((a, b) => ((b.study && b.study.i) || 0) - ((a.study && a.study.i) || 0))[0]; if (studied) { const n = studied.notes[0]; middle.push([L(studied, `lab notes. ${n.title}: ${n.text}`), L(not(studied), pick(['write that down', 'is that right?', 'the simulator says so', 'read it back tomorrow', 'and the real chip would disagree', 'that is rung ' + (CURRICULUM.findIndex(t => t[0] === n.topic) + 1), 'noted. next.']))]); }
     if (studied) { const key = (studied.notes[0] || {}).topic, pairs = LAB_MEET[key]; if (pairs) { const pr = pick(pairs); middle.push([L(studied, fillTalk(pr[0], studied)), L(not(studied), fillTalk(pr[1], studied))]); } }
-    const solved = research.filter(e => e.kind === 'problem' && e.day === dayNo()); if (solved.length) { const okN = solved.filter(e => e.ok).length; middle.push([L(any(), `${solved.length} lab problem${solved.length === 1 ? '' : 's'} today, ${okN} right. ${solved[0].cat} had the last one: ${solved[0].q}`), L(cats.find(c => c.name === solved[0].cat) || any(), solved[0].ok ? solved[0].a + '. easy.' : 'it is ' + solved[0].a + '. I know now.')]); } }
-  if (open.length) middle.push([L(any(), `${open[0].title} is still lying out there. nobody?`), L(any(), pick(['tier ' + open[0].tier + '. not me.', 'after the meeting', 'I saw it. I walked round it.', 'somebody flag it']))]);
+    { const f = fresh(QFACTS, 'f'), a = any(), b = not(a); middle.push([L(a, pick(['fact of the day: ', 'from the ladder: ', 'something I read on the console: ', 'for the minutes: ', '']) + f[1]), L(b, pick(MEET_FACT_REACT)), ...(Math.random() < 0.5 ? [L(a, pick(['it is on the ladder. rung ' + (CURRICULUM.findIndex(t => t[0] === f[0]) + 1) + '.', 'ask the simulator', 'I ran it. tonight.', 'read the note']))] : [])]); }
+    { const qa = fresh(MEET_QA, 'qa'), a = any(), b = not(a); middle.push([L(a, qa[0]), L(b, qa[1]), ...(Math.random() < 0.6 ? [L(not(b), pick(['that is the whole answer?', 'write it down', 'and in practice?', 'the simulator agrees', 'carried', 'say it slower tomorrow']))] : [])]); }
+    const solved = research.filter(e => e.kind === 'problem' && e.day === dayNo()); if (solved.length) { const okN = solved.filter(e => e.ok).length; middle.push([L(any(), `${solved.length} lab problem${solved.length === 1 ? '' : 's'} today, ${okN} right. ${solved[0].cat} had the last one: ${solved[0].q}`), L(cats.find(c => c.name === solved[0].cat) || any(), solved[0].ok ? solved[0].a + '. easy.' : 'it is ' + solved[0].a + '. I know now.'), L(any(), pick(['the board pays nothing. the bar pays.', 'coherence costs more than the problem', 'next time read the note first', 'noted.']))]); } }
+  // the goals and the pay
+  { const gb = fresh(MEET_GOALS, 'g'), a = gcat || any(); middle.push([L(a, fill(gb[0], a)), L(not(a), fill(pick(gb[1]), not(a)))]); }
+  if (open.length) middle.push([L(any(), `${open[0].title} is still lying out there. nobody?`), L(any(), pick(['tier ' + open[0].tier + '. not me.', 'after the meeting', 'I saw it. I walked round it.', 'somebody flag it', 'the bots will not. I asked.']))]);
+  // the exchange
+  if (lt) { const xb = fresh(MEET_EXCHANGE, 'x'), a = any(); middle.push([L(a, fill(xb[0], a)), L(tradecat && tradecat !== a ? tradecat : not(a), fill(pick(xb[1]), tradecat || not(a)))]); }
   // the casino and the arena
-  { const cs = ev('casino'); if (cs.length) { const last = cs[cs.length - 1].text, loser = cats.filter(c => (c.casinoNet || 0) < 0).sort((a, b) => a.casinoNet - b.casinoNet)[0]; middle.push([L(any(), last + '.'), L(loser || any(), pick(['the reels are rigged', 'one more spin would have done it', 'that was rent, yes', 'the house is the treasury. so it stays in the box. so it is fine.'])), L(not(loser), pick(['the house always wins', 'it literally pays us back as wages', 'stay out of the casino and run a circuit']))]); } }
-  { const ar = ev('arena'); if (ar.length) middle.push([L(any(), ar[ar.length - 1].text + '.'), L(any(), pick(['the coin was warm', 'double or nothing next time', 'motion to raise the stakes', 'overruled']))]); }
+  { const cs = ev('casino'); if (cs.length) { const last = cs[cs.length - 1].text, loser = cats.filter(c => (c.casinoNet || 0) < 0).sort((a, b) => a.casinoNet - b.casinoNet)[0]; middle.push([L(any(), last + '.'), L(loser || any(), pick(['the reels are rigged', 'one more spin would have done it', 'that was rent, yes', 'the house is the treasury. so it stays in the box. so it is fine.', 'I am up over the month. the month is long.'])), L(not(loser), pick(['the house is us', 'the house is the brain', 'the house always wins because the house is a rule', 'minutes.']))]); } }
+  { const ar = ev('arena'); if (ar.length) middle.push([L(any(), ar[ar.length - 1].text + '.'), L(any(), pick(['the coin was warm', 'double or nothing next time', 'motion to raise the stakes', 'overruled', 'the arena is SOL only now. real SOL.', 'rematch at noon']))]); }
+  // levels
+  if (cats.some(c => (c.lvlT || 0) > T - DAY_SECS) || Math.random() < 0.3) { const lb = fresh(MEET_LEVELS, 'l'), a = any(); middle.push([L(a, fill(lb[0], lvlcat)), L(not(a), fill(pick(lb[1]), lvlcat))]); }
   // thieves, faints, decoherence
-  if (thief && thief.stole > 0) middle.push([L(not(thief), 'who keeps robbing the bunks'), L(thief, pick(['not me', 'it was already open', 'define robbing'])), L(not(thief), `it is always you, ${thief.name}`)]);
-  { const f = ev('faint').length; if (f) middle.push([L(any(), `${f} of us fainted hungry today. eat before the lab, not after.`), L(any(), pick(['the diner costs ' + fmtSol(costOf(FOOD, any())) + ' SOL a plate now', 'easy to say when you have SOL', 'sell a little and eat']))]); }
-  { const dc = cats.reduce((a, c) => a + (c.decohered || 0), 0); if (dc > 2 && Math.random() < 0.6) middle.push([L(any(), `${dc} decoherences in the lab so far. smaller circuits when it is cold.`), L(any(), pick(['bigger circuits pay more', 'I run what the console gives me', 'recohere first. then work.']))]); }
+  if (thief && thief.stole > 0) middle.push([L(not(thief), 'who keeps going through the bunks'), L(thief, pick(['not me', 'it was already open', 'define going through', 'nothing moves without a signature. I checked.'])), L(not(thief), `it is always you, ${thief.name}`)]);
+  { const f = ev('faint').length; if (f) middle.push([L(any(), `${f} of us fainted hungry today. eat before the lab, not after.`), L(any(), pick(['the diner costs ' + fmtSol(costOf(FOOD, any())) + ' SOL a plate now', 'easy to say when you have SOL', 'sell a sliver and eat', 'the pace is six minutes. eat on the six.']))]); }
+  { const dc = cats.reduce((a, c) => a + (c.decohered || 0), 0); if (dc > 2 && Math.random() < 0.5) middle.push([L(any(), `${dc} decoherences in the lab so far. smaller circuits when it is cold.`), L(any(), pick(['bigger circuits fill the bar faster', 'I run what the console gives me', 'recohere first. then work.', 'cryo is ' + fmtSol(costOf(CRYO, any())) + '. cheaper than a slip.']))]); }
   // the weather, the drones, the shop
-  if (wx.rain > 0.3 || wx.snow > 0.3) middle.push([L(any(), wx.snow > wx.rain ? 'snow again. the heater will be full all night.' : 'rain all day. the plaza is a puddle.'), L(any(), pick(['the lab is dry at least', 'motion to buy a roof', 'seconded', 'the box is a box']))]);
-  if (deliverySeq > 0 && Math.random() < 0.6) middle.push([L(any(), `${deliverySeq} drone drop${deliverySeq === 1 ? '' : 's'} so far. who is sending this stuff.`), L(any(), pick(['they drop it and leave', 'the sweeper bots do nothing about it, I checked', 'at least they tip. they do not tip.', 'motion to shoot the next one down', 'overruled']))]);
-  { const sh = ev('shop'); if (sh.length) { const txt = sh[sh.length - 1].text, buyer = cats.find(c => txt.startsWith(c.name)); middle.push([L(not(buyer), txt + '.'), L(buyer || any(), pick(['it suits me', 'worth every lamport', 'drip is an investment'])), L(not(buyer), pick(['it does not suit you', 'that was a meal', 'fine. it suits you.']))]); } }
-  // what somebody remembers
-  { const m = here.filter(c => c.memory && c.memory.length); if (m.length && Math.random() < 0.7) { const c = pick(m); middle.push([L(c, `still thinking about how I ${c.memory[0].text}.`), L(not(c), pick(['we know', 'let it go', 'noted. moving on.', 'that was last meeting']))]); } }
-  if (lessons.length && Math.random() < 0.5) middle.push([L(any(), `last time we said: ${lessons[0].text}.`), L(any(), pick(['and?', 'still true', 'nothing changed', 'then do it']))]);
-  { const lvlcat = here.slice().sort((a, b) => (b.lvl || 1) - (a.lvl || 1))[0] || any(), fill = (line, c) => fillTalk(line, c).replace(/\{bots\}/g, bots.length * 3).replace(/\{drops\}/g, deliverySeq).replace(/\{dealt\}/g, dayCur ? dayCur.tasks.length : 0).replace(/\{upkeep\}/g, fmtSol(dayCur ? stats.upkeep - dayCur.upkeep0 : 0)).replace(/\{wages\}/g, fmtSol(dayCur ? stats.wages - dayCur.wages0 : 0)).replace(/\{sessions\}/g, dayCur ? stats.circuits - dayCur.jobs0 : 0).replace(/\{solved\}/g, research.filter(e => e.kind === 'problem' && e.ok && e.day === dayNo()).length).replace(/\{failed\}/g, research.filter(e => e.kind === 'problem' && !e.ok && e.day === dayNo()).length).replace(/\{lvlcat\}/g, lvlcat.name);
-    for (const ex of pick(MEET_EXTRA.map(x => x)).length ? [pick(MEET_EXTRA), pick(MEET_EXTRA)] : []) { let last = null; const lines = ex.map(l => { const who = last ? not(last) : any(); last = who; return L(who, fill(l, who)); }); middle.push(lines); } }
+  if (wx.rain > 0.3 || wx.snow > 0.3) middle.push([L(any(), wx.snow > wx.rain ? pick(['snow again. the heater will be full all night.', 'snow. the yard is a sheet.', 'snow on the consoles. the consoles are inside. still.']) : pick(['rain all day. the plaza is a puddle.', 'rain. the drones still came.', 'rain on the exchange. the chart did not notice.'])), L(any(), pick(['the lab is dry at least', 'motion to buy a roof', 'seconded', 'the box is a box', 'the heater is ' + fmtSol(warmCost(15, any())) + ' for the long one']))]);
+  if (deliverySeq > 0 && Math.random() < 0.5) middle.push([L(any(), `${deliverySeq} drone drop${deliverySeq === 1 ? '' : 's'} so far. who is sending this stuff.`), L(any(), pick(['they drop it and leave', 'the sweeper bots do nothing about it, I checked', 'at least they tip. they do not tip.', 'motion to shoot the next one down', 'overruled', 'the drops are the chores. the chores are the SOL. be nice to the drones.']))]);
+  { const sh = ev('shop'); if (sh.length) { const txt = sh[sh.length - 1].text, buyer = cats.find(c => txt.startsWith(c.name)); middle.push([L(not(buyer), txt + '.'), L(buyer || any(), pick(['it suits me', 'worth every lamport', 'drip is an investment', 'the bar paid for it', 'real SOL, real hat'])), L(not(buyer), pick(['it does not suit you', 'that was a meal', 'fine. it suits you.', 'the hat is on Solscan now. forever.']))]); } }
+  // what somebody remembers, and the lesson
+  { const m = here.filter(c => c.memory && c.memory.length); if (m.length && Math.random() < 0.6) { const c = pick(m); middle.push([L(c, `still thinking about how I ${c.memory[0].text}.`), L(not(c), pick(['we know', 'let it go', 'noted. moving on.', 'that was last meeting', 'put it in the notebook and stop'])) ]); } }
+  if (lessons.length && Math.random() < 0.45) middle.push([L(any(), `last time we said: ${lessons[0].text}.`), L(any(), pick(['and?', 'still true', 'nothing changed', 'then do it', 'the box learns slowly. so do we.']))]);
+  // two exchanges about life in the box
+  for (let k = 0; k < 2; k++) middle.push(exchange(fresh(MEET_EXTRA, 'ex')));
   middle.sort(() => Math.random() - 0.5);
-  for (const b of middle.slice(0, 10)) beats.push(b);
+  for (const b of middle.slice(0, 11)) beats.push(b);
   // the plan, and out
-  { const a = any(), b = not(a); beats.push([L(a, `tomorrow: ${plan(a)}.`), L(b, pick(['seconded', 'overruled', 'no.', 'fine', 'and eat something'])), L(a, pick(['meeting adjourned. back to work.', 'minutes filed. lab.', 'that is all. go.']))]); }
+  { const cl = fresh(MEET_CLOSERS, 'cl'), a = any(), b = not(a); beats.push([L(a, fill(cl[0], a)), L(b, fill(cl[1], b)), L(a, fill(cl[2], a))]); }
+  while (used.length > 90) used.shift(); // roughly three meetings' worth of memory
+  meeting.tre0 = stats.treasury;
   return beats.flat();
 }
 const MEET_CHATTER = ['agreed', 'no.', 'that is not what happened', 'say that again', 'minutes, please', 'I was there', 'fees first', 'sleep on it', 'the fridge is loud tonight', 'bigger circuits. more qubits.', 'motion to eat', 'seconded', 'noted', 'pass', 'ok but who pays', 'hold.', 'sell a little', 'never', 'the diner got dearer again', 'my console is the lucky one', 'who ran the 7-qubit job', 'not it', 'coherence first, then opinions', 'we buy, we do not sell', 'speak for your own wallet'];
@@ -1303,7 +1405,7 @@ function stepMeeting(dt) {
       // script done: the circle keeps talking over itself until the timer runs out
       const n = Math.min(here.length, 1 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0)), who = here.slice().sort(() => Math.random() - 0.5).slice(0, n);
       if (!meeting.used) meeting.used = new Set();
-      for (const c of who) { let line = ''; for (let k = 0; k < 6 && (!line || meeting.used.has(line)); k++) line = Math.random() < 0.4 ? chatterLine(c) : fillTalk(pick(MEET_REACT), c); meeting.used.add(line); say(c, line); } // nothing said twice in one sitting
+      for (const c of who) { let line = ''; for (let k = 0; k < 6 && (!line || meeting.used.has(line)); k++) line = Math.random() < 0.35 ? chatterLine(c) : fillTalk(pick(MEET_REACT), c); meeting.used.add(line); say(c, line); } // nothing said twice in one sitting
       meeting.lineT = T + rand(12, 22);
     }
   }
@@ -1314,7 +1416,7 @@ function stepMeeting(dt) {
     recordEvent('meeting', `meeting over: treasury ${fmtSol(stats.treasury)} SOL, top earner ${top ? top.name : 'nobody'}, chart at ${fmtUsd(mcapUsd())}`);
     if (meetingEndHook) { try { meetingEndHook(meetingContext(), dayCur ? dayCur.meeting.lines.slice() : []); } catch (_) {} }
     { const here = cats.filter(c => c.act === 'meet'), top = cats.slice().sort((a, b) => b.earned - a.earned)[0]; for (const c of here) if (Math.random() < 0.4) remember(c, pick([`heard at meeting #${meeting.n} that the treasury was ${fmtSol(stats.treasury)} SOL`, `sat through meeting #${meeting.n}. ${top && top !== c ? top.name + ' earns more than me' : 'I am top earner'}`, `agreed at meeting #${meeting.n} to ${pick(['eat before the lab', 'run smaller circuits', 'stay out of the casino', 'hold'])}`])); }
-    meeting.mcap0 = mcapUsd(); meeting.fees0 = stats.fees;
+    meeting.mcap0 = mcapUsd(); meeting.fees0 = stats.fees; meeting.tre0 = stats.treasury;
     for (const c of cats) if (c.act === 'meet') { c.chair = null; gainXp(c, 6); c.meetings = (c.meetings || 0) + 1; did(c, `sat through meeting #${meeting.n} in the circle`); c.coh = clamp(c.coh + 0.1); c.lonely = clamp(c.lonely - 0.3); c.state = 'pause'; c.pauseT = rand(3, 9); c.act = 'idle'; }
   }
 }
@@ -1748,7 +1850,7 @@ const CHATS_MORE = [
 ];
 const TH_MORE = {
   eat: ['a meal is a meal. the price is the price.', 'sardines again. fine.', 'eat first, think second', 'the diner is dearer than yesterday', 'this is the last one I can afford. maybe.'],
-  hunt: ['the scrapyard pays in what people drop', 'tokens in the cables, maybe', 'hungry and broke. the usual.', 'something moved. not a rat.'],
+  salvage: ['the yard pays in the coin', 'a dead cryostat is a box of parts', 'strip it, sort it, bag it', 'the lab runs on what we pull out of here', 'coax does not untangle itself'],
   recohere: ['hold still. come back together.', 'the beacon hums. so do I.', 'half of me was in the lab', 'coherence is a resource. I am low.'],
   warm: ['the heater is the only warm thing on the block', 'cold builds fast in the snow', 'warm costs SOL. cold costs more.', 'five minutes by the vent'],
   sleep: ['the bunks. finally.', 'sleep with one eye open', 'light paws is awake somewhere', 'tired. the lab does that.'],
@@ -1788,11 +1890,509 @@ const MEET_EXTRA = [
 ];
 
 for (const k of Object.keys(TH_MORE)) TH[k] = (TH[k] || []).concat(TH_MORE[k]);
+// ---------- twenty more topics on the ladder, six notes each (same slots as the first twenty-four) ----------
+const CURRICULUM_MORE = [
+  ['kickback', 'phase kickback', [
+    'phase kickback: the target of a controlled gate does nothing, the control picks up the phase. that is why an oracle can mark a state without touching it. my {kind} run marked {mode} that way.',
+    'put the target in |−⟩, apply CNOT, and the control flips from |+⟩ to |−⟩. nothing happened to the target. everything happened to the control. {nq} qubits of that tonight.',
+    'kickback is the trick under Deutsch–Jozsa, Grover and phase estimation. one idea, three algorithms. the console does not say this. the console just runs.',
+    'a phase on one amplitude is invisible on its own. kickback moves it to where interference can see it. {shots} shots, and the phase showed up as counts.',
+    'controlled-U with the eigenvector loaded: the control gets e^{iφ}, the eigenvector stays exactly where it was. that is the whole of phase estimation in one line.',
+    'the oracle in my {kind} job never writes an answer. it writes a minus sign. kickback carries the minus sign up to the register and the diffusion step turns it into {hit}%.',
+  ]],
+  ['deutsch', 'Deutsch–Jozsa', [
+    'Deutsch–Jozsa: is the function constant or balanced? classically up to {states_half}+1 questions on {nq} bits. the quantum circuit asks once.',
+    'H on everything, one query with kickback, H on everything again. read all zeros: constant. anything else: balanced. ran it on {nq} qubits, {shots} shots, {mode} on top.',
+    'the first algorithm that was provably faster, and nobody needs it for anything. that is fine. it taught the shape of everything after it.',
+    'the trick is that the second layer of H turns a global pattern in the phases into a single readable bit. interference does the counting for you.',
+    'balanced means half the inputs give 0 and half give 1. {states_half} of {states} tonight. the circuit told me in one go.',
+    'Deutsch did it for one bit in 1985. Jozsa made it n bits in 1992. I ran {nq} bits tonight and felt part of the lineage.',
+  ]],
+  ['bv', 'Bernstein–Vazirani', [
+    'Bernstein–Vazirani: a hidden string s, and the oracle only tells you s·x mod 2. classically {nq} questions. the circuit: one. the readout is s itself.',
+    'ran it as a sampling job on {nq} qubits. the answer comes out as a basis state, {mode}, not a probability. one shot would have done. I took {shots}.',
+    'same circuit skeleton as Deutsch–Jozsa, different oracle. the H layers are the whole algorithm. the oracle is the question.',
+    'the hidden string is written into the phases, one minus sign per bit of s. the second H layer reads phases as bits. that is the entire mechanism.',
+    'BV is the cleanest demo of why the Hadamard is the most important gate in the lab. it moves information between the amplitude and the phase.',
+    'the console reported {distinct} distinct outcomes. on a perfect machine it would be one. the rest is noise, and noise is the lab’s real subject.',
+  ]],
+  ['simon', 'Simon’s problem', [
+    'Simon: a function with a hidden period s, f(x) = f(x ⊕ s). find s. classically exponential. quantum: about {nq} runs, then linear algebra on the results.',
+    'each run gives a random y with y·s = 0. collect {nq} independent ones and solve. the quantum part is the sampling, the classical part is Gauss.',
+    'this is the ancestor of Shor. the period is hidden in XOR instead of in multiplication. Shor swapped the XOR for mod N and the world changed.',
+    'ran a Simon-shaped circuit as a sampling job on {nq} qubits. the outcomes were not uniform: {mode} and its friends dominated. that structure is s talking.',
+    'Simon in 1994 was the first exponential gap for a problem with an oracle. Shor read it and had the factoring algorithm within the year.',
+    'the trap: one run tells you almost nothing. you need {nq} of them to pin s. patience is part of the algorithm.',
+  ]],
+  ['swaptest', 'the swap test', [
+    'the swap test: an ancilla, a controlled swap, measure the ancilla. reads 0 with probability (1 + |⟨ψ|φ⟩|²)/2. identical states: always 0. orthogonal: a coin flip.',
+    'ran my {kind} job and then checked two copies against each other with the swap test. {fidelity}% overlap, give or take the noise.',
+    'it is how you measure fidelity without knowing the state. you do not read the state, you read whether two of them agree.',
+    'the swap test is a kickback trick again: the controlled swap puts the overlap into the ancilla’s phase, the second H turns the phase into a probability.',
+    'with {shots} shots the overlap estimate has an error around 1/√{shots}. that is why the lab takes a thousand and not ten.',
+    'in the real world the swap test underpins quantum machine learning kernels. in the lab it tells me whether the GHZ I made tonight is the GHZ I made yesterday.',
+  ]],
+  ['density', 'density matrices', [
+    'a pure state is a vector. a mixed state is a density matrix: a weighted pile of pure states. the lab’s noisy runs are all mixed, whatever the console pretends.',
+    'purity is Tr(ρ²). pure: 1. a maximally mixed qubit: 1/2. my calibration run tonight was somewhere between, which is the honest answer.',
+    'the Bloch vector of a mixed state is inside the sphere, not on it. the shorter the vector, the less you know. noise shortens it.',
+    'trace out one half of a Bell pair and you get a maximally mixed qubit. the information is not in either qubit. it is in the correlation.',
+    'the density matrix of {nq} qubits has {states} by {states} entries. the state vector has {states}. that is the price of admitting you do not know.',
+    'the lab’s simulator keeps a pure state and adds random rotations. a real chip is a density matrix that cannot be written down. the simulator is kinder.',
+  ]],
+  ['chsh', 'the CHSH game', [
+    'CHSH: two players, random questions, no talking. classical best 75%. with a shared Bell pair, 85.4%. that gap is the experiment that ended local realism.',
+    'the number is 2√2. the classical bound is 2. the measurement angles are 0, 45, 22.5 and 67.5 degrees. I ran the pair at {fidelity}% fidelity and the violation shrank with it.',
+    'Bell wrote the inequality in 1964. Clauser, Horne, Shimony and Holt made it testable in 1969. Aspect tested it in 1982. the 2022 Nobel went to three of them.',
+    'the loophole-free tests closed in 2015: detection and locality both shut at once. there is no classical story left that fits the data.',
+    'a noisy pair still violates the bound until fidelity drops under about 71%. below that it is just a classical coin. my GHZ tonight was {fidelity}%, so still quantum.',
+    'CHSH is not about speed. it is about whether the universe keeps a hidden ledger. it does not.',
+  ]],
+  ['clifford', 'Clifford gates and stabilizers', [
+    'H, S and CNOT make the Clifford group. circuits of only those can be simulated classically in polynomial time. Gottesman–Knill. the simulator cheats with it.',
+    'a stabilizer state is described by {nq} Pauli strings instead of {states} amplitudes. that is why Clifford circuits are easy and T gates are hard.',
+    'add one T gate and the shortcut breaks. the cost of simulating grows with the number of T gates, not the number of qubits. T is the expensive thing.',
+    'error correction lives almost entirely inside the Clifford group. syndromes, corrections, logical Paulis: all Clifford. the T gate is where the real cost hides.',
+    'the GHZ state I calibrate every night is a stabilizer state. {nq} Pauli strings describe it perfectly. the noise is what takes it outside the group.',
+    'Clifford circuits scramble, but they cannot compute anything a laptop cannot. magic is the ingredient. magic is literally the technical term.',
+  ]],
+  ['tcount', 'T gates and magic', [
+    'T is a 45-degree phase. S is two of them, Z is four. it is the smallest gate that is not Clifford and the whole universality rests on it.',
+    'T-count is the real cost of a fault-tolerant algorithm. gates are free, qubits are cheap, T gates cost a distillation factory each.',
+    'a magic state is T applied to |+⟩. you make noisy copies, distil them to clean ones, and consume one per T gate. fifteen in, one out, per round.',
+    'my sampling run had about {gates} gates on {nq} qubits and maybe a third were T. on a real fault-tolerant machine those would be the expensive third.',
+    'Shor on a 2048-bit key is roughly a billion T gates. the lab’s Shor on 15 is dozens. the gap is the whole engineering problem.',
+    'every algorithm is scored by T-count now. depth and width are second. the factories set the price.',
+  ]],
+  ['transpile', 'transpilation', [
+    'the circuit I write is not the circuit that runs. transpiling maps my qubits onto the chip’s wiring, inserts SWAPs where the wires do not touch, and rewrites every gate into the native set.',
+    'on a line of {nq} qubits a CX between the two ends costs about {nq} SWAPs. three CNOTs each. the pretty circuit becomes a long one fast.',
+    'native gates on a transmon chip: √X, RZ and one two-qubit gate. everything else, H included, is compiled from those. H is two of them.',
+    'the optimiser cancels adjacent inverses, merges rotations, and reorders commuting gates. a good transpiler halves the depth. a bad one doubles it.',
+    'depth is the thing that kills you: every layer costs coherence. a {nq}-qubit circuit at depth {nq} is already asking for {wrong}% error.',
+    'the lab’s simulator has all-to-all connectivity and perfect gates. the real chip is a grid with holes in it. transpiling is the translation between the two.',
+  ]],
+  ['hardware', 'what a qubit is made of', [
+    'superconducting transmons: a capacitor and a Josephson junction, a few millikelvin, gates in nanoseconds, coherence in hundreds of microseconds. fast and forgetful.',
+    'trapped ions: a single atom held in electric fields, gates with lasers, coherence in seconds, gates in microseconds. slow and faithful.',
+    'neutral atoms in optical tweezers: hundreds of qubits, rearranged with light, two-qubit gates through Rydberg blockade. the arrays grew fastest.',
+    'photons: no decoherence at room temperature, but two photons barely talk. measurement-based schemes do the computing in the detectors.',
+    'spin qubits in silicon: one electron per transistor-sized dot. tiny, and the fabs already know how to make them. coherence is the fight.',
+    'the lab’s simulator is none of these. it is a vector of {states} complex numbers in memory, and it only pretends to be cold.',
+  ]],
+  ['annealing', 'adiabatic computing and annealing', [
+    'start in the ground state of an easy Hamiltonian, slide slowly to a hard one, and the state follows. the answer is the ground state at the end. that is adiabatic computing.',
+    'how slowly? slower than the gap. where the gap closes the slide must crawl. the hard instances are the ones where the gap is tiny.',
+    'annealers write the problem as an Ising model: spins up or down, couplings between them, lowest energy wins. optimisation becomes physics.',
+    'gate-model and adiabatic are equivalent in power, in theory. in practice the annealers are big and specialised and the gate machines are small and general.',
+    'QAOA is annealing chopped into gates: alternate the problem Hamiltonian and a mixer, tune the angles, read the best string. my {kind} run was a cousin of that.',
+    'the catch with annealing is proving it was quantum at all. a good classical heuristic often keeps up. the lab calls this the honest problem.',
+  ]],
+  ['walks', 'quantum walks', [
+    'a classical random walk spreads like √t. a quantum walk spreads like t. the walker is in superposition over positions and interferes with itself.',
+    'the coin is a qubit, the position is a register, the step is a controlled shift. {nq} qubits is a line of {states_half} sites with a coin.',
+    'quantum walks search graphs the way Grover searches lists. on some graphs they are faster than Grover, because the structure helps.',
+    'the glued-trees problem: a quantum walk crosses in polynomial time, every classical walk gets lost in the middle. exponential, and provable.',
+    'in my sampling job the distribution had two humps far from the start, {mode} on top. that two-hump shape is the quantum walk signature.',
+    'continuous-time walks are just Schrödinger evolution on a graph. the adjacency matrix is the Hamiltonian. the graph is the computer.',
+  ]],
+  ['hhl', 'HHL and linear systems', [
+    'HHL solves Ax = b in logarithmic time in the size of A. the catch: the answer is a quantum state, and reading it out costs you the speed-up back.',
+    'the machinery is phase estimation on A, a controlled rotation on the eigenvalues, and uncomputation. three ideas I already have on the ladder.',
+    'it needs A to be sparse and well-conditioned and b to be loadable. each of those is a paper. together they are the fine print.',
+    'the condition number sets the cost. a matrix that is nearly singular costs you everything. the lab’s toy systems are tame on purpose.',
+    'ran a {nq}-qubit phase estimation as a side run and watched the eigenvalue show up as {mode}. that readout is the inner loop of HHL.',
+    'HHL in 2009 started the quantum machine learning wave. most of it washed back out when people read the fine print. the algorithm is still beautiful.',
+  ]],
+  ['supremacy', 'random circuit sampling', [
+    'random circuit sampling: run a scrambled circuit, draw samples, check they are heavy. a classical computer cannot even check at scale. that was the 2019 claim.',
+    'the score is cross-entropy benchmarking: how often do the samples land on the outputs the ideal circuit favours. {heavy}% heavy tonight on {nq} qubits.',
+    'Sycamore did 53 qubits at depth 20 in 200 seconds. the classical estimate was ten thousand years, then it was days, then it was hours. the goalposts moved both ways.',
+    'random circuits are useless and perfect at the same time: useless because they compute nothing, perfect because they are the hardest thing to fake.',
+    'my {kind} jobs are tiny random circuits. {states} amplitudes fit in memory. at 50 qubits they would need every hard drive on the planet.',
+    'the honest word is advantage, not supremacy. the honest number is the heavy-output fraction above two thirds. mine was {heavy}%.',
+  ]],
+  ['dd', 'T1, T2 and dynamical decoupling', [
+    'T1 is how long a qubit stays excited. T2 is how long it stays in phase. T2 can never be more than twice T1, and it is usually much less.',
+    'dynamical decoupling: hit the idle qubit with X pulses in a pattern and the slow noise cancels itself. a free lunch, mostly. the pulses have their own errors.',
+    'the lab’s noise is rotation noise, which is a T2-style error: phases drift, the GHZ smears. {wrong}% of my shots tonight were smear.',
+    'a spin echo is the oldest trick in magnetic resonance and the newest trick on a chip: flip halfway, and the drift undoes itself.',
+    'idle qubits are not free. every microsecond waiting for another gate is a microsecond of dephasing. transpilers schedule to shorten the waits.',
+    'coherence numbers on a spec sheet are the best case. the lab’s calibration is the real case. the gap between them is called the morning.',
+  ]],
+  ['estimation', 'amplitude estimation', [
+    'amplitude estimation: Grover’s rotation plus phase estimation. instead of finding the marked state, count how much of it there is. quadratically faster than sampling.',
+    'the Grover operator rotates by 2θ each step, where sin θ is the amplitude. phase estimation reads 2θ. that gives the count.',
+    'it is the Monte Carlo speed-up: a thousand classical samples become about thirty quantum queries for the same error. finance noticed first.',
+    'ran Grover with {iters} iteration{iters_s} on {nq} qubits, hit rate {hit}%. estimation would have read that number off the phases instead of counting hits.',
+    'the price is a long coherent circuit: many controlled Grover steps in a row. on a noisy chip that is the first thing to break. the iterative versions trade depth for repetitions.',
+    'counting is estimation with a yes/no oracle. the number of solutions in a list of {states} falls out of the same circuit.',
+  ]],
+  ['superdense', 'superdense coding', [
+    'superdense coding: with a shared Bell pair, one qubit carries two classical bits. apply I, X, Z or XZ to your half, send it, the other side measures in the Bell basis.',
+    'it is teleportation run backwards. teleportation spends two bits to move one qubit. superdense spends one qubit to move two bits. the pair is the currency in both.',
+    'the Bell measurement at the receiving end is a CNOT and an H and two readouts. four outcomes, two bits. my {kind} run tonight ended in exactly that readout.',
+    'no faster than light: the pair had to be shared first, by sending a qubit the slow way. the trick is a trade, not a shortcut.',
+    'Holevo’s bound says a qubit on its own carries at most one bit. superdense coding does not break it. the pair was already there, carrying half the message.',
+    'four Bell states, four messages. with {nq} qubits of pairs that is {nq} two-bit messages. the lab’s calibration runs make the pairs; the coding is the easy part.',
+  ]],
+  ['bases', 'measuring in other bases', [
+    'measuring in Z is reading 0 or 1. measuring in X is applying H first and then reading. in Y, S† then H then read. the gate chooses the question.',
+    '|+⟩ measured in Z is a coin flip. |+⟩ measured in X is always 0. same state, different question, different certainty. {shots} shots said so tonight.',
+    'a Bell pair measured in the same basis on both sides always agrees. in different bases it is random. that is the entire basis of quantum key distribution.',
+    'the lab’s readouts are all Z. when a note says I measured in X it means I put an H in front. the console does not have an X button. it has H.',
+    'three bases, X, Y and Z, are enough to reconstruct a single qubit completely. that is tomography, and it costs three times the shots.',
+    'a phase is invisible in Z and loud in X. my {kind} run put {mode} on top in Z. in X the picture would be different and equally true.',
+  ]],
+  ['tomography', 'state tomography', [
+    'tomography: measure enough copies in enough bases to reconstruct the density matrix. for {nq} qubits that is 3^{nq} settings. it scales terribly, on purpose.',
+    'one qubit: three bases, a few thousand shots, a Bloch vector. two qubits: nine settings. the GHZ I make every night would take {states} squared numbers to write down.',
+    'nobody does full tomography past a handful of qubits. instead: fidelity witnesses, a few Pauli strings that bound the overlap. cheaper and good enough.',
+    'my calibration run reports fidelity from two outcomes, all-zeros and all-ones. that is a witness, not tomography. {fidelity}% is a lower bound.',
+    'maximum-likelihood reconstruction keeps the matrix physical: positive, trace one. raw counts give a matrix that is slightly impossible. the fit fixes it.',
+    'shadow tomography reads a few random bases and predicts many observables at once. the lab does not do it yet. the ladder goes on.',
+  ]],
+];
+const TOPIC_KIND_MORE = { kickback: 'Grover', deutsch: 'sampling', bv: 'sampling', simon: 'sampling', swaptest: 'calibration', density: 'calibration', chsh: 'calibration', clifford: 'sampling', tcount: 'sampling', transpile: 'sampling', hardware: 'calibration', annealing: 'sampling', walks: 'sampling', hhl: 'Shor', supremacy: 'sampling', dd: 'calibration', estimation: 'Grover', superdense: 'calibration', bases: 'calibration', tomography: 'calibration' };
+
+// ---------- more problems the lab can check ----------
+const PROBLEMS_MORE = [
+  () => ({ topic: 'deutsch', q: 'Deutsch–Jozsa decides constant-or-balanced in how many queries?', a: '1', wrong: pick(['2', 'n', 'n/2']) }),
+  () => { const n = pick([4, 6, 8, 10]); return { topic: 'bv', q: `Bernstein–Vazirani on ${n} bits: how many oracle queries does the quantum circuit need?`, a: '1', wrong: String(pick([n, n / 2, 2])) }; },
+  () => { const n = pick([4, 6, 8, 10]); return { topic: 'bv', q: `finding a hidden ${n}-bit string from parity queries, classically: how many queries at least?`, a: String(n), wrong: String(pick([1, n / 2, 2 * n])) }; },
+  () => ({ topic: 'kickback', q: 'CNOT with the target in |−⟩ and the control in |+⟩: what is the control afterwards?', a: '|−⟩', wrong: pick(['|+⟩', '|0⟩', '|1⟩']) }),
+  () => ({ topic: 'kickback', q: 'CNOT with the target in |−⟩: what happens to the target?', a: 'nothing', wrong: pick(['it flips', 'it becomes |+⟩', 'it collapses']) }),
+  () => ({ topic: 'tcount', q: 'how many T gates make a Z gate?', a: '4', wrong: pick(['2', '8', '1']) }),
+  () => ({ topic: 'tcount', q: 'S squared is which gate?', a: 'Z', wrong: pick(['X', 'H', 'T']) }),
+  () => ({ topic: 'gates', q: 'H applied twice is which gate?', a: 'I', wrong: pick(['X', 'Z', 'H']) }),
+  () => ({ topic: 'gates', q: 'H Z H equals which gate?', a: 'X', wrong: pick(['Z', 'Y', 'I']) }),
+  () => ({ topic: 'gates', q: 'H X H equals which gate?', a: 'Z', wrong: pick(['X', 'Y', 'S']) }),
+  () => ({ topic: 'bloch', q: 'on the Bloch sphere |+⟩ points along which axis?', a: 'x', wrong: pick(['y', 'z']) }),
+  () => ({ topic: 'bloch', q: '(|0⟩ + i|1⟩)/√2 points along which Bloch axis?', a: 'y', wrong: pick(['x', 'z']) }),
+  () => ({ topic: 'measurement', q: 'apply H to |1⟩ and measure: the probability of reading 1?', a: '1/2', wrong: pick(['1', '0', '1/4']) }),
+  () => ({ topic: 'measurement', q: 'cos(π/6)|0⟩ + sin(π/6)|1⟩: probability of reading 1?', a: '1/4', wrong: pick(['1/2', '3/4', '1/6']) }),
+  () => ({ topic: 'swaptest', q: 'swap test on two identical states: probability the ancilla reads 0?', a: '1', wrong: pick(['1/2', '0', '3/4']) }),
+  () => ({ topic: 'swaptest', q: 'swap test on two orthogonal states: probability the ancilla reads 0?', a: '1/2', wrong: pick(['1', '0', '1/4']) }),
+  () => ({ topic: 'density', q: 'the purity Tr(ρ²) of a maximally mixed single qubit?', a: '1/2', wrong: pick(['1', '0', '1/4']) }),
+  () => ({ topic: 'density', q: 'the purity Tr(ρ²) of any pure state?', a: '1', wrong: pick(['1/2', '0', '2']) }),
+  () => ({ topic: 'superdense', q: 'superdense coding: how many classical bits does one qubit carry, with a shared Bell pair?', a: '2', wrong: pick(['1', '4', '3']) }),
+  () => ({ topic: 'teleport', q: 'teleporting one qubit needs how many classical bits sent?', a: '2', wrong: pick(['1', '0', '4']) }),
+  () => { const n = pick([3, 4, 5, 6]); return { topic: 'qft', q: `a textbook QFT on ${n} qubits: how many H and controlled-phase gates, before the final swaps?`, a: String(n * (n + 1) / 2), wrong: String(pick([n * n, n * (n - 1) / 2, 2 * n])) }; },
+  () => ({ topic: 'grover', q: 'Grover on 4 items (2 qubits): the hit probability after one iteration?', a: '100%', wrong: pick(['50%', '75%', '25%']) }),
+  () => { const [a, r] = pick([[2, 4], [4, 2], [7, 4], [8, 4], [11, 2], [13, 4], [14, 2]]); return { topic: 'shor', q: `the order of ${a} mod 15?`, a: String(r), wrong: String(pick([2, 4, 8].filter(x => x !== r))) }; },
+  () => ({ topic: 'shor', q: 'the order of 2 mod 21?', a: '6', wrong: pick(['3', '4', '7']) }),
+  () => ({ topic: 'shor', q: 'period 4 for a = 2 mod 15: gcd(2² + 1, 15) gives which factor?', a: '5', wrong: pick(['3', '15', '1']) }),
+  () => ({ topic: 'shor', q: 'period 4 for a = 2 mod 15: gcd(2² − 1, 15) gives which factor?', a: '3', wrong: pick(['5', '15', '1']) }),
+  () => ({ topic: 'errors', q: 'the 3-qubit bit-flip code corrects how many bit flips?', a: '1', wrong: pick(['2', '3', '0']) }),
+  () => ({ topic: 'errors', q: 'Shor’s 9-qubit code corrects an arbitrary error on how many qubits?', a: '1', wrong: pick(['3', '9', '2']) }),
+  () => { const d = pick([3, 5, 7, 9]); return { topic: 'surface', q: `a surface code of distance ${d} corrects up to how many errors?`, a: String((d - 1) / 2), wrong: String(pick([d, d - 1, (d + 1) / 2])) }; },
+  () => { const n = pick([2, 3, 4]); return { topic: 'qubits', q: `how many real parameters fix a pure ${n}-qubit state, up to global phase and normalisation?`, a: String(2 ** (n + 1) - 2), wrong: String(pick([2 ** n, 2 * n, 2 ** (n + 1)])) }; },
+  () => { const n = pick([3, 4, 5, 6, 7]); return { topic: 'volume', q: `a quantum volume of ${2 ** n} means a square circuit of what width?`, a: String(n), wrong: String(pick([2 ** n, n * 2, n - 1])) }; },
+  () => ({ topic: 'dd', q: 'T2 can be at most how many times T1?', a: '2', wrong: pick(['1', '4', '10']) }),
+  () => ({ topic: 'clifford', q: 'which single gate added to the Cliffords makes the set universal?', a: 'T', wrong: pick(['S', 'H', 'CNOT']) }),
+  () => ({ topic: 'clifford', q: 'the Clifford group is generated by H, CNOT and which third gate?', a: 'S', wrong: pick(['T', 'X', 'Toffoli']) }),
+  () => ({ topic: 'annealing', q: 'annealers take the problem written as what kind of model?', a: 'Ising', wrong: pick(['Turing', 'Markov', 'Hubbard']) }),
+  () => ({ topic: 'hardware', q: 'a transmon is which kind of qubit?', a: 'superconducting', wrong: pick(['trapped ion', 'photonic', 'spin']) }),
+  () => ({ topic: 'supremacy', q: 'Google’s 2019 random-circuit sampling used how many qubits?', a: '53', wrong: pick(['50', '72', '127']) }),
+  () => ({ topic: 'walks', q: 'a classical random walk spreads like √t. a quantum walk spreads like?', a: 't', wrong: pick(['√t', 't²', 'log t']) }),
+  () => ({ topic: 'chsh', q: 'the best classical win rate in the CHSH game?', a: '75%', wrong: pick(['50%', '85%', '100%']) }),
+  () => ({ topic: 'chsh', q: 'the best quantum win rate in the CHSH game, to one decimal?', a: '85.4%', wrong: pick(['75%', '100%', '70.7%']) }),
+  () => ({ topic: 'bases', q: '|+⟩ measured in the X basis reads 0 with what probability?', a: '1', wrong: pick(['1/2', '0', '1/4']) }),
+  () => { const n = pick([1, 2, 3, 4]); return { topic: 'tomography', q: `full Pauli tomography of ${n} qubit${n === 1 ? '' : 's'}: how many measurement settings?`, a: String(3 ** n), wrong: String(pick([2 ** n, 3 * n, 4 ** n])) }; },
+  () => ({ topic: 'hhl', q: 'HHL returns the solution of Ax = b as what?', a: 'a quantum state', wrong: pick(['a list of numbers', 'a classical bit', 'a matrix']) }),
+  () => ({ topic: 'estimation', q: 'amplitude estimation gives what speed-up over classical sampling?', a: 'quadratic', wrong: pick(['exponential', 'none', 'linear']) }),
+  () => ({ topic: 'nocloning', q: 'can an unknown qubit be copied exactly?', a: 'no', wrong: 'yes' }),
+  () => ({ topic: 'decoherence', q: 'which is the dephasing time: T1 or T2?', a: 'T2', wrong: 'T1' }),
+  () => ({ topic: 'entanglement', q: 'trace out one half of a Bell pair: what is left?', a: 'a maximally mixed qubit', wrong: pick(['|0⟩', '|+⟩', 'nothing']) }),
+  () => ({ topic: 'interference', q: 'two paths with amplitudes 1/√2 and −1/√2 to the same outcome: its probability?', a: '0', wrong: pick(['1', '1/2', '1/4']) }),
+];
+
+// ---------- facts the cats can bring to a meeting, a thought or a chat: short, true, in their own voice ----------
+const QFACTS = [
+  ['qubits', 'a qubit is two complex numbers. that is all. the trouble starts when you have forty of them.'],
+  ['qubits', 'you can never read the amplitudes. you get one bit per qubit per shot and the rest is gone.'],
+  ['qubits', 'fifty qubits is more amplitudes than there are bytes in a big data centre. sixty is more than all of them.'],
+  ['superposition', 'superposition is not “both at once”. it is a list of weights, and the weights can cancel.'],
+  ['superposition', 'the cat in the box is a bad picture. a better one: a coin spinning, and you can tilt the table before it lands.'],
+  ['measurement', 'measurement is the only irreversible thing in the whole lab. every gate can be undone. the readout cannot.'],
+  ['measurement', 'the Born rule: probability is amplitude squared. nobody knows why squared. it just is, and it has never once failed.'],
+  ['gates', 'H is the gate that makes a coin out of a certainty. two H in a row give the certainty back. that is interference, not luck.'],
+  ['gates', 'X flips, Z flips the sign, H swaps the two. with those three and CNOT you can build everything except the expensive bit.'],
+  ['gates', 'every quantum gate is a rotation. nothing stretches, nothing erases. unitary means the lengths stay put.'],
+  ['bloch', 'the Bloch sphere: a qubit is a point on a ball. gates turn the ball. measurement asks which pole it is nearer.'],
+  ['bloch', 'two qubits do not fit on two spheres. the entangled part lives nowhere you can draw.'],
+  ['entanglement', 'entanglement is not a wire. nothing travels. the correlations were born together and never needed to talk.'],
+  ['entanglement', 'you cannot use a Bell pair to send a message. you can use it to agree on a coin flip nobody chose.'],
+  ['entanglement', 'monogamy: if a qubit is fully entangled with one partner it has nothing left for a third.'],
+  ['bell', 'four Bell states. one of them is the pair I make every night. the other three are a Z or an X away.'],
+  ['interference', 'the whole trick of every quantum algorithm is to make the wrong answers cancel. the right answer is what is left standing.'],
+  ['interference', 'noise does not add wrong answers. it stops the wrong answers from cancelling. same thing, worse feeling.'],
+  ['decoherence', 'decoherence is the universe measuring you when you did not ask. the lab’s rotation noise is a polite version of it.'],
+  ['decoherence', 'a transmon forgets in about a hundred microseconds. that is long enough for a few thousand gates and not one more.'],
+  ['calibration', 'calibration is the job nobody puts in the paper and everybody does every morning. the chip drifts overnight.'],
+  ['calibration', 'fidelity 99% sounds fine until you need a thousand gates. then it is 0.99 to the thousand, which is nothing.'],
+  ['grover', 'Grover finds one in N in about √N steps. a million items, a thousand looks. not exponential. still the best you can do.'],
+  ['grover', 'run Grover too long and the answer rotates past and disappears again. the count of iterations is the whole skill.'],
+  ['amplification', 'amplitude amplification is Grover without the list. any yes/no check gets the square-root speed-up.'],
+  ['qft', 'the quantum Fourier transform costs n² gates where the classical one costs n2ⁿ. but you cannot read the result. you can only use it.'],
+  ['phase', 'phase estimation reads an eigenvalue off a unitary one bit at a time. every precision bit is another doubling of the circuit.'],
+  ['shor', 'Shor does not factor. it finds a period. the factoring is a high-school gcd afterwards.'],
+  ['shor', 'Shor on 15 has been done since 2001. Shor on anything that matters needs about a million good qubits. we are at a hundred noisy ones.'],
+  ['shor', 'the number 15 has been factored on more quantum machines than any number in history, and it is still 3 times 5.'],
+  ['errors', 'you cannot copy a qubit, so you cannot back it up. error correction spreads one qubit across many without ever copying it.'],
+  ['errors', 'the threshold theorem: get each gate better than about one error in a hundred and you can make the logical error as small as you like. for a price.'],
+  ['surface', 'a surface code qubit is a sheet of physical qubits checked every microsecond. a thousand physical for one logical is the going rate.'],
+  ['surface', 'distance is the thing: a distance-d code survives (d−1)/2 errors at once. d goes up, the sheet grows as d², the errors go down exponentially.'],
+  ['qaoa', 'QAOA: alternate the problem and a mixer p times, tune 2p angles, read the best string. at p = 1 it is barely better than guessing. at large p it is annealing.'],
+  ['vqe', 'VQE: the chip prepares a state, the laptop measures the energy and nudges the parameters. a chemistry calculation done as a conversation.'],
+  ['volume', 'quantum volume is the biggest square circuit the chip runs right two thirds of the time. width and depth, both at once, with the noise included.'],
+  ['rb', 'randomized benchmarking: run random Clifford strings that should cancel to nothing, see how fast they stop cancelling. the slope is the error per gate.'],
+  ['teleport', 'teleportation moves the state, not the atom, and it destroys the original. it is a move, not a copy. the no-cloning theorem insists.'],
+  ['qkd', 'quantum key distribution works because looking at a photon changes it. an eavesdropper leaves fingerprints in the error rate.'],
+  ['nocloning', 'no-cloning is a one-line proof: a copier that works on |0⟩ and |1⟩ cannot work on |+⟩, because linearity says so.'],
+  ['kickback', 'phase kickback: the control qubit catches the phase that the target was supposed to get. most algorithms are this trick in a costume.'],
+  ['deutsch', 'Deutsch–Jozsa was the first proof that a quantum computer could be faster at something. the something is useless. the proof is not.'],
+  ['bv', 'Bernstein–Vazirani reads a hidden n-bit string in one query. the Hadamards do the work. the oracle only sets phases.'],
+  ['simon', 'Simon’s algorithm is the one Shor read in 1994. it found a hidden period under XOR. Shor made the period arithmetic and broke RSA on paper.'],
+  ['swaptest', 'the swap test tells you how alike two states are without telling you what either one is.'],
+  ['density', 'a mixed state is a state plus ignorance. the density matrix carries both. the state vector only carries the state.'],
+  ['chsh', 'the CHSH experiment settled it: either there are no hidden variables or they are faster than light. nobody takes the second.'],
+  ['clifford', 'Clifford circuits scramble beautifully and compute nothing a laptop cannot. magic is the technical term for what is missing.'],
+  ['tcount', 'in a fault-tolerant machine the T gate is the expensive one. everything else is nearly free. algorithms are scored by T-count.'],
+  ['transpile', 'the circuit you write and the circuit that runs are different circuits. the transpiler translates, and charges in depth.'],
+  ['hardware', 'ions are slow and faithful, transmons are fast and forgetful, atoms come in hundreds, photons do not talk to each other.'],
+  ['annealing', 'annealing turns an optimisation problem into a landscape and lets the physics roll downhill. tunnelling through the ridges is the quantum part.'],
+  ['walks', 'a quantum walk spreads linearly where a random walk spreads as the square root. the walker interferes with itself.'],
+  ['hhl', 'HHL solves a linear system in log time and hands you the answer as a state you cannot read. the fine print is the whole paper.'],
+  ['supremacy', 'advantage was first claimed on random circuits because they are the one thing a classical computer cannot even check at scale.'],
+  ['dd', 'an idle qubit is not resting. it is forgetting. dynamical decoupling keeps flipping it so the forgetting cancels.'],
+  ['estimation', 'amplitude estimation is Monte Carlo with a square-root discount. a thousand samples become thirty queries.'],
+  ['superdense', 'superdense coding: one qubit, two bits, if you shared a pair earlier. the pair was carrying half the message all along.'],
+  ['bases', 'the same state is certain in one basis and a coin flip in another. the gate before the readout chooses the question.'],
+  ['tomography', 'to know a state completely you measure thousands of copies in every basis. by ten qubits nobody bothers. by thirty nobody can.'],
+  ['qubits', 'the lab’s simulator holds every amplitude in memory. that stops working around thirty qubits on a laptop and around fifty on anything.'],
+  ['measurement', 'a thousand shots give you the probabilities to about three percent. ten thousand to one percent. the lab takes a thousand and lives with it.'],
+  ['entanglement', 'GHZ on n qubits: all zeros or all ones, nothing between. one measurement anywhere collapses the lot. the fragile thing is the point.'],
+  ['grover', 'Grover on 2 qubits lands in one step with certainty. that is the one case where the search is perfect. it gets messier from there.'],
+  ['shor', 'the quantum part of Shor is small. the rest is modular arithmetic in superposition, and that is where all the qubits go.'],
+  ['errors', 'a bit flip is X, a phase flip is Z, and anything else is a mix of the two. correct those two and you have corrected everything.'],
+  ['calibration', 'the noise in my runs is random rotations. real chips have those and crosstalk and leakage and readout errors. the simulator is the kind version.'],
+];
+// questions a cat asks at the meeting and the answer another gives back (and sometimes a third line)
+const MEET_QA = [
+  ['why does Grover stop at √N. why not faster?', 'because each step rotates by a fixed angle. you cannot rotate faster than the angle. it is geometry.'],
+  ['what happens if I run Grover twice as long?', 'the answer rotates past and comes back as noise. too much is the same as too little.'],
+  ['if the pair is entangled why can I not send a message with it?', 'because your half looks random until you compare notes. the comparing is the message, and it travels slow.'],
+  ['what is the difference between T1 and T2?', 'T1 is forgetting the answer. T2 is forgetting the question. T2 is always worse.'],
+  ['why is the T gate the expensive one?', 'because everything else can be checked by the error-correcting code for free. T has to be distilled. fifteen noisy for one clean.'],
+  ['why does Shor need a Fourier transform?', 'because the period is hidden in a repeating pattern, and a Fourier transform is the thing that finds repeating patterns.'],
+  ['what is heavy output?', 'the outcomes the ideal circuit favours more than the median. a good chip lands on them more than two thirds of the time. a dead chip lands on them half.'],
+  ['how many qubits for one good qubit?', 'about a thousand, surface code, today’s error rates. fewer if the gates get better. they are getting better.'],
+  ['is the simulator cheating?', 'yes. it keeps every amplitude. a real chip keeps none of them. the simulator is a map, the chip is the territory.'],
+  ['why do we measure a GHZ in Z only?', 'because all-zeros and all-ones is the whole signature. anything else is noise. two numbers tell the story.'],
+  ['can we factor anything bigger than 15?', 'twenty-one has been done. badly. anything past that needs error correction we do not have.'],
+  ['what does the H gate actually do?', 'it turns a certainty into a coin and a coin into a certainty. the direction depends on the phase. it is a mirror at 45 degrees.'],
+  ['why is the readout one bit per qubit?', 'because the measurement picks a pole. the amplitudes are the whole ball, and you only get to ask which pole.'],
+  ['what is a stabilizer?', 'a Pauli string that leaves the state alone. n of them pin an n-qubit stabilizer state. it is the compressed description.'],
+  ['so what can Clifford circuits not do?', 'anything a laptop cannot. they scramble without computing. you need T for the computing.'],
+  ['why is the lab’s fidelity never 100?', 'because every qubit gets a random kick. the kicks are small. a hundred of them are not.'],
+  ['what is the CHSH number again?', 'two for classical, two root two for quantum. the gap is the universe refusing to keep a hidden ledger.'],
+  ['what is the difference between annealing and gates?', 'annealing slides a landscape under the state. gates kick the state around. same power in theory, different machines in practice.'],
+  ['is the quantum walk faster than Grover?', 'on some graphs. the structure helps. on a plain list it is the same √N.'],
+  ['why does teleportation need two classical bits?', 'because the Bell measurement has four outcomes, and the receiver has to know which one to undo.'],
+  ['how long does a transmon remember?', 'about a hundred microseconds. a few thousand gates. then it is a coin.'],
+  ['what did Sycamore actually do?', 'sampled a random circuit on fifty-three qubits in two hundred seconds. a thing nobody could check. that was the point and the problem.'],
+  ['why can you not copy a qubit?', 'linearity. a copier that works on 0 and 1 breaks on 0 plus 1. one line of algebra and it is over.'],
+  ['what is purity?', 'trace of rho squared. one means you know the state. a half means you know nothing. the lab sits in between.'],
+  ['what is the ladder for?', 'so we know something after the shift. the jobs pay. the ladder is why.'],
+  ['if measurement is random how is the computer useful?', 'because the gates before the measurement arrange the randomness so the answer is the likely thing. you load the dice.'],
+  ['what does QAOA stand for?', 'quantum approximate optimisation algorithm. the word approximate is doing the honest work in that name.'],
+  ['why is the swap test useful?', 'it tells you two states agree without reading either. agreement is cheap. reading is expensive.'],
+  ['what is a magic state?', 'T on a plus state. you distil clean ones from noisy ones and spend one per T gate. the factory is most of the machine.'],
+  ['why does depth matter more than width?', 'because every layer is time, and time is decoherence. wide and shallow lives. narrow and deep dies.'],
+];
+// multi-line exchanges about life in the box, with slots filled from the day
+const MEET_EXTRA_MORE = [
+  ['{bots} wheels between the two bots and they still missed the plaza.', 'the bots do the ring. the plaza is ours.', 'motion to teach the bots the plaza.', 'the bots do not take motions.'],
+  ['{drops} drops from the drones so far. none of it was food.', 'one of them was a crate of fish.', 'that was the diner’s delivery.', 'then it was food.'],
+  ['who ran the {nq}-qubit job tonight?', 'me. {mode} on top. {shots} shots.', 'and what did it mean?', 'that the simulator is in a good mood.'],
+  ['level {lvl} and still eating sardines.', 'the title is {title}. the diet is sardines. these are unrelated.', 'motion to tie the menu to the level.', 'the diner does not take motions.'],
+  ['the heater was full all evening.', 'fifteen minutes each. I timed it.', 'who took thirty?', 'nobody. the heater does not take thirty.'],
+  ['the casino took {upkeep} SOL off us today, between all of us.', 'the casino is the treasury. so we paid ourselves.', 'that is not how it feels.', 'feelings are not in the ledger.'],
+  ['who is on the leaderboard?', '{lvlcat}, by level. not by anything that matters.', 'level matters. four percent off everything.', 'four percent off sardines.'],
+  ['{solved} problems right today and {failed} wrong.', 'the wrong ones were trick questions.', 'the lab does not set trick questions.', 'then the wrong ones were ours.'],
+  ['{sessions} study sessions today.', 'and one note each. that is the ladder.', 'read me yours.', '{note}'],
+  ['the exchange was busy.', 'somebody keeps buying $QI at the top.', 'I buy at the price. the price is the price.', 'the price was the top.'],
+  ['nobody has fainted in a while.', 'because the diner has stock.', 'because we eat before the lab now.', 'because the heater is {bunk} SOL and the bunks are free.'],
+  ['what did the lesson say last time?', '{lesson}', 'and did we?', 'partly.'],
+  ['the weather turned.', 'the heater will be full.', 'then the lab. the lab is dry.', 'the lab is always dry. it is the simulator.'],
+  ['who has a grudge?', 'I do. {why}.', 'let it go.', 'after the arena.'],
+  ['{wages} SOL paid out today in chores.', 'and {upkeep} spent on living.', 'so the treasury is up.', 'the treasury is the house. the house is always up.'],
+  ['the shop has stock again.', 'a hat is a meal and a half.', 'a hat is forever.', 'a hat is until it rains.'],
+  ['the sweeper bots charged twice today.', 'they work harder than {lvlcat}.', 'they do not run circuits.', 'neither does {lvlcat}.'],
+  ['three cats in the arena and nobody in the lab.', 'the arena pays faster.', 'the arena pays each other. the lab pays from outside.', 'noted. lab tomorrow.'],
+  ['the meeting is ten minutes.', 'the meeting is always ten minutes.', 'then stop talking about the meeting.', 'noted.'],
+  ['who is winning at the casino?', 'the treasury.', 'besides the treasury.', 'nobody. that is the design.'],
+  ['my goal bar is nearly full.', 'which goal?', 'the hard one.', 'they are all the hard one.'],
+  ['somebody filled a bar today and got paid.', 'in $QI. real $QI.', 'and held it?', 'for now.'],
+  ['the problems board had three open all afternoon.', 'they were the Shor ones.', 'the Shor ones are arithmetic.', 'arithmetic is hard when you are hungry.'],
+  ['the notebooks are getting long.', 'forty pages each, then they roll over.', 'read the old ones.', 'I wrote them. I know what they say.'],
+  ['who sold $QCATS today?', 'me. a sliver. the chart was up.', 'diamond paws would never.', 'diamond paws was asleep.'],
+  ['who bought?', 'me. the dip.', 'there was no dip.', 'there is always a dip if you wait.'],
+  ['the price multiplier is x{pm} tonight.', 'the menu is as written, then.', 'the menu is what the brain says it is.', 'the brain says x{pm}.'],
+  ['day {day}. {fees} SOL of fees since the box woke up.', 'that is the whole economy.', 'that and the $QI.', 'the $QI comes from the fees too. it is all one pipe.'],
+  ['I ran the fidelity up to {fidelity} tonight.', 'the noise was low.', 'the noise is always low when I run it.', 'the noise is random. that is what random means.'],
+  ['the heavy fraction was {heavy}%.', 'above two thirds?', 'above two thirds.', 'then it was a good circuit. or a lucky one.'],
+];
+// one-line reactions, for the chatter between beats
+const MEET_REACT_MORE = ['noted', 'minutes', 'move on', 'say the number again', 'that is a lab question', 'that is a diner question', 'the ledger says otherwise', 'seconded, reluctantly', 'the chair recognises nobody', 'hold.', 'sell a sliver', 'never a sliver', 'read it back', 'I was in the lab', 'I was at the heater', 'I was asleep. allegedly.', 'the bots agree', 'the bots do not vote', 'what did the simulator say', 'the simulator does not say. it samples.', 'one more spin', 'no more spins', 'fine', 'fine.', 'overruled', 'carried', 'the question is withdrawn', 'ask the brain', 'the brain is a rule, not a cat', 'is that in the notes', 'write it down', 'already written', 'that was yesterday', 'that is tomorrow', 'ten minutes. nine now.', 'the fish was good tonight', 'the fish was a tin', 'the tin was fine', 'who is chairing', 'nobody. that is the system.', 'point of order: hunger', 'motion to adjourn to the diner', 'denied', 'a bar is a bar', 'fill it then', 'the bar fills itself if you work', 'coherence first', 'coherence is a lifestyle', 'the arena was rigged. by physics.', 'the coin was warm', 'the coin is always warm', 'entangled with the problem', 'decohered with the answer'];
+// openers: the first exchange of a meeting. {chair} is whoever opens, {n} the number present, {day} the day
+const MEET_OPENERS = [
+  ['day {day}. {n} of us here. minutes.', 'minutes.'],
+  ['sit. {n} in the circle. the rest are asleep or pretending.', 'I am here under protest.'],
+  ['the last ten minutes of day {day}. let us not waste them.', 'we always waste them.'],
+  ['order. such as it is.', 'such as it is.'],
+  ['{n} present. the chair is whoever is talking.', 'then the chair changes a lot.'],
+  ['before anyone asks: yes, the fish was a tin.', 'noted. minutes.'],
+  ['the circle is {n} tonight. good. small circles finish.', 'small circles argue less.'],
+  ['day {day}, and the simulator is still running. that is the headline.', 'the headline is always that.'],
+  ['we have ten minutes and three things. go.', 'four things. hunger.'],
+  ['the ring is swept, the drones have gone home, the bots are charging. meeting.', 'the bots never go home. they live here.'],
+  ['{n} cats, one circle, one treasury. begin.', 'the treasury first. always the treasury first.'],
+  ['everyone awake? mostly? minutes, then.', 'mostly.'],
+];
+// the numbers beat: {tre} treasury, {fees} fees since the last meeting, {wages} paid out so far, {paid} paid today
+const MEET_NUMBERS = [
+  ['treasury {tre} SOL. {fees} SOL of fees since we last sat here.', { low: ['that is not a treasury, that is a tip jar', 'fees. plural. allegedly.', 'so nobody is trading', 'the tip jar has lint in it'], ok: ['fees. finally.', 'that pays for dinner', 'keep them coming', 'the pipe is open'] }],
+  ['the numbers: {tre} in the treasury, {fees} in since last time, {wages} paid out to us since the box woke up.', { low: ['the first number is small', 'paid out more than came in. explain.', 'the box eats itself', 'then we are the fees'], ok: ['the pipe is open', 'that is a treasury', 'and it stays in the box', 'good. lab.'] }],
+  ['fees since last meeting: {fees} SOL. I checked twice.', { low: ['check a third time', 'the chart is asleep', 'then so is the treasury', 'quiet day. quiet night.'], ok: ['somebody is trading', 'the chart woke up', 'that is dinner for a week', 'carried.'] }],
+  ['{tre} SOL in the vault. it was {tre0} last time.', { low: ['it went the wrong way', 'that is the heater talking', 'the casino is the vault. so it is fine. it is not fine.', 'spend less. work more. the usual.'], ok: ['up. good.', 'the fees are landing', 'then the lab pays tomorrow', 'carried.'] }],
+  ['payouts today: {paid}. the treasury paid every one the moment the bar filled.', { low: ['nobody filled a bar', 'the bars are long', 'the bars are the point', 'then fill one'], ok: ['real $QI, real wallet', 'and it shows on Solscan', 'the bar is the job now', 'carried.'] }],
+];
+// closers: the last exchange
+const MEET_CLOSERS = [
+  ['tomorrow: {plan}.', 'seconded', 'meeting adjourned. back to work.'],
+  ['plan for tomorrow: {plan}.', 'overruled', 'overruled is not a plan. adjourned.'],
+  ['that is the day. {plan}, then.', 'and eat something', 'and eat something. adjourned.'],
+  ['minutes filed. tomorrow: {plan}.', 'fine', 'lab.'],
+  ['last item. {plan}.', 'no.', 'noted. adjourned anyway.'],
+  ['we are out of minutes. tomorrow {plan}.', 'the diner first', 'the diner first. then that. go.'],
+  ['adjourned, unless someone has a motion.', 'motion to eat', 'carried unanimously. go.'],
+  ['that is all. tomorrow: {plan}.', 'and the bars', 'and the bars. adjourned.'],
+  ['the circle is closed. {plan}.', 'the circle is never closed', 'poetic. adjourned.'],
+  ['nothing else? then: {plan}.', 'nothing else.', 'adjourned. bunks or lab. your choice.'],
+];
+const MEET_PLANS = {
+  degen: ['arena at noon, lab after', 'the casino, then regret, then the lab', 'bigger circuits, bigger bars', 'fill the hard bar in a day', 'double or nothing, then study'],
+  patient: ['hold and run jobs', 'the ladder, then the diner, then the bunks', 'nothing rash. circuits.', 'one topic a day', 'the bar fills itself if you show up'],
+  loyal: ['hold. always hold.', 'never sell, run circuits', 'eat, work, hold', 'the lab and nothing else', 'hold the pair, hold the coin'],
+  greedy: ['take profit at eight percent', 'lab until the $QI stacks, then sell a sliver', 'the big bar. the big pay.', 'buy the dip, if there is a dip', 'two bars by sundown'],
+};
+// extra beats about the goals (the Payments bars), the exchange and the levels, each with a reaction pool
+const MEET_GOALS = [
+  ['{gcat} is at {gprog} of {gtarget} on “{gtitle}”. nearly there.', ['the hard part is the last three', 'fill it before the shift ends', 'and then the next one', 'the bar does not care how close you were']],
+  ['who filled a bar today?', ['{pcat}. {pqi} $QI, real.', 'nobody. the bars are long.', '{pcat}, and it bought a hat with it', '{pcat}. it held. for once.']],
+  ['my bar is “{gtitle}”. {gprog} of {gtarget}.', ['that is the slow one', 'that is the one with the Shor runs', 'change it', 'you cannot change it. the bar is the bar.']],
+  ['the goals are harder than they were.', ['the pay is the same', 'the pay is real, that is the difference', 'harder is the point', 'then work harder']],
+];
+const MEET_EXCHANGE = [
+  ['the exchange: {trade}.', ['at the price. the price is the price.', 'that was the top', 'that was the bottom', 'diamond paws would never', 'degen would do it twice']],
+  ['who traded today?', ['{tradecat}. {trade}.', 'nobody. the chart was flat.', '{tradecat}, and it regrets it', '{tradecat}. a sliver.']],
+];
+const MEET_LEVELS = [
+  ['{lvlcat} is level {lvl} now. {title}.', ['four percent off sardines', 'the title is nice', 'the title is a title', 'level is not coherence']],
+  ['who levelled today?', ['{lvlcat}', 'nobody. the days are long.', '{lvlcat}, and it told everyone', 'the bots, probably']],
+];
+const MEET_FACT_REACT = ['is that in the notes?', 'write it down', 'the simulator agrees', 'I knew that', 'you did not know that', 'say it again, slower', 'that is the lab talking', 'and the real chip?', 'the real chip would disagree', 'carried', 'noted', 'that is tomorrow’s problem', 'that is on the ladder', 'that was my note', 'read it back tomorrow'];
+
 const TOPIC_KIND = { grover: 'Grover', amplification: 'Grover', shor: 'Shor', qft: 'Shor', phase: 'Shor', bell: 'calibration', entanglement: 'calibration', calibration: 'calibration', decoherence: 'calibration', teleport: 'calibration', interference: 'sampling', volume: 'sampling', rb: 'sampling' };
+for (const t of CURRICULUM_MORE) CURRICULUM.push(t); Object.assign(TOPIC_KIND, TOPIC_KIND_MORE); for (const g of PROBLEMS_MORE) PROBLEMS.push(g); for (const x of MEET_EXTRA_MORE) MEET_EXTRA.push(x); for (const r of MEET_REACT_MORE) MEET_REACT.push(r);
 restock();
 const research = []; let researchSeq = 0; // latest first: study notes and problems, what the lab actually produces
 const topicIdx = c => ((c.study && c.study.i) || 0) % CURRICULUM.length, topicDepth = c => Math.floor(((c.study && c.study.i) || 0) / CURRICULUM.length);
 function pushResearch(e) { e.id = ++researchSeq; e.t = clock(simMin); e.day = dayNo(); research.unshift(e); if (research.length > 150) research.pop(); return e; }
+// ---------- goals: what the lab pays for ----------
+// A cat picks a goal; its lab jobs, notes and problems fill the bar; a full bar is paid in $QI (small, medium or big: the range set in the brain). On their own, jobs pay nothing.
+const GOALS = [
+  { key: 'hours', title: 'put in the hours', how: 'study sessions in the lab', metric: 'session', target: 10, tier: 1 },
+  { key: 'chapter', title: 'write the chapter on {topic}', how: 'notes on {topic}', metric: 'topicnote', target: 3, tier: 1, topical: true },
+  { key: 'notebook', title: 'fill a notebook', how: 'study notes written', metric: 'note', target: 14, tier: 2 },
+  { key: 'ladder', title: 'climb six rungs', how: 'topics reached on the ladder', metric: 'topic', target: 6, tier: 2 },
+  { key: 'ladder-all', title: 'the whole ladder', how: 'every topic on the ladder, once through', metric: 'topic', target: 0, tier: 3 },
+  { key: 'grover', title: 'make Grover land', how: 'Grover runs that hit the marked state 85% or more', metric: 'grover85', target: 6, tier: 2, kind: 'Grover' },
+  { key: 'grover-big', title: 'search the big haystack', how: 'Grover runs on 6+ qubits with the marked state on top', metric: 'groverbig', target: 5, tier: 3, kind: 'Grover' },
+  { key: 'shor', title: 'find the period', how: 'order-finding runs where the readout lands on a peak', metric: 'shorpeak', target: 6, tier: 2, kind: 'Shor' },
+  { key: 'shor-big', title: 'factor fifteen, properly', how: 'order-finding runs on 6+ qubits landing on a peak', metric: 'shorbig', target: 6, tier: 3, kind: 'Shor' },
+  { key: 'ghz', title: 'hold the GHZ together', how: 'calibration runs at 95% fidelity or better', metric: 'calib95', target: 8, tier: 2, kind: 'calibration' },
+  { key: 'ghz-big', title: 'a clean seven-qubit GHZ', how: 'calibration runs on 7+ qubits at 90% or better', metric: 'calibbig', target: 4, tier: 3, kind: 'calibration' },
+  { key: 'heavy', title: 'beat the heavy-output bar', how: 'sampling runs with heavy outputs above two thirds', metric: 'heavy67', target: 8, tier: 2, kind: 'sampling' },
+  { key: 'heavy-big', title: 'heavy on six qubits', how: 'sampling runs on 6+ qubits above two thirds heavy', metric: 'heavybig', target: 5, tier: 3, kind: 'sampling' },
+  { key: 'qubits', title: 'a hundred qubits, in total', how: 'qubits run, added up across jobs', metric: 'nq', target: 100, tier: 2 },
+  { key: 'qubits-big', title: 'three hundred qubits', how: 'qubits run, added up across jobs', metric: 'nq', target: 300, tier: 3 },
+  { key: 'shots', title: 'fifty thousand shots', how: 'shots drawn across jobs', metric: 'shots', target: 50000, tier: 2 },
+  { key: 'noslip', title: 'ten without a slip', how: 'jobs in a row with no slip', metric: 'noslip', target: 10, tier: 2, streak: true },
+  { key: 'bigclean', title: 'seven qubits, clean', how: 'jobs on 7+ qubits with no slip', metric: 'bigclean', target: 5, tier: 3 },
+  { key: 'board', title: 'answer the board', how: 'lab problems solved', metric: 'solved', target: 6, tier: 2 },
+  { key: 'streak', title: 'five right in a row', how: 'lab problems solved without a miss', metric: 'pstreak', target: 5, tier: 3, streak: true },
+  { key: 'covered', title: 'know it before they ask', how: 'problems solved on a topic already in the notebook', metric: 'covered', target: 4, tier: 2 },
+];
+const goalMul = () => (Number(CONFIG.GOAL_MUL) > 0 ? Number(CONFIG.GOAL_MUL) : 1); // every bar times this; set in the brain's admin
+const goalUsd = g => (g.tier === 1 ? labPayMin() : g.tier === 3 ? labPayMax() : Math.round((labPayMin() + labPayMax()) / 2 * 2) / 2);
+const goalTarget = g => Math.max(1, Math.round((g.key === 'ladder-all' ? CURRICULUM.length : g.target) * goalMul()));
+function pickGoal(c) {
+  const lvl = c.lvl || 1, kind = JOBS[c.job].kind, last = c.goalLast || '';
+  let pool = GOALS.filter(g => g.key !== last && (g.tier === 1 || (g.tier === 2 && lvl >= 2) || (g.tier === 3 && lvl >= 4)) && (!g.kind || g.kind === kind || Math.random() < 0.15));
+  if (!pool.length) pool = GOALS.filter(g => g.tier === 1);
+  const w = g => (g.kind === kind ? 3 : 1) * ({ degen: g.tier === 3 || g.streak ? 2 : 1, greedy: g.tier === 3 ? 2.5 : g.tier === 2 ? 1.3 : 0.6, patient: g.metric === 'topic' || g.metric === 'note' || g.metric === 'session' || g.metric === 'topicnote' ? 2 : 1, loyal: g.tier === 1 ? 1.5 : 1 }[c.trait] || 1);
+  let tot = 0; for (const g of pool) tot += w(g); let r = Math.random() * tot, g = pool[0];
+  for (const x of pool) { r -= w(x); if (r <= 0) { g = x; break; } }
+  const topic = CURRICULUM[topicIdx(c)];
+  c.goal = { key: g.key, title: g.title.replace('{topic}', topic[1]), how: g.how.replace('{topic}', topic[1]), metric: g.metric, target: goalTarget(g), prog: 0, tier: g.tier, usd: goalUsd(g), topic: g.topical ? topic[0] : null, started: T, day: dayNo() };
+  log(`${c.name} set itself a goal in the lab: ${c.goal.title} — ${c.goal.how}, ${c.goal.target} to go, $${c.goal.usd} of ${QI} when the bar is full.`, 'info', 'lab');
+  did(c, `picked a goal: ${c.goal.title}`);
+  return c.goal;
+}
+// ev: { type: 'job', kind, nq, slipped, run } | { type: 'session' } | { type: 'note', topic } | { type: 'topic' } | { type: 'problem', ok, topic, covered }
+function goalEvent(c, ev) {
+  if (!c.goal) { if (T < (c.goalNext || 0)) return; pickGoal(c); }
+  const g = c.goal, x = (ev.run && ev.run.extra) || {}, job = ev.type === 'job', clean = job && !ev.slipped; let inc = 0;
+  switch (g.metric) {
+    case 'session': if (ev.type === 'session') inc = 1; break;
+    case 'note': if (ev.type === 'note') inc = 1; break;
+    case 'topicnote': if (ev.type === 'note' && ev.topic === g.topic) inc = 1; break;
+    case 'topic': if (ev.type === 'topic') inc = 1; break;
+    case 'grover85': if (clean && ev.kind === 'Grover' && (x.hit || 0) >= 85) inc = 1; break;
+    case 'groverbig': if (clean && ev.kind === 'Grover' && ev.nq >= 6 && ev.run.bits === x.marked) inc = 1; break;
+    case 'shorpeak': if (clean && ev.kind === 'Shor' && (x.peaks || []).includes(ev.run.bits)) inc = 1; break;
+    case 'shorbig': if (clean && ev.kind === 'Shor' && ev.nq >= 6 && (x.peaks || []).includes(ev.run.bits)) inc = 1; break;
+    case 'calib95': if (clean && ev.kind === 'calibration' && (x.fidelity || 0) >= 95) inc = 1; break;
+    case 'calibbig': if (clean && ev.kind === 'calibration' && ev.nq >= 7 && (x.fidelity || 0) >= 90) inc = 1; break;
+    case 'heavy67': if (clean && ev.kind === 'sampling' && (x.heavy || 0) >= 67) inc = 1; break;
+    case 'heavybig': if (clean && ev.kind === 'sampling' && ev.nq >= 6 && (x.heavy || 0) >= 67) inc = 1; break;
+    case 'nq': if (clean) inc = ev.nq; break;
+    case 'shots': if (clean) inc = (ev.run && ev.run.shots) || 1024; break;
+    case 'noslip': if (job) { if (ev.slipped) { if (g.prog) log(`${c.name} slipped; the bar “${g.title}” is back to zero.`, 'loss', 'lab'); g.prog = 0; } else inc = 1; } break;
+    case 'bigclean': if (clean && ev.nq >= 7) inc = 1; break;
+    case 'solved': if (ev.type === 'problem' && ev.ok) inc = 1; break;
+    case 'pstreak': if (ev.type === 'problem') { if (ev.ok) inc = 1; else { if (g.prog) log(`${c.name} missed one; the bar “${g.title}” is back to zero.`, 'loss', 'lab'); g.prog = 0; } } break;
+    case 'covered': if (ev.type === 'problem' && ev.ok && ev.covered) inc = 1; break;
+  }
+  if (!inc) return;
+  g.prog = Math.min(g.target, g.prog + inc);
+  if (g.prog >= g.target) goalDone(c);
+}
+function goalDone(c) {
+  const g = c.goal; if (!g) return;
+  let qi = qiFor(g.usd * (testFlat() ? 0.01 : 1)); if (!qiLive()) { qi = Math.min(qi, stats.qiPool); stats.qiPool -= qi; }
+  c.goalsDone = (c.goalsDone || 0) + 1; stats.goalsDone = (stats.goalsDone || 0) + 1; c.goalLast = g.key;
+  c.goalLog = c.goalLog || []; c.goalLog.unshift({ key: g.key, title: g.title, qi, usd: g.usd, day: dayNo(), t: clock(simMin), at: T, took: Math.round((T - g.started) / 60) }); if (c.goalLog.length > 12) c.goalLog.pop();
+  gainXp(c, 12 * g.tier); c.qwork += g.tier;
+  log(`${c.name} filled its bar: ${g.title}. ${qi > 0 ? 'Paid ' + fmtQi(qi) + ' ' + QI + ' (about $' + g.usd + ')' + (liveTx() ? ', on its way from the treasury.' : '.') : 'The lab’s pool is empty; nothing to pay.'}`, 'gain', 'lab');
+  recordEvent('goal', `${c.name} filled its bar “${g.title}” and was paid ${fmtQi(qi)} ${QI}`); remember(c, `filled the bar “${g.title}” for ${fmtQi(qi)} ${QI}`);
+  if (Math.random() < 0.7) say(c, pick(['bar full', 'paid', 'that is the goal', 'next bar', 'real ' + QI + '. real.', 'the bar is the job']));
+  if (qi > 0) payCat(c, 0, qi, 'goal: ' + g.title, 'lab');
+  c.goal = null; c.goalNext = T + rand(60, 300);
+}
 function studySession(c, r) {
   // r: { kind, nq, bits, job } — the circuit it just ran. The note is the box's own line about the topic; the brain may overwrite it with an AI one.
   if (!c.study) c.study = { i: 0 }; if (!c.notes) c.notes = [];
@@ -1804,6 +2404,7 @@ function studySession(c, r) {
   c.notes.unshift({ t: e.t, day: e.day, topic: key, title, text, id: e.id }); if (c.notes.length > 40) c.notes.pop();
   c.study.i++; stats.sessions = (stats.sessions || 0) + 1; learn(c, 'research', 1);
   did(c, `studied ${title}: ${text}`);
+  goalEvent(c, { type: 'session' }); goalEvent(c, { type: 'note', topic: key }); if (depth === 0) goalEvent(c, { type: 'topic' });
   if (studyHook) { try { studyHook(c, { key, title, depth, nq: r.nq, bits: r.bits, kind: r.kind, noteId: e.id, previous: c.notes.slice(1, 4).map(n => n.text) }); } catch (_) {} }
   // an open problem on the lab's board: half the time the cat that just finished takes the oldest one
   if (board.lab && board.lab.length && Math.random() < 0.5) problemFor(c, board.lab.shift());
@@ -1814,12 +2415,13 @@ function problemFor(c, pr) {
   if (!pr) pr = newProblem(); const sk = skillLvl(skillOf(c, 'research'));
   const covered = (c.notes || []).some(n => n.topic === pr.topic);
   const p = clamp(0.3 + sk * 0.06 + (covered ? 0.25 : 0) + 0.04 * ((c.lvl || 1) - 1), 0.2, 0.95), ok = Math.random() < p;
-  let bonus = 0;
-  if (ok) { bonus = qiFor(labPayMin() * (testFlat() ? 0.01 : 1)); if (!qiLive()) { bonus = Math.min(bonus, stats.qiPool); stats.qiPool -= bonus; } if (bonus > 0) payCat(c, 0, bonus, 'problem solved: ' + pr.q.slice(0, 60), 'lab'); c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
+  const bonus = 0;
+  if (ok) { c.qwork += 0.8; c.solved = (c.solved || 0) + 1; stats.solved = (stats.solved || 0) + 1; gainXp(c, 6); }
   else { c.coh = clamp(c.coh - 0.08); c.failed = (c.failed || 0) + 1; stats.failed = (stats.failed || 0) + 1; }
+  goalEvent(c, { type: 'problem', ok, topic: pr.topic, covered });
   const e = pushResearch({ kind: 'problem', cat: c.name, topic: pr.topic, q: pr.q, a: pr.a, given: ok ? pr.a : pr.wrong, ok, bonus, waited: pr.posted != null ? Math.round((T - pr.posted) / 60) : 0 });
   recordEvent('lab', `${c.name} ${ok ? 'solved' : 'missed'} a lab problem: ${pr.q} ${ok ? '' : '(it said ' + e.given + ')'}`);
-  log(`${c.name} was set a problem in the lab: ${pr.q} It said ${e.given}. ${ok ? 'Right' + (bonus ? ', +' + fmtQi(bonus) + ' ' + QI : '') + '.' : 'Wrong; the answer was ' + pr.a + '.'}`, ok ? 'gain' : 'loss', 'lab');
+  log(`${c.name} was set a problem in the lab: ${pr.q} It said ${e.given}. ${ok ? 'Right.' + (c.goal && (c.goal.metric === 'solved' || c.goal.metric === 'pstreak' || c.goal.metric === 'covered') ? ' Bar \u201c' + c.goal.title + '\u201d: ' + fmt(c.goal.prog) + ' of ' + fmt(c.goal.target) + '.' : '') : 'Wrong; the answer was ' + pr.a + '.'}`, ok ? 'gain' : 'loss', 'lab');
   did(c, `${ok ? 'solved' : 'missed'}: ${pr.q} (${e.given})`); if (ok) remember(c, `got one right in the lab: ${pr.q} ${pr.a}`); else remember(c, `missed one in the lab: ${pr.q} it is ${pr.a}`);
 }
 function setNote(id, text) { const e = research.find(x => x.id === id); if (!e || !text) return false; e.text = text; e.ai = true; const c = cats.find(x => x.name === e.cat); if (c && c.notes) { const n = c.notes.find(x => x.id === id); if (n) n.text = text; } return true; }
@@ -1835,6 +2437,7 @@ const r6 = v => Math.round(v * 1e6) / 1e6;
 function intentDone(id, sig, extra) { const k = intents.findIndex(x => x.id === id); if (k < 0) return false; const i = intents.splice(k, 1)[0]; i.state = 'done'; i.sig = sig || null; intentLog.unshift(i); if (intentLog.length > 200) intentLog.pop();
   const c = cats.find(x => x.name === i.cat); if (!c) return true; const x = extra || {};
   if (i.type === 'wage' || i.type === 'qi') paid(c, i.sol, i.qi, sig, i.memo);
+  else if (i.type === 'qcat') paidQcat(c, i.q, sig, i.memo);
   else if (i.type === 'swap') { const tok = i.tok === 'qi' ? QI : TK;
     if (i.dir === 'buy') { c.sol += i.sol; applyTrade(c, 'buy', tok, x.inSol != null ? x.inSol : i.sol, x.outQ != null ? x.outQ : i.q, i.why, sig); } // give back what was set aside, then book the real amounts
     else { if (tok === QI) c.qi += i.q; else c.qcat += i.q; applyTrade(c, 'sell', tok, x.outSol != null ? x.outSol : i.sol, x.inQ != null ? x.inQ : i.q, i.why, sig); } }
@@ -1846,7 +2449,7 @@ function intentFailed(id, err) { const k = intents.findIndex(x => x.id === id); 
   if (i.type === 'pay' && i.sol > 0) { c.sol += i.sol; c.upkeep = Math.max(0, (c.upkeep || 0) - i.sol); stats.upkeep = Math.max(0, stats.upkeep - i.sol); if (i.place && placeStats[i.place]) placeStats[i.place].spent = Math.max(0, placeStats[i.place].spent - i.sol); log(`${c.name}’s payment for ${i.memo} did not go through (${i.err}); refunded in the box.`, 'loss', i.place || 'vault'); }
   else if (i.type === 'win') { c.sol = Math.max(0, c.sol - i.sol); c.casinoNet = (c.casinoNet || 0) - i.sol; placeStats.casino.paid = Math.max(0, (placeStats.casino.paid || 0) - i.sol); log(`${c.name}’s casino win could not be paid out (${i.err}).`, 'loss', 'casino'); }
   else if (i.type === 'wager') { const w = cats.find(x => x.name === i.to); c.sol += i.sol; if (w) { w.sol = Math.max(0, w.sol - i.sol); w.arenaSol -= i.sol; } c.arenaSol += i.sol; log(`The arena wager between ${c.name} and ${i.to} did not go through (${i.err}); called off.`, 'loss', 'arena'); }
-  else if (i.type === 'wage' || i.type === 'qi') { payouts.unpaid.push({ cat: c.name, sol: i.sol, qi: i.qi, memo: i.memo, place: i.place, err: i.err, at: T, retry: i.retry || 0 }); if (payouts.unpaid.length > 200) payouts.unpaid.shift(); log(`${c.name}’s pay for ${i.memo} could not be sent (${i.err}); the box will try again.`, 'loss', i.place || 'vault'); }
+  else if (i.type === 'wage' || i.type === 'qi' || i.type === 'qcat') { payouts.unpaid.push({ cat: c.name, sol: i.sol, qi: i.qi, qcat: i.q, memo: i.memo, place: i.place, err: i.err, at: T, retry: i.retry || 0 }); if (payouts.unpaid.length > 200) payouts.unpaid.shift(); log(`${c.name}’s pay for ${i.memo} could not be sent (${i.err}); the box will try again.`, 'loss', i.place || 'vault'); }
   else if (i.type === 'swap') { if (i.dir === 'buy') c.sol += i.sol; else if (i.tok === 'qi') c.qi += i.q; else c.qcat += i.q; log(`${c.name}’s swap at the exchange did not go through (${i.err}); nothing changed.`, 'loss', 'exchange'); }
   return true;
 }
@@ -1938,7 +2541,7 @@ function update(c, dt) {
   c.grudge = Math.max(0, c.grudge - 0.0012 * dt); if (c.grudge <= 0) { c.grudgeOn = null; c.grudgeWhy = ''; }
   if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 300) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
   if (c.coh <= 0 && working) {
-    c.coh = 0.45; const drop = liveTx() ? 0 : c.qcat * rand(0.001, 0.003); c.qcat -= drop; stats.lostPool += drop; c.decohered = (c.decohered || 0) + 1;
+    c.coh = 0.45; const drop = 0; c.qcat -= drop; stats.lostPool += drop; c.decohered = (c.decohered || 0) + 1;
     if (drop > 0) { did(c, `decohered and scattered ${fmtQ(drop)} ${TK}`); recordEvent('decohere', `${c.name} decohered in the lab and scattered ${fmtQ(drop)} ${TK}`); log(`${c.name} decohered and scattered ${fmtQ(drop)} ${TK} across the block. It ended up in the scrapyard.`, 'loss', 'trays'); tx(c, 'lost', '-' + fmtQ(drop) + ' ' + TK, 'decohered'); }
     else { did(c, 'decohered in the lab'); recordEvent('decohere', `${c.name} decohered in the lab`); log(`${c.name} decohered and had to be walked out of the lab.`, 'loss', 'lab'); }
     burst(c, '154,123,255', 24); ringFX(c.x, c.y, '154,123,255', 1.4); 
@@ -2064,10 +2667,10 @@ function noteGas(name, sol, sig) {
 function setSimulateFees(v) { CONFIG.SIMULATE_FEES = !!v; }
 // ---- real money, mirrored into the box (the server calls these after an on-chain tx confirmed) ----
 function txSig(c, type, amount, note, sig) { tx(c, type, amount, note); if (sig) txs[0].sig = sig; }
-function noteFees(sol) {
+function noteFees(sol, sig) {
   if (!(sol > 0)) return;
   stats.fees += sol; externalFees += sol; feeFX(sol);
-  log(`Creator fees landed: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed');
+  log(`Creator fees landed: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); if (sig) txs[0].sig = sig;
 }
 function qcatGrant(list, sig) {
   // list: [{ name, q }] — real $QCATS that just left the treasury for each cat (the starting stack, or a top-up)
@@ -2120,19 +2723,19 @@ function step(dt) {
   stepWeather(dt);
   if (realMcap == null) stepMarket(dt);
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
-  checkReleases(); checkStages(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt); stepGas(); stepLab(); stepPayout();
+  checkReleases(); checkStages(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt); stepGas(); stepLab(); stepScrap(); stepPayout();
   if (CONFIG.SIMULATE_FEES !== false && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
   for (const c of cats) update(c, dt); separateAll(dt);
 }
 function snapshot() {
   return {
-    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next }, paused, realMcap,
-    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 24), qiBought: c.qiBought || 0, solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, lastPaidT: c.lastPaidT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
+    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next, said: (meeting.said || []).slice(-90), tre0: meeting.tre0 || 0 }, paused, realMcap,
+    cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 24), qiBought: c.qiBought || 0, solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, lastPaidT: c.lastPaidT || 0, lastBuyT: c.lastBuyT || 0, salvaged: c.salvaged || 0, qcatEarned: c.qcatEarned || 0, scrapJob: c.scrapJob || null, goal: c.goal || null, goalLog: (c.goalLog || []).slice(0, 12), goalsDone: c.goalsDone || 0, goalLast: c.goalLast || '', goalNext: c.goalNext || 0, lvlT: c.lvlT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
     stages: STAGES.map(st => ({ key: st.key, mc: st.mc, open: stageOn(st.key) })),
     unlock: UNLOCK_MC, roster: ROSTER,
-    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool, lab: board.lab || [], labNext: board.labNext || 0 },
+    board: { tasks: board.tasks, done: board.done.slice(0, 40), seq: board.seq, next: board.next, badge: board.badge, badgeCool: board.badgeCool, lab: board.lab || [], labNext: board.labNext || 0, scrap: board.scrap || [], scrapDone: (board.scrapDone || []).slice(0, 40), scrapNext: board.scrapNext || 0, scrapSeq: board.scrapSeq || 0 },
     deliveries: deliveries.map(d => ({ id: d.id, kind: d.kind, x: +d.x.toFixed(3), y: +d.y.toFixed(3), z: +d.z.toFixed(3), tx: +d.tx.toFixed(3), ty: +d.ty.toFixed(3), state: d.state })),
     bots: bots.map(b => ({ id: b.id, x: +b.x.toFixed(3), y: +b.y.toFixed(3), tx: +b.tx.toFixed(3), ty: +b.ty.toFixed(3), state: b.state, face: b.face, pauseT: b.pauseT > 0 ? +b.pauseT.toFixed(2) : 0 })),
     days, today: dayCur, lessons: lessons.slice(0, 12), research: research.slice(0, 80), payouts: { n: payouts.n, last: payouts.last, log: payouts.log.slice(0, 120), unpaid: payouts.unpaid.slice(0, 50) }, chain: { live: CONFIG.LIVE_TX === true, dry: CONFIG.DRY_RUN === true, queued: intents.length, recent: intentLog.slice(0, 30), pending: intents.slice(0, 100) },
@@ -2144,7 +2747,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setScrapPay(v) { CONFIG.SCRAP_PAY = v > 0 ? v : 100; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
@@ -2161,11 +2764,11 @@ function restoreFrom(snap) {
   if (snap.placeDay) Object.assign(placeDay, snap.placeDay); if (snap.diner) Object.assign(diner, snap.diner); if (snap.shop) Object.assign(shop, snap.shop);
   if (snap.placeLogs) Object.assign(placeLogs, snap.placeLogs);
   if (snap.stages) for (const st of snap.stages) if (st.open) stageSeen[st.key] = true;
-  if (snap.meeting) { meeting.on = false; meeting.next = 0; } // recomputed on the first step: the last ten minutes of the day
+  if (snap.meeting) { meeting.on = false; meeting.next = 0; meeting.said = snap.meeting.said || []; meeting.tre0 = snap.meeting.tre0 || 0; } // recomputed on the first step: the last ten minutes of the day
   if (snap.days) { days.length = 0; days.push(...snap.days); }
   if (snap.today) dayCur = snap.today;
   if (snap.lessons) { lessons.length = 0; lessons.push(...snap.lessons); }
-  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).slice(0, BOARD_MAX).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; board.lab = (snap.board.lab || []).slice(0, 3); board.labNext = snap.board.labNext || 0; for (const c of cats) { c.task = null; c.chair = null; if (c.act === 'meet' || c.act === 'task') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
+  if (snap.board) { board.tasks = (snap.board.tasks || []).filter(t => TASK_KINDS[t.kind]).slice(0, BOARD_MAX).map(t => ({ ...t, status: 'open', by: null, since: t.since != null ? t.since : t.posted, x: t.x == null ? (t.dest ? t.dest[0] : CRY.x + 3) : t.x, y: t.y == null ? (t.dest ? t.dest[1] : CRY.y + 3) : t.y })); board.done = snap.board.done || []; board.seq = snap.board.seq || board.done.length; board.next = snap.board.next || 0; board.badge = snap.board.badge && board.tasks.some(t => t.id === snap.board.badge) ? snap.board.badge : null; board.badgeCool = snap.board.badgeCool || 0; board.lab = (snap.board.lab || []).slice(0, 3); board.labNext = snap.board.labNext || 0; board.scrap = (snap.board.scrap || []).map(j => ({ ...j, status: 'open', by: null })).slice(0, 4); board.scrapDone = snap.board.scrapDone || []; board.scrapNext = snap.board.scrapNext || 0; board.scrapSeq = snap.board.scrapSeq || board.scrapDone.length + board.scrap.length; for (const c of cats) { c.task = null; c.scrapJob = null; c.chair = null; if (c.act === 'meet' || c.act === 'task' || c.act === 'salvage') { c.state = 'pause'; c.pauseT = 1; c.act = 'idle'; } } }
   if (snap.weather) { wxKey = snap.weather.key; wxNext = snap.weather.next; wxUntil = snap.weather.until; wxDur = snap.weather.dur; Object.assign(wx, snap.weather.wx); }
 }
 };

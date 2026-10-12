@@ -8,8 +8,8 @@ const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
-function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, wallets, balances, logs, flash, err, env, generated, busy }) {
-  marketQi = marketQi || {}; mintChecks = mintChecks || {}; const mc = k => mintChecks[k] ? ` · <span class="${mintChecks[k].ok ? 'ok' : 'bad'}">${esc(mintChecks[k].msg)}</span>` : ''; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
+function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, logs, flash, err, env, generated, busy }) {
+  marketQi = marketQi || {}; mintChecks = mintChecks || {}; adminJobs = adminJobs || []; const mc = k => mintChecks[k] ? ` · <span class="${mintChecks[k].ok ? 'ok' : 'bad'}">${esc(mintChecks[k].msg)}</span>` : ''; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
   const tre = balances && balances.treasury ? balances.treasury.sol : null;
@@ -132,13 +132,15 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, w
 
   <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
     ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
-    <p class="mut" style="margin:0 0 6px">A chore pays SOL and a lab task pays $QI the moment the cat finishes it: one transfer from the treasury, shown in the box only once it has landed. The treasury buys the $QI it lacks through Jupiter first, with SOL from the fees. A payout that cannot be sent is retried every ten minutes.</p>
+    <p class="mut" style="margin:0 0 6px">A chore pays SOL the moment it is done. A salvage job in the scrapyard pays ${esc(config.TICKER)} the moment it is done, from the treasury's own supply. The lab pays by goals: each cat picks one (the Payments bars on the site's Work page), lab work fills it, and a <b>full bar</b> pays $QI — a small bar the minimum, a big bar the maximum. One transfer from the treasury each, shown in the box only once it has landed; the treasury buys the $QI it lacks through Jupiter first, with SOL from the fees. A payout that cannot be sent is retried every ten minutes.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
-        <div class="row">
-          <div><label>a lab task pays at least ($ of $QI)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
-          <div><label>and at most ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
+        <div class="row3">
+          <div><label>a small bar pays ($ of $QI)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
+          <div><label>a big bar pays ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
+          <div><label>bar size × — every bar this many times longer (2 = twice the work for the same pay)</label><input type="number" step="0.1" min="0.1" max="20" name="GOAL_MUL" value="${esc(config.GOAL_MUL || 1)}"></div>
         </div>
+        <label>the scrapyard: a tier-1 salvage job pays this many ${esc(config.TICKER)} from the treasury's own supply (tier 2 pays 2.5×, tier 3 pays 5×; nothing is bought — send the coin to the treasury and the yard pays from it)</label><input type="number" step="1" min="1" name="SCRAP_PAY" value="${esc(config.SCRAP_PAY || 100)}" style="max-width:220px">
         <button class="btn">Save</button>
       </form>
       <form method="post" action="/admin/payowed" style="text-align:right">
@@ -146,7 +148,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, w
         <button class="btn gold" ${busy || !un.length ? 'disabled' : ''}>Retry now</button>
       </form>
     </div>
-    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : Math.round(u.qi).toLocaleString('en-US') + ' $QI'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : u.qcat ? Math.round(u.qcat).toLocaleString('en-US') + ' ' + esc(config.TICKER) : Math.round(u.qi).toLocaleString('en-US') + ' $QI'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
@@ -176,6 +178,15 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, w
     </form>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
+  <div class="panel"><div class="ph"><span>Pending</span><small class="mut">your jobs run first, one at a time; the cats' own transactions wait behind them · ${busy ? '<span class="bad">one is running now</span>' : 'idle'}</small></div><div class="pb">
+    ${(() => { const q = adminJobs.filter(j => j.state === 'queued' || j.state === 'running'), done = adminJobs.filter(j => j.state === 'done' || j.state === 'failed').slice(-5).reverse(), cats = engine.intents.slice(0, 12);
+      return `<div class="row">
+        <div><label>your jobs</label>${q.length ? `<table>${q.map(j => `<tr><td>${j.state === 'running' ? '<span class="ok">running</span>' : 'queued'}</td><td>${esc(j.label)}</td><td class="mut">${ago(j.at)}</td></tr>`).join('')}</table>` : '<div class="mut">nothing queued</div>'}
+          ${done.length ? `<label>last results</label><table>${done.map(j => `<tr><td>${j.state === 'done' ? '<span class="ok">done</span>' : '<span class="bad">failed</span>'}</td><td style="word-break:break-word">${esc(j.label)} — ${esc(String(j.result || '').slice(0, 220))}</td></tr>`).join('')}</table>` : ''}</div>
+        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? Math.round(i.qi).toLocaleString('en-US') + ' $QI' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
+      </div>`; })()}
+  </div></div>
+
   <form method="post" action="/admin/chain">
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut">${ch.mode === 'live' ? '<span class="ok">DEFAULT: every payment the cats make is a real transaction at the real prices</span>' : ch.mode === 'test' ? '<span class="ok">DEFAULT TESTING: real transactions, every price in the box 0.001 SOL</span>' : 'sandbox: the box only, nothing on-chain'}</small></div><div class="pb">
     ${walletsReady ? `
@@ -186,6 +197,15 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, w
       <div><label>pace — minutes between one cat's paid moves in testing and default (a meal, the heater, a spin, a trade); 0 = no limit. Sandbox ignores it.</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
     </div>
     <button class="btn">Save</button>
+    </form>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">testing: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
+      <form method="post" action="/admin/puppet" class="inline"><div class="row3" style="align-items:end">
+        <div><select name="name" style="width:100%;padding:8px 10px;font-size:13px">${engine.ROSTER.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
+        <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqi', 'the exchange — buy $QI'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell $QI'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+        <div><button class="btn ghost" style="margin-top:0">Go</button></div>
+      </div></form>
+    </div>
+    <form>
     <div style="margin-top:12px"><small class="mut">queued now: ${engine.intents.length} · last results, newest first</small>
     ${chainLog.length ? `<table style="margin-top:6px"><tr><th>when</th><th>what</th><th>SOL</th><th>result</th></tr>${chainLog.slice(0, 20).map(e => `<tr><td>${ago(e.at)}</td><td>${esc(e.cat)} → ${esc(e.to)} · ${esc(e.memo)}</td><td>${e.sol != null ? sol(e.sol) : ''}</td><td>${e.ok ? `<span class="ok">sent</span> ${addr(e.sig)}` : `<span class="bad">${esc(e.err)}</span>`}</td></tr>`).join('')}</table>` : '<div class="mut" style="margin-top:6px">nothing yet</div>'}</div>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
