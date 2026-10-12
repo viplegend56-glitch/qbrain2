@@ -695,12 +695,19 @@ const fmtQi = n => fmtQ(n);
 // when something happened, as the box tells time: the day it was, and how many real minutes of that day were left (a box day is one hour)
 const whenLabel = e => { let left; if (e.at != null) left = Math.max(0, Math.ceil((DAY_SECS - (e.at % DAY_SECS)) / 60)); else if (e.t) { const [h, m] = String(e.t).split(':').map(Number); left = Math.max(0, Math.ceil((1440 - (h * 60 + m)) / 24)); } else left = 0; return (e.day ? 'day ' + e.day : 'today') + ' \u00b7 ' + left + ' min left'; };
 const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how readily each personality parts with its $QI when broke; the rest hold and sell a slice of $QCATS instead
-// a cat knows what its stack is worth before it sells any of it: a sale is at least a meal's worth of SOL (under that, fees eat it), never more than a quarter of the stack, and if a quarter can't cover a meal the stack isn't worth selling yet
-const SALE_MAX_FRAC = 0.25, tokSol = tok => (tok === QI ? qiSol() : mkt.price) * 0.99; // SOL per token, after the exchange's cut
+// a cat can see what its stack is worth at the chart, and sells a quarter, half, three quarters or all of it depending on how it feels
+const tokSol = tok => (tok === QI ? qiSol() : mkt.price) * 0.99; // SOL per token, after the exchange's cut
 const stackOf = (c, tok) => (tok === QI ? c.qi : c.qcat) || 0, stackSol = (c, tok) => stackOf(c, tok) * tokSol(tok);
-const minSaleSol = c => Math.max(costOf(FOOD, c), 0.002), sellable = (c, tok) => stackSol(c, tok) * SALE_MAX_FRAC >= minSaleSol(c);
-// how much to part with: the slice wanted, grown to a meal's worth if it falls short, capped at a quarter of the stack; 0 when even that isn't worth the trip
-const saleSize = (c, tok, want) => { const per = tokSol(tok), stack = stackOf(c, tok); if (!(per > 0) || stack < 1) return 0; let q = Math.min(stack * SALE_MAX_FRAC, Math.max(want, minSaleSol(c) / per)); if (tok === QI) q = Math.round(q); return q * per >= minSaleSol(c) * 0.999 && q >= 1 ? q : 0; };
+const FRAC_WORD = { 0.25: 'a quarter of its stack', 0.5: 'half its stack', 0.75: 'three quarters of its stack', 1: 'its whole stack' };
+function sellFrac(c) { // how much of the stack goes, by feeling: starving sells everything, broke sells by hunger, panic by nerve, profit by greed, a pump a slice, the itch a quarter
+  const meal = costOf(FOOD, c), broke = c.sol < meal * 4;
+  if (c.forced === 'sell') return 0.25;
+  if (broke) return c.hunger > 0.9 ? 1 : c.hunger > 0.6 ? 0.75 : 0.5;
+  if (c.tr.panic && mkt.mom < -0.004) return { degen: 1, greedy: 0.75, patient: 0.5, loyal: 0.25 }[c.trait] || 0.5;
+  if (c.tr.tp && mkt.price > c.entry * c.tr.tp) return { degen: 0.75, greedy: 0.75, patient: 0.5, loyal: 0.25 }[c.trait] || 0.5;
+  if (mkt.mom > 0.002) return c.trait === 'degen' ? 0.5 : 0.25;
+  return 0.25;
+}
 // survival gets dearer as the chart climbs: x1 at the starting cap, x4 at 16x, x8 at 64x, capped at x40
 const priceMul = () => (Number(CONFIG.PRICE_MUL) > 0 ? Number(CONFIG.PRICE_MUL) : 1); // every price in the box times this; set by hand in the brain's admin (x1 by default)
 const liveTx = () => CONFIG.LIVE_TX === true; // set by the brain once it is executing for real
@@ -737,7 +744,7 @@ const TRADE_ITCH = { degen: 1.0, greedy: 0.8, patient: 0.4, loyal: 0.25 };
 const tradeItch = c => (TRADE_ITCH[c.trait] || 0.5) * clamp((T - Math.max(c.lastSellT || -1e9, c.lastBuyT || -1e9)) / 5400); // builds back over an hour and a half
 function sellTok(c) { // what a selling cat parts with: a forced choice (testing), else whatever it holds, else by trait; diamond paws keeps its $QCATS unless starving
   if (c.forceTok) return c.forceTok === 'qi' ? QI : TK;
-  const hasQi = sellable(c, QI), hasQc = sellable(c, TK); if (!hasQi && !hasQc) return null; if (!hasQi) return TK; if (!hasQc) return QI; // only a stack worth selling counts
+  const hasQi = (c.qi || 0) >= 1, hasQc = (c.qcat || 0) >= 1; if (!hasQi && !hasQc) return null; if (!hasQi) return TK; if (!hasQc) return QI;
   const starving = c.sol < costOf(FOOD, c) && c.hunger > 0.9; if (c.trait === 'loyal' && !starving) return QI;
   return Math.random() < (SELL_QI[c.trait] || 0.5) ? QI : TK;
 }
@@ -760,8 +767,8 @@ function canAfford(c, act) {
 }
 const workToDo = c => tasksFor(c).length > 0 || scrapFor(c).length > 0; // something on the ground or on the yard bench it qualifies for
 function sellUrge(c) {
+  if (!((c.qi || 0) >= 1 || (c.qcat || 0) >= 1)) return 0;
   if (c.forced === 'sell') return 1.5;
-  if (!sellable(c, QI) && !sellable(c, TK)) return 0; // nothing it holds is worth selling at today's chart
   const meal = costOf(FOOD, c), qiVal = stackSol(c, QI), qcVal = stackSol(c, TK);
   let w = 0;
   // needs SOL: only when what it holds is worth a couple of meals, and not straight after the last top-up (selling dust feeds nobody)
@@ -782,7 +789,7 @@ const DRIVES = [
   { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= warmCost(3, c) ? 1 : 0) },
   { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (c.coh < 0.4 ? 0.2 : 1) * (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
   { act: 'buy',      label: c => (mkt.mom < -0.002 ? 'buying the dip' : 'feels like buying'), w: c => c.forced === 'buy' ? 1.5 : (T < (c.buyCool || 0) ? 0 : 1) * (spare(c) > 0 ? 0.22 + 0.4 * clamp(spare(c) / 0.05) : 0) * c.tr.eager * (0.5 + tradeItch(c)) * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40)) },
-  { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) * 4 && !workToDo(c) ? 'short of SOL and nothing to do: selling' : c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? 'taking profit' : 'selling a sliver'), w: c => sellUrge(c) },
+  { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) * 4 && !workToDo(c) ? 'short of SOL and nothing to do: selling' : c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? 'taking profit' : 'selling a quarter'), w: c => sellUrge(c) },
   { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
   { act: 'wager',    label: 'feeling lucky',            w: c => (c.sol > costOf(FOOD, c) * 2 + 0.01 ? 1 : 0) * (0.06 + 0.26 * c.tr.gamble) * (c.qcat > 5000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) * (T - (c.wagerT || -1e9) > 900 ? 1 : 0.25) },
@@ -930,7 +937,7 @@ function thought(c, act, p) {
     if (act === 'work') own.push(`${jobs} job${jobs === 1 ? '' : 's'} today. one more.`, `${fmtSol(c.sol)} SOL on paw. the pool pays per job.`);
     if (act === 'eat') own.push(`a meal is ${fmtSol(costOf(FOOD, c))} SOL. fine.`, c.sol < costOf(FOOD, c) * 2 ? 'last meal I can afford' : 'eating while I can');
     if (act === 'gamble') own.push((c.casinoNet || 0) < 0 ? `down ${fmtSol(-c.casinoNet)} at the reels. one more.` : 'the reels owe me nothing. yet.');
-    if (act === 'sell') own.push(`${fmtQ(c.qcat)} ${TK} left. selling a slice.`);
+    if (act === 'sell') own.push(`${fmtQ(c.qcat)} ${TK} left. selling a quarter.`);
     if (act === 'task') own.push(`${board.tasks.length} things out there and I am the one going`);
     if (c.memory && c.memory.length) own.push(`still thinking about how I ${c.memory[0].text}`);
     if (c.grudgeOn) own.push(`${(byId(c.grudgeOn) || {}).name || 'somebody'} is going to hear about it`);
@@ -1221,24 +1228,20 @@ function finish(c, p) {
   } else if (a === 'buy') {
     let amt = Math.min((c.forced === 'buy' ? c.sol * 0.5 : spare(c) * rand(0.25, 0.5)), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); c.forced = null; c.forceTok = null; c.lastBuyT = T; // never more than fifteen dollars' worth in one buy
     if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, ''); } else log(`${c.name} looked at the ${TK} price and kept its SOL`, 'info', 'exchange');
-  } else if (a === 'sell' && !sellTok(c)) {
-    c.forced = null; c.forceTok = null; c.sellCool = T + 1800; log(`${c.name} looked at the chart: ${fmtQ(c.qcat || 0)} ${TK} and ${fmtQ(c.qi || 0)} ${QI} aren't worth selling yet, so it kept them`, 'info', 'exchange');
   } else if (a === 'sell' && sellTok(c) === QI) {
-    // $QI: broke means enough to cover a day of meals; otherwise a sliver, by trait
-    const broke = c.sol < costOf(FOOD, c) * 4, forced = c.forced === 'sell'; c.forced = null; c.forceTok = null;
-    const want = broke ? (costOf(FOOD, c) * 10 - c.sol) / tokSol(QI) : c.qi * (forced ? 0.1 : { degen: 0.1, greedy: 0.06, patient: 0.04, loyal: 0.02 }[c.trait] || 0.05); // broke: enough for ten meals; else a sliver by trait
-    let q = saleSize(c, QI, want); if (testFlat()) q = Math.min(c.qi, Math.max(1, Math.round(testFlat() / tokSol(QI)))); if (!(q > 0)) { c.sellCool = T + 1800; log(`${c.name} looked at the ${QI} chart and kept its ${fmtQ(c.qi)} ${QI}: not worth selling yet`, 'info', 'exchange'); return; } const got = q * tokSol(QI);
+    // $QI: a quarter, half, three quarters or all of the stack, by feeling
+    const broke = c.sol < costOf(FOOD, c) * 4, frac = sellFrac(c); c.forced = null; c.forceTok = null; // it sees the stack's worth, then sells a quarter, half, three quarters or all of it by feeling
+    let q = Math.max(1, Math.round(c.qi * frac)); if (testFlat()) q = Math.min(c.qi, Math.max(1, Math.round(testFlat() / tokSol(QI)))); q = Math.min(c.qi, q); const got = q * tokSol(QI); const worth = `(${FRAC_WORD[frac]}, worth ${fmtSol(stackSol(c, QI))} SOL)`;
     spendGas(c); c.topupT = T + 1500; c.lastSellTok = QI; c.lastSellT = T;
-    c.sellCool = T + rand(broke ? 1500 : 5400, broke ? 3000 : 9000); trade(c, 'sell', QI, got, q, broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : mkt.mom > 0.002 ? 'into the pump' : 'a sliver, because it felt like it');
+    c.sellCool = T + rand(broke ? 1500 : 5400, broke ? 3000 : 9000); trade(c, 'sell', QI, got, q, (broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : mkt.mom > 0.002 ? 'into the pump' : 'because it felt like it') + ' ' + worth);
   } else if (a === 'sell') {
-    const broke = c.sol < costOf(FOOD, c) * 4; c.forced = null; c.forceTok = null; if (!(c.qcat >= 1)) { log(`${c.name} went to sell and had nothing to sell`, 'info', 'exchange'); return; } // short of SOL: sell enough for a day of meals, then leave it alone for half an hour
-    // broke: work out what three meals cost and sell just enough to cover them (never more than a tenth of the stack)
-    const want = broke ? (costOf(FOOD, c) * 10 - c.sol) / tokSol(TK) : c.qcat * rand(0.02, 0.05); // broke: enough for ten meals; else a sliver
-    let q = saleSize(c, TK, want); if (testFlat()) q = Math.min(c.qcat, testFlat() / tokSol(TK)); if (!(q > 0)) { c.sellCool = T + 1800; log(`${c.name} looked at the ${TK} chart and kept its ${fmtQ(c.qcat)} ${TK}: not worth selling yet`, 'info', 'exchange'); return; } const got = q * tokSol(TK);
+    const broke = c.sol < costOf(FOOD, c) * 4, frac = sellFrac(c); c.forced = null; c.forceTok = null; if (!(c.qcat >= 1)) { log(`${c.name} went to sell and had nothing to sell`, 'info', 'exchange'); return; }
+    // it sees the stack's worth at the chart, then sells a quarter, half, three quarters or all of it by feeling
+    let q = c.qcat * frac; if (testFlat()) q = Math.min(c.qcat, testFlat() / tokSol(TK)); q = Math.min(c.qcat, q); const got = q * tokSol(TK); const worth = `(${FRAC_WORD[frac]}, worth ${fmtSol(stackSol(c, TK))} SOL)`;
     spendGas(c); c.lastSellTok = TK; c.lastSellT = T; if (broke) c.brokeCool = T + 1800;
     const gain = Math.round((mkt.price / c.entry - 1) * 100);
     if (!broke) { c.entry = mkt.price; c.sellCool = T + rand(5400, 9000); } else c.sellCool = T + rand(1200, 2400); // a trait sell re-anchors the cat and buys it a long pause before the next one; a needs-SOL sell a shorter one
-    const why = broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? `and took profit at ${gain >= 0 ? '+' : ''}${gain}%` : mkt.mom > 0.002 ? 'into the pump' : 'a sliver, because it felt like it';
+    const why = (broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? `and took profit at ${gain >= 0 ? '+' : ''}${gain}%` : mkt.mom > 0.002 ? 'into the pump' : 'because it felt like it') + ' ' + worth;
     trade(c, 'sell', TK, got, q, why);
   } else if (a === 'steal') {
     const victims = cats.filter(o => o !== c && asleep(o));
