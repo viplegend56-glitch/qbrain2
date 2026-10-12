@@ -25,7 +25,6 @@ const DEFAULTS = {
   NAME: 'Quantum Cats', TICKER: 'QCATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   QI_MINT: process.env.QI_MINT || '',   // $QI: what the lab pays. The treasury wallet holds the supply.
-  FUND_PUB: '',                         // the build fund: a wallet of yours (address only, no key here). The cats give SOL to it; its balance is the bar on the site
   FUND_GOAL: 2.5,                       // SOL the build fund needs before the boarded-up buildings open
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
   GOAL_MUL: 1,                          // every bar in the lab times this: 2 makes the pay twice as hard to reach
@@ -80,7 +79,6 @@ const testFlatNow = () => 0;
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
   engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setFundGoal(config.FUND_GOAL || 2.5); applyChainMode();
-  if (typeof fundBal.sol === 'number') engine.setFundSol(fundBal.sol);
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
   if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); const tc = balances.treasury && balances.treasury.qcat; engine.setQcatPool(typeof tc === 'number' ? tc : null, !!config.CA && typeof tc === 'number'); }
@@ -126,15 +124,13 @@ setInterval(pollSolPrice, 300000); pollSolPrice();
 
 // ---------- wallets: balances, and "fees landed" detection ----------
 let balances = { at: 0, err: null, cats: {}, treasury: null };
-let fundBal = { at: 0, sol: null, err: null }; // the build fund wallet's SOL, read every poll
-const loadWallets = () => { const ws = wallets.load(); if (ws.ready) ws.fund = wallets.fundOf(config.FUND_PUB); return ws; };
+const loadWallets = () => wallets.load();
 let catsPaidIn = 0; // SOL that arrived in the treasury through this brain's own transfers since the last balance read (cats paying for things, pull-backs), so it is not mistaken for fees
 applySettings(); // now that the market and balance holders exist
 let busy = false; // one on-chain operation at a time
 async function pollBalances() {
   const ws = loadWallets();
   if (!ws.ready || !RPC_URL) return;
-  if (ws.fund) { try { const f = await wallets.solBalance(RPC_URL, ws.fund.pub); fundBal = { at: Date.now(), sol: f, err: null }; engine.setFundSol(f); } catch (e) { fundBal = { ...fundBal, err: String(e.message || e) }; } } else { fundBal = { at: 0, sol: null, err: null }; engine.setFundSol(null); }
   try {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA, config.QI_MINT)) };
     const t = balances.treasury && balances.treasury.sol;
@@ -189,13 +185,10 @@ async function runIntent(i) {
     const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this and the fee`);
     return wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.treasury.pub, sol: i.sol }], memo, true);
   }
-  if (i.type === 'donate') { // cat -> the build fund (an address of yours; the brain never holds its key)
-    if (!ws.fund) throw new Error('no build-fund wallet set (Token panel)');
+  if (i.type === 'donate') { // cat -> the treasury, tagged as the build fund; the box keeps the running total
     if (i.sol > (ch.maxPaySol || 1)) throw new Error(`over the per-payment cap (${i.sol} SOL)`);
     const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this and the fee`);
-    const sig = await wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.fund.pub, sol: i.sol }], memo, true);
-    if (typeof fundBal.sol === 'number') { fundBal.sol += i.sol; engine.setFundSol(fundBal.sol); }
-    return sig;
+    return wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.treasury.pub, sol: i.sol }], memo, true);
   }
   if (i.type === 'wage') { // treasury -> cat: SOL for a chore, the moment it is done
     if (i.sol > (ch.maxPaySol || 1)) throw new Error('wage over the cap');
@@ -280,9 +273,9 @@ async function chainTick() {
   engine.markIntent(i.id, 'sending');
   if (ch.mode === 'dry') { engine.intentDone(i.id, null); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, dry: true }); return; }
   busy = true;
-  const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : i.type === 'donate' ? 'build fund' : (i.to || 'treasury');
+  const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : i.type === 'donate' ? 'treasury (build fund)' : (i.to || 'treasury');
   const amt = i.type === 'qi' || i.type === 'qcat' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.type === 'qcat' ? `${Math.round(i.q).toLocaleString('en-US')} ${config.TICKER} · ${i.memo}` : i.memo;
-  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: i.type === 'swap' && r && r.extra ? (i.dir === 'buy' ? r.extra.inSol : r.extra.outSol) : amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : '') + (r && r.booked && r.booked !== 'chain' ? ' · amount from the ' + r.booked : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
+  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay' || i.type === 'donate') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: i.type === 'swap' && r && r.extra ? (i.dir === 'buy' ? r.extra.inSol : r.extra.outSol) : amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : '') + (r && r.booked && r.booked !== 'chain' ? ' · amount from the ' + r.booked : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
   finally { busy = false; }
 }
@@ -339,7 +332,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: loadWallets(), balances, fundBal, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: loadWallets(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -457,9 +450,9 @@ const server = http.createServer(async (req, res) => {
       const ws = loadWallets();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, FUND_GOAL: config.FUND_GOAL || 2.5, FUND_LIVE: !!config.FUND_PUB, PAUSED: !!config.paused, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, FUND_GOAL: config.FUND_GOAL || 2.5, PAUSED: !!config.paused, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
-        wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), fund: config.FUND_PUB || null, fundSol: fundBal.sol, balances, feesSeenSol: config.feesSeenSol } : null,
+        wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
         ai: llm.enabled(),
       });
@@ -482,8 +475,6 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/config') {
         const notes0 = [];
         for (const k of ['CA', 'X_URL', 'QI_MINT']) if (k in b) config[k] = String(b[k]).trim();
-        if ('FUND_PUB' in b) { const f = String(b.FUND_PUB).trim(); if (f && !wallets.fundOf(f)) notes0.push('build fund: that is not a valid Solana address'); else config.FUND_PUB = f; }
-        if ('FUND_GOAL' in b && b.FUND_GOAL !== '') { config.FUND_GOAL = Math.max(0.01, Math.min(10000, Number(b.FUND_GOAL) || 2.5)); config.fundGoalSet = true; engine.setFundGoal(config.FUND_GOAL); }
         // the two token addresses must be mints, not pool addresses: check on-chain, and if a pair was pasted, resolve its mint
         const notes = notes0;
         for (const k of ['CA', 'QI_MINT']) { const a = config[k]; if (!a || !RPC_URL) continue; const label = k === 'CA' ? config.TICKER : '$QI';

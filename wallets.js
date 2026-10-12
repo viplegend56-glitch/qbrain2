@@ -63,10 +63,9 @@ const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS = 1e9;
 
 function assertKnown(ws, pub) {
-  if (pub !== ws.treasury.pub && !ws.cats.some(c => c.pub === pub) && !(ws.fund && ws.fund.pub === pub)) throw new Error('refusing to send to an address that is not one of the ten cats, the treasury or the build fund');
+  if (pub !== ws.treasury.pub && !ws.cats.some(c => c.pub === pub)) throw new Error('refusing to send to an address that is not one of the ten cats or the treasury');
 }
 // the build fund is a plain address (this brain never holds its key): the cats give SOL to it, and its balance is read like any other
-function fundOf(pub) { if (!pub) return null; try { const { PublicKey } = libs(); return { pub: new PublicKey(String(pub).trim()).toBase58() }; } catch (_) { return null; } }
 async function solBalance(rpcUrl, pub) { const { Connection, PublicKey } = libs(); const conn = new Connection(rpcUrl, 'confirmed'); return (await conn.getBalance(new PublicKey(pub))) / LAMPORTS; }
 
 const MEMO_PROGRAM = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
@@ -350,4 +349,4 @@ async function swapAny(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts
   }
   throw new Error('no venue could do it — ' + errs.map(x => x.slice(0, 90)).join(' / '));
 }
-module.exports = { load, fundOf, solBalance, generate, balances, transferSol, sweepSol, recentSigs, inflowKind, explainSwapError, swapAny, swapOutcome, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+module.exports = { load, solBalance, generate, balances, transferSol, sweepSol, recentSigs, inflowKind, explainSwapError, swapAny, swapOutcome, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };

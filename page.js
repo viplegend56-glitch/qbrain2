@@ -8,7 +8,7 @@ const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
-function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, fundBal, logs, flash, err, env, generated, busy }) {
+function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, logs, flash, err, env, generated, busy }) {
   marketQi = marketQi || {}; mintChecks = mintChecks || {}; adminJobs = adminJobs || []; const mc = k => mintChecks[k] ? ` · <span class="${mintChecks[k].ok ? 'ok' : 'bad'}">${esc(mintChecks[k].msg)}</span>` : ''; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
@@ -107,8 +107,6 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <label>Contract address (CA) — the token's mint, not the pool address; market cap, token balances and the site's CA button go live from this${mc('CA')}</label><input type="text" name="CA" value="${esc(config.CA)}" placeholder="not launched yet">
     <label>X link</label><input type="text" name="X_URL" value="${esc(config.X_URL)}" placeholder="https://x.com/…">
     <label>$QI contract address (CA) — the token's mint, not the pool address; the treasury buys what it owes and hands it out${mc('QI_MINT')}${marketQi.ok ? ` · chart: ${marketQi.priceSol ? marketQi.priceSol.toExponential(2) + ' SOL per $QI' : '—'}` : marketQi.err && config.QI_MINT ? ` · <span class="bad">${esc(marketQi.err.slice(0, 50))}</span>` : ''}</label><input type="text" name="QI_MINT" value="${esc(config.QI_MINT || '')}" placeholder="$QI contract address">
-    <label>build fund wallet — a wallet of yours (address only; this brain never has its key). The cats give SOL to it from their own wallets, its balance is the column on the site, and at the goal the boarded-up buildings open${fundBal && typeof fundBal.sol === 'number' ? ` · <span class="ok">${fundBal.sol.toFixed(2)} of ${Number(config.FUND_GOAL || 2.5).toFixed(2)} SOL${fundBal.sol >= (config.FUND_GOAL || 2.5) ? ' · the buildings are open' : ''}</span> · read ${ago(fundBal.at)}` : fundBal && fundBal.err ? ` · <span class="bad">${esc(String(fundBal.err).slice(0, 60))}</span>` : config.FUND_PUB ? ' · reading…' : ''}</label>
-    <div class="row" style="grid-template-columns:1fr 140px;gap:0 10px"><input type="text" name="FUND_PUB" value="${esc(config.FUND_PUB || '')}" placeholder="build fund address (any wallet you control)"><input type="number" step="0.01" min="0.01" name="FUND_GOAL" value="${config.FUND_GOAL || 2.5}" title="SOL goal"></div>
     <button class="btn">Save</button>
   </div></div>
   </form>

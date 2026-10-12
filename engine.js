@@ -799,7 +799,10 @@ const DRIVES = [
   { act: 'sleep',    label: 'tired',                    w: c => Math.pow(c.tired, 2.2) * 1.1 },
   { act: 'play',     label: 'wants to play',            w: c => (0.42 + c.lonely * 0.4) * c.tr.social * (c.sol > costOf(PLAY, c) * 3 ? 1 : 0) * (T - (c.playT || -1e9) > 900 ? 1 : 0.25) },
   { act: 'task',     label: c => (tasksFor(c).some(t => t.called != null && T - t.called < 180) ? 'somebody flagged something' : 'something wants doing'), w: c => { const ts = tasksFor(c); return ts.length ? (c.coh < 0.4 ? 0.2 : 1) * (0.42 + 0.12 * Math.max(...ts.map(t => t.tier)) + (shortOfSol(c) ? 0.6 : 0)) * c.ethic * (ts.some(t => t.called != null && T - t.called < 180) ? 1.8 : 1) : 0; } },
-  { act: 'donate',   label: c => (fundOpen() ? 'the fund is full' : 'feels like giving'), w: c => (fundOpen() || (liveTx() && !fundLive()) || T < (c.donateCool || 0) || c.hunger > 0.6 || spare(c) < costOf(0.03, c) ? 0 : (0.3 + 0.33 * clamp(spare(c) / 0.05)) * ({ loyal: 1.5, patient: 1.15, degen: 0.85, greedy: 0.5 }[c.trait] || 1) * (c.ethic || 1)) },
+  { act: 'donate',   label: c => (fundOpen() ? 'the fund is full' : spare(c) >= askAmt(fundAsk()) ? 'going for the prize at the fund' : 'feels like giving'), w: c => { if (fundOpen() || T < (c.donateCool || 0) || c.hunger > 0.6) return 0; const a = fundAsk(), sp = spare(c); if (sp < costOf(0.01, c)) return 0;
+      let w = 0.12 + 0.2 * clamp(sp / costOf(0.05)); // a plain gift now and then, when flush
+      if (sp >= askAmt(a)) w += a.kind === 'xp' ? 0.3 : ((c.items || []).includes(a.item) ? 0.05 : 0.4); // the prize: XP for the ladder, or a cosmetic it does not have yet
+      return w * ({ loyal: 1.4, patient: 1.15, degen: 0.9, greedy: 0.6 }[c.trait] || 1) * (c.ethic || 1); } },
   { act: 'shop',     label: 'feeling flush',            w: c => itemsFor(c).length ? (0.3 + 0.25 * (c.vanity || 1)) * (1 - (c.items || []).length / ITEMS.length) * (T - (c.shopT || -1e9) > 2400 ? 1 : 0.08) : 0 },
 ];
 const TH = {
@@ -834,7 +837,7 @@ const PLACES = {
   cryo:     { title: 'The circle',    kind: 'where the box meets',                 pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'], desc: 'The meeting is the last ten minutes of every day. Recohering out here costs ' + fmtSol(CRYO) + ' SOL.' },
   crates:   { title: 'The diner',     kind: 'food · paid to the treasury',          pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'], desc: '' },
   vent:     { title: 'The heater',    kind: 'warmth · by the minute',               pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'], desc: '' },
-  trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x + TRAYS.w / 2, TRAYS.y + TRAYS.d / 2], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up at the harbour and ends up here: dead cryostats, coax by the mile, boards nobody labelled. Jobs go up on the bench; a cat takes one, strips it for parts the lab can use, and the treasury pays it in ' + TK + ' from its own supply the moment it is done.' },
+  trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x + TRAYS.w / 2, TRAYS.y + TRAYS.d / 2], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up here. A cat takes a job off the bench, strips it for parts, and the treasury pays it in ' + TK + ' the moment it is done.' },
   exchange: { title: 'The exchange', kind: 'where cats sell $QI or ' + TK + ' for SOL, and buy', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'visits'], desc: '' },
   casino:   { title: 'The casino',    kind: 'the house is the treasury',            pt: [CASINO.x + 0.5, CASINO.y], stats: ['here', 'wagered', 'spent'], desc: '' },
   arena:    { title: 'The arena',     kind: 'wagers in SOL · entry ' + fmtSol(ARENA_FEE) + ' SOL', pt: [ARENA.x, ARENA.y], stats: ['spent', 'here', 'wagered'], desc: '' },
@@ -843,7 +846,7 @@ const PLACES = {
   bazaar:   { title: 'The shop',      kind: 'things to wear · paid to the treasury', pt: [BAZ.x + 1.5, BAZ.y + 1.0], stats: ['spent', 'here', 'items'], desc: '' },
   yard:     { title: 'The yard',      kind: 'play · ' + fmtSol(PLAY) + ' SOL a visit', pt: [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2], stats: ['spent', 'here', 'visits'], desc: '' },
   vault:    { title: 'The treasury',  kind: 'where the fees land',                  pt: [VAULT.x, VAULT.y], stats: ['fees', 'wages', 'qipaid'], desc: '' },
-  fund:     { title: 'The build fund', kind: 'SOL from the cats \u00b7 opens the boarded-up buildings', pt: [FUND.x, FUND.y], stats: ['raised', 'goal', 'givers'], desc: 'Two buildings on the block are still boarded up. The cats put a little of their own SOL in the column when they can spare it \u2014 it goes to the fund wallet, every lamport on-chain \u2014 and when the column reaches the goal the hoardings come down and the buildings open. Giving earns a cat a little experience.' },
+  fund:     { title: 'The build fund', kind: 'the cats chip in \u00b7 opens the boarded-up buildings', pt: [FUND.x, FUND.y], stats: ['raised', 'goal', 'givers'], desc: 'See the two COMING SOON boards? This is for them. Cats drop a little SOL in when they can spare it (it lands in the treasury, on-chain), and there is always a prize for the next gift over the line.' },
 };
 const placeStats = {}, placeLogs = {}, placeDay = {};
 for (const k of Object.keys(PLACES)) { placeStats[k] = { paid: 0, spent: 0, visits: 0, found: 0, stolen: 0, bought: 0, buysol: 0, wagered: 0, circuits: 0, keys: 0, jobs: 0 }; placeLogs[k] = []; }
@@ -1097,19 +1100,29 @@ function applyTrade(c, dir, tok, sol, q, why, sig) {
 }
 // ---------- the build fund: the cats put SOL toward the boarded-up buildings; at the goal, the hoardings come down ----------
 const fundGoal = () => (Number(CONFIG.FUND_GOAL) > 0 ? Number(CONFIG.FUND_GOAL) : 2.5);
-const fundSol = () => (stats.fundSol || 0), fundOpen = () => fundSol() >= fundGoal() || !!stats.fundOpened, fundLive = () => !!CONFIG.FUND_LIVE; // FUND_LIVE: the brain has a fund wallet to read (set the moment it reports a balance)
+const fundSol = () => (stats.fundSol || 0), fundOpen = () => fundSol() >= fundGoal() || !!stats.fundOpened;
+// the prize at the column: the next gift over the line wins something, XP for the ladder or a cosmetic; the line follows the price multiplier, and a new prize goes up the moment one is won
+const FUND_ASKS = [0.01, 0.015, 0.02, 0.03];
+function newAsk() { const base = pick(FUND_ASKS), kind = Math.random() < 0.6 ? 'xp' : 'item', a = { base, kind }; if (kind === 'xp') a.xp = Math.round(base / 0.01 * 15); else a.item = pick(ITEMS).key; stats.fundAsk = a; return a; }
+const fundAsk = () => (stats.fundAsk && stats.fundAsk.base > 0 ? stats.fundAsk : newAsk()), askAmt = a => r6(costOf(a.base));
+const askPrize = a => (a.kind === 'xp' ? '+' + a.xp + ' XP' : (ITEMS.find(i => i.key === a.item) || { name: 'a cosmetic' }).name), askText = a => `${fmtSol(askAmt(a))} SOL or more wins ${askPrize(a)}`;
+function claimAsk(c, a, cost) {
+  let won; if (a.kind === 'xp') { gainXp(c, a.xp); won = '+' + a.xp + ' XP'; } else { const it = ITEMS.find(i => i.key === a.item); if (!c.items) c.items = []; if (it && !c.items.includes(it.key)) c.items.push(it.key); if (it) c.wearing = it.key; won = it ? it.name : 'nothing'; }
+  log(`${c.name} gave ${fmtSol(cost)} SOL to the build fund and won ${won}`, 'gain', 'fund'); did(c, `won ${won} at the build fund`); recordEvent('fund', `${c.name} won ${won} at the build fund`); burst(c, '247,200,106', 16);
+  if (Math.random() < 0.7) say(c, pick(['the prize is mine', 'worth it', 'for the block, and for me', 'new look', 'that is how you give']));
+  newAsk();
+}
 function give(c, amt) {
   const cost = Math.min(c.sol, amt); if (!(cost > 0)) return;
   c.sol -= cost; c.donated = (c.donated || 0) + cost; c.lastPaidT = T; placeStats.fund.visits++; (placeDay.fund || (placeDay.fund = { visits: 0, spent: 0 })).visits++;
-  placeStats.fund.spent += cost; if (!liveTx()) stats.fundSol = (stats.fundSol || 0) + cost; // in the box the column fills at once; for real, it moves when the brain reads the fund wallet after the transfer lands
+  placeStats.fund.spent += cost; if (!liveTx()) stats.fundSol = (stats.fundSol || 0) + cost; // in the box the column fills at once; for real, it fills when the transfer to the treasury lands
   gainXp(c, 8 + Math.round(cost * 600)); // a bit of XP for giving: 0.02 SOL is worth twenty
   showOrQueue({ type: 'donate', cat: c.name, sol: r6(cost), memo: 'the build fund', place: 'fund' }, [{ f: 'tx', cat: c.name, type: 'gave', amount: '-' + fmtSol(cost) + ' SOL', note: 'the build fund' }, { f: 'float', cat: c.name, text: '-' + fmtSol(cost) + ' SOL', color: '#5CFFAA' }, { f: 'coin', cat: c.name, amt: cost }, { f: 'log', text: `${c.name} put ${fmtSol(cost)} SOL in the build fund (${fmtSol(fundSol() + (liveTx() ? cost : 0))} of ${fmtSol(fundGoal())} SOL)`, kind: 'gain', place: 'fund' }]);
   did(c, `put ${fmtSol(cost)} SOL in the build fund`); recordEvent('fund', `${c.name} put ${fmtSol(cost)} SOL in the build fund`);
-  if (Math.random() < 0.5) say(c, pick(['for the block', 'build it', 'my bit', 'open the doors', 'that is for the new wing']));
+  const a = fundAsk(); if (cost >= askAmt(a) - 1e-9) claimAsk(c, a, cost); else if (Math.random() < 0.5) say(c, pick(['for the block', 'build it', 'my bit', 'open the doors', 'that is for the new wing']));
   checkFund();
 }
 function checkFund() { if (!stats.fundOpened && fundSol() >= fundGoal()) { stats.fundOpened = dayNo(); log(`The build fund reached ${fmtSol(fundGoal())} SOL. The hoardings come down: the boarded-up buildings open.`, 'gain', 'fund'); recordEvent('fund', 'the build fund hit its goal and the boarded-up buildings opened'); for (const c of cats) if (c.donated > 0) remember(c, 'helped fill the build fund; the buildings opened'); } }
-function setFundSol(n) { if (typeof n === 'number' && n >= 0) { stats.fundSol = n; CONFIG.FUND_LIVE = true; checkFund(); } else if (n == null) CONFIG.FUND_LIVE = false; }
 function spend(c, amt, place, what) {
   if (testFlat() && amt > 0) amt = testFlat();
   const cost = Math.min(c.sol, amt); c.sol -= cost; c.upkeep = (c.upkeep || 0) + cost; stats.upkeep += cost; if (feePool()) stats.treasury += cost; placeStats[place].spent += cost; placeStats[place].visits++; const pd = placeDay[place] || (placeDay[place] = { visits: 0, spent: 0 }); pd.visits++; pd.spent += cost;
@@ -1213,8 +1226,8 @@ function finish(c, p) {
       if (pay > 0) payQcat(c, pay, j.title);
     }
   } else if (a === 'donate') {
-    let amt = Math.min(spare(c) * rand(0.1, 0.3), 0.02); if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt);
-    if (amt >= (testFlat() || 0.005)) { c.donateCool = T + rand(3600, 7200); give(c, amt); }
+    const ask = fundAsk(), line = askAmt(ask), sp = spare(c); let amt = sp >= line ? line : Math.min(sp * rand(0.2, 0.4), costOf(0.02, c)); if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt); // enough for the prize when it can, else a little
+    if (amt >= (testFlat() || costOf(0.004))) { c.donateCool = T + rand(2400, 5400); give(c, amt); }
     else { c.donateCool = T + 1800; did(c, 'stood at the build fund with nothing to spare'); }
   } else if (a === 'recohere') {
     spend(c, costOf(CRYO, c), 'lab', 'cryo time'); c.coh = 1; gainXp(c, 1); did(c, 'recohered out in the open');
@@ -2544,7 +2557,7 @@ function intentDone(id, sig, extra) { const k = intents.findIndex(x => x.id === 
   else if (i.type === 'swap') { const tok = i.tok === 'qi' ? QI : TK;
     if (i.dir === 'buy') { c.sol += i.sol; applyTrade(c, 'buy', tok, x.inSol != null ? x.inSol : i.sol, x.outQ != null ? x.outQ : i.q, i.why, sig); } // give back what was set aside, then book the real amounts
     else { if (tok === QI) c.qi += i.q; else c.qcat += i.q; applyTrade(c, 'sell', tok, x.outSol != null ? x.outSol : i.sol, x.inQ != null ? x.inQ : i.q, i.why, sig); } }
-  else playShow(i.show, sig);
+  else { playShow(i.show, sig); if (i.type === 'donate' && i.sol > 0) { stats.fundSol = (stats.fundSol || 0) + i.sol; checkFund(); } }
   return true; }
 function intentFailed(id, err) { const k = intents.findIndex(x => x.id === id); if (k < 0) return false; const i = intents.splice(k, 1)[0]; i.state = 'failed'; i.err = String(err || '').slice(0, 160); intentLog.unshift(i); if (intentLog.length > 200) intentLog.pop();
   const c = cats.find(x => x.name === i.cat); if (!c) return true;
@@ -2595,7 +2608,7 @@ function stepMarket(dt) {
     const m = Math.random() < 0.6 ? rand(0.06, 0.3) : -rand(0.05, 0.18);
     mkt.price *= 1 + m; mkt.mom += m * 0.3;
     log(`The chart just ${m > 0 ? 'ripped' : 'dipped'} ${m > 0 ? '+' : ''}${Math.round(m * 100)}%. ${m > 0 ? 'Fees are pouring in.' : 'The patient cats are watching.'}`, m > 0 ? 'gain' : 'loss', 'exchange');
-    if (m > 0.1) feeIn(true);
+    if (m > 0.1 && feePool()) feeIn(true); // pretend fees only while the box runs on its own
   }
 }
 function strike() {
@@ -2838,10 +2851,10 @@ function setTreasury(sol) { if (CONFIG.SIMULATE_FEES === false && typeof sol ===
 function step(dt) {
   T += dt; simMin += dt * (1440 / DAY_SECS);
   stepWeather(dt);
-  if (realMcap == null) stepMarket(dt);
+  if (realMcap == null && CONFIG.SIMULATE_FEES !== false) stepMarket(dt); // the pretend chart moves only while the box runs on its own; the brain waits flat for the real one
   else { mkt.acc += dt; while (mkt.acc >= 1) { mkt.acc -= 1; mkt.hist.push(mkt.price); if (mkt.hist.length > 240) mkt.hist.shift(); } }
-  checkReleases(); checkStages(); checkFund(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt); stepGas(); stepLab(); stepScrap(); stepPayout(); stepPayroll();
-  if (CONFIG.SIMULATE_FEES !== false && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
+  checkReleases(); checkStages(); checkFund(); stepDay(); stepMeeting(dt); stepBoard(dt); stepDeliveries(dt); stepBots(dt); if (!isPaused()) { stepGas(); stepLab(); stepScrap(); stepPayout(); stepPayroll(); }
+  if (CONFIG.SIMULATE_FEES !== false && !isPaused() && T >= nextFee) { feeIn(false); nextFee = T + rand(60, 150); }
   for (const c of cats) update(c, dt); separateAll(dt);
 }
 function snapshot() {
@@ -2864,7 +2877,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, get paused() { return isPaused(); }, get payrollNext() { return payrollNext; }, payrollDue(name) { const c = cats.find(x => x.name === name); return !!c && payrollDue(c); }, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, get paused() { return isPaused(); }, get payrollNext() { return payrollNext; }, payrollDue(name) { const c = cats.find(x => x.name === name); return !!c && payrollDue(c); }, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = (T % DAY_SECS) / DAY_SECS * 1440; // the clock follows the day: midnight is the day boundary
