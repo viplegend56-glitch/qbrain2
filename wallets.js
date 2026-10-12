@@ -312,7 +312,7 @@ async function swapOutcome(conn, sig, ownerPub, mint) {
     return { solDelta, tokDeltaRaw: sum(t.meta.postTokenBalances) - sum(t.meta.preTokenBalances) };
   } catch (_) { return null; }
 }
-// ---- other places to swap when Jupiter cannot: PumpPortal (pump.fun coins, on the curve or on PumpSwap; 0.5% fee), Raydium's trade API (Raydium pools) ----
+// ---- the one other place to swap when Jupiter cannot: PumpPortal (pump.fun coins, on the curve or on PumpSwap; 0.5% fee) ----
 async function signSendVersioned(conn, bytes, kp) {
   const { VersionedTransaction } = libs();
   const tx = VersionedTransaction.deserialize(bytes); tx.sign([kp]); const raw = tx.serialize();
@@ -333,23 +333,6 @@ async function pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, 
   try { return { sig: await signSendVersioned(conn, buf, kp), via: 'PumpPortal' }; }
   catch (e) { if (!/expired/.test(e.message) || opts.retried) throw e; return pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, { ...opts, retried: true }); } // one fresh build if the first expired
 }
-async function raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, program, opts = {}) {
-  const { Connection, PublicKey } = libs();
-  const RAY = 'https://transaction-v1.raydium.io', inputMint = direction === 'sell' ? mint : SOL_MINT, outputMint = direction === 'sell' ? SOL_MINT : mint;
-  const q = await jfetch(`${RAY}/compute/swap-base-in?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${opts.slippageBps || 1000}&txVersion=V0`, { headers: { accept: 'application/json' } });
-  if (!q.ok) throw new Error(`raydium quote ${q.status || 'unreachable'}: ${(await q.text()).slice(0, 160)}`);
-  const quote = await q.json(); if (!quote.success || !quote.data) throw new Error('raydium: ' + (quote.msg || 'no route on Raydium'));
-  const body = { computeUnitPriceMicroLamports: String(Math.max(1000, Math.round((opts.maxFeeLamports || 100000) / 200))), swapResponse: quote, txVersion: 'V0', wallet: kp.publicKey.toBase58(), wrapSol: direction === 'buy', unwrapSol: direction === 'sell' };
-  if (direction === 'sell') body.inputAccount = ataOf(kp.publicKey, new PublicKey(mint), program || TOKEN_PROGRAM).toBase58();
-  const b = await jfetch(`${RAY}/transaction/swap-base-in`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
-  if (!b.ok) throw new Error(`raydium build ${b.status || 'unreachable'}: ${(await b.text()).slice(0, 160)}`);
-  const built = await b.json(); if (!built.success || !Array.isArray(built.data) || !built.data.length) throw new Error('raydium: ' + (built.msg || 'could not build the swap'));
-  const conn = new Connection(rpcUrl, 'confirmed'); let sig = null;
-  try { for (const { transaction } of built.data) sig = await signSendVersioned(conn, Buffer.from(transaction, 'base64'), kp); } // setup first, then the swap, in the order given
-  catch (e) { if (!/expired/.test(e.message) || opts.retried) throw e; return raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, program, { ...opts, retried: true }); }
-  return { sig, via: 'Raydium', inAmount: Number(quote.data.inputAmount), outAmount: Number(quote.data.outputAmount) };
-}
-// Jupiter first; if it is unavailable or has no route, the others. A slippage or funds error is the cat's problem and is not retried elsewhere.
 const elsewhereWorthTrying = e => /unavailable|no route|any route|route not found|ROUTE_NOT_FOUND|unreachable|no answer|returned no transaction|jupiter (quote|swap) (0|5\d\d|429)/i.test(String(e && e.message || e));
 async function swapAny(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts = {}) {
   const { Connection } = libs(); const owner = kp.publicKey.toBase58();
@@ -357,11 +340,11 @@ async function swapAny(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts
   let first;
   try { return await finish(Object.assign(await jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts), { via: 'Jupiter' })); }
   catch (e) { first = e; if (!elsewhereWorthTrying(e)) throw e; }
-  const others = /pump$/i.test(mint) ? ['pump', 'ray'] : ['ray', 'pump']; const errs = [String(first.message)];
+  const others = /pump$/i.test(mint) ? ['pump'] : []; const errs = [String(first.message)]; // a pump.fun coin can also go through PumpPortal; nothing else is tried
   for (const v of others) {
     try {
-      console.warn('swap: Jupiter could not (' + String(first.message).slice(0, 80) + '); trying ' + (v === 'pump' ? 'PumpPortal' : 'Raydium'));
-      const r = v === 'pump' ? await pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, opts.decimals, opts) : await raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, opts.decimals, opts.program, opts);
+      console.warn('swap: Jupiter could not (' + String(first.message).slice(0, 80) + '); trying PumpPortal');
+      const r = await pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, opts.decimals, opts);
       return await finish(r);
     } catch (e2) { errs.push(String(e2.message)); }
   }

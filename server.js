@@ -29,7 +29,10 @@ const DEFAULTS = {
   FUND_GOAL: 2.5,                       // SOL the build fund needs before the boarded-up buildings open
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
   GOAL_MUL: 1,                          // every bar in the lab times this: 2 makes the pay twice as hard to reach
-  SCRAP_PAY: 100,                       // $QCATS a tier-1 salvage job pays (tier 2 two and a half times, tier 3 five times), from the treasury's own supply
+  PAYROLL_PCT: 60,                      // payroll: every half hour a cat that is short gets this % of what it spent since the last payroll back from the treasury, up to the floor below
+  PAYROLL_MEALS: 4,                     // 'short' means holding less than this many meals' worth of SOL; payroll tops it up to there and no further
+  SCRAP_PAY_USD: 1,                     // dollars' worth of $QCATS a tier-1 salvage job pays at the chart price (tier 2 two and a half times, tier 3 five times), times the price multiplier, from the treasury's own supply
+  SCRAP_PAY: 100,                       // $QCATS a tier-1 job pays before the chart is read
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
@@ -80,7 +83,7 @@ const testFlatNow = () => 0;
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
-  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100); engine.setFundGoal(config.FUND_GOAL || 2.5); applyChainMode();
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100, config.SCRAP_PAY_USD || 1); engine.setFundGoal(config.FUND_GOAL || 2.5); engine.setPayroll(Number(config.PAYROLL_PCT), Number(config.PAYROLL_MEALS)); applyChainMode();
   if (typeof fundBal.sol === 'number') engine.setFundSol(fundBal.sol);
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
@@ -250,8 +253,8 @@ async function runIntent(i) {
       chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig, true); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
     }
     const feeCap = 300000; // lamports of priority at most
-    const meta = await mintMeta(mint), sopts = { maxFeeLamports: feeCap, decimals, program: meta.program, slippageBps: config.slippageBps };
     const raw = i.dir === 'buy' ? Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)) : Math.floor(i.q * Math.pow(10, decimals)); if (raw < 1) throw new Error('nothing to sell');
+    const meta = await mintMeta(mint), sopts = { maxFeeLamports: feeCap, decimals, program: meta.program, slippageBps: config.slippageBps };
     const r = await wallets.swapAny(RPC_URL, catW.kp, mint, i.dir, raw, config.slippageBps, sopts);
     // what to book: the confirmed transaction's real balance changes when they could be read, else the quote, else the box's own estimate
     const o = r.outcome; let extra;
@@ -457,7 +460,7 @@ const server = http.createServer(async (req, res) => {
       const ws = loadWallets();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, FUND_GOAL: config.FUND_GOAL || 2.5, FUND_LIVE: !!config.FUND_PUB, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, SCRAP_PAY_USD: config.SCRAP_PAY_USD || 1, FUND_GOAL: config.FUND_GOAL || 2.5, FUND_LIVE: !!config.FUND_PUB, PAYROLL_PCT: config.PAYROLL_PCT, PAYROLL_MEALS: config.PAYROLL_MEALS, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), fund: config.FUND_PUB || null, fundSol: fundBal.sol, balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -498,7 +501,8 @@ const server = http.createServer(async (req, res) => {
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved' + (notes.length ? ' · ' + notes.join(' · ') : ''), notes.some(n => /not a token mint|not found|not a known|not a valid/.test(n)));
       }
       if (p === '/admin/payouts') { // the lab pay range
-        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'GOAL_MUL', 'SCRAP_PAY']) if (k in b && b[k] !== '') config[k] = Number(b[k]); config.SCRAP_PAY = Math.max(1, Math.round(config.SCRAP_PAY || 100)); engine.setScrapPay(config.SCRAP_PAY);
+        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'GOAL_MUL', 'SCRAP_PAY', 'SCRAP_PAY_USD', 'PAYROLL_PCT', 'PAYROLL_MEALS']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        config.PAYROLL_PCT = Math.max(0, Math.min(100, Number(config.PAYROLL_PCT) || 0)); config.PAYROLL_MEALS = Math.max(0.5, Math.min(50, Number(config.PAYROLL_MEALS) || 4)); engine.setPayroll(config.PAYROLL_PCT, config.PAYROLL_MEALS); config.SCRAP_PAY = Math.max(1, Math.round(config.SCRAP_PAY || 100)); config.SCRAP_PAY_USD = Math.max(0.05, Math.round((Number(config.SCRAP_PAY_USD) || 1) * 100) / 100); engine.setScrapPay(config.SCRAP_PAY, config.SCRAP_PAY_USD);
         if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.GOAL_MUL = Math.max(0.1, Math.min(20, config.GOAL_MUL || 1));
         engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setGoalMul(config.GOAL_MUL);
         saveConfig(); return back(res, 'a filled bar pays $' + config.LAB_PAY_MIN_USD + '–$' + config.LAB_PAY_MAX_USD + ' of $QI · bars x' + config.GOAL_MUL);
