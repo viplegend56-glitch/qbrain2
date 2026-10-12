@@ -28,6 +28,7 @@ const DEFAULTS = {
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a lab job is worth this many dollars of $QI, by circuit size
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
+  PACE_MIN: 6,                          // in the real modes: minutes between one cat's paid moves (a meal, a spin, a trade…), so the chain is not hammered
   chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001 }, // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, lab pay a hundredth) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: false, floor: 0.001, min: 0.002 }, // no gas rule: floor is only the chain's rent minimum; the admin table flags a cat under `min` so you can send it SOL by hand
@@ -73,7 +74,7 @@ const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
-  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); applyChainMode();
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); applyChainMode();
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
   if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); }
@@ -118,6 +119,7 @@ setInterval(pollSolPrice, 300000); pollSolPrice();
 
 // ---------- wallets: balances, and "fees landed" detection ----------
 let balances = { at: 0, err: null, cats: {}, treasury: null };
+let catsPaidIn = 0; // SOL the cats have paid into the treasury since the last balance read, so it is not mistaken for fees
 applySettings(); // now that the market and balance holders exist
 let busy = false; // one on-chain operation at a time
 async function pollBalances() {
@@ -130,9 +132,11 @@ async function pollBalances() {
     if (['live', 'test'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats); // the wallets are the truth once the box is paying for real
     if (typeof t === 'number') {
       engine.setTreasury(t);
-      if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005) {
-        const d = t - config.lastTreasurySol; config.feesSeenSol += d; engine.noteFees(d);
+      // a rise in the treasury is creator fees landing — except for what the cats themselves just paid in (meals, stakes, entries), which is counted and taken off first
+      if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005 + catsPaidIn) {
+        const d = t - config.lastTreasurySol - catsPaidIn; config.feesSeenSol += d; engine.noteFees(d);
       }
+      catsPaidIn = 0;
       if (config.lastTreasurySol !== t) { config.lastTreasurySol = t; saveConfig(); }
     }
   } catch (e) { balances = { ...balances, err: String(e.message || e) }; }
@@ -213,7 +217,7 @@ async function chainTick() {
   busy = true;
   const who = i.type === 'wage' || i.type === 'qi' ? 'treasury' : i.cat, to = i.type === 'wage' || i.type === 'qi' ? i.cat : i.type === 'swap' ? 'jupiter' : (i.to || 'treasury');
   const amt = i.type === 'qi' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.memo;
-  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
+  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
   finally { busy = false; }
 }
@@ -375,7 +379,7 @@ const server = http.createServer(async (req, res) => {
       const ws = wallets.load();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -424,6 +428,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/chain') {
         const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
         if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
+        if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
         applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }

@@ -179,9 +179,10 @@ function renderAdmin({ config, engine, market, marketQi, chainLog, wallets, bala
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut">${ch.mode === 'live' ? '<span class="ok">DEFAULT: every payment the cats make is a real transaction at the real prices</span>' : ch.mode === 'test' ? '<span class="ok">DEFAULT TESTING: real transactions, every price in the box 0.001 SOL</span>' : 'sandbox: the box only, nothing on-chain'}</small></div><div class="pb">
     ${walletsReady ? `
     <p class="mut" style="margin:0 0 10px"><b>Sandbox</b> is the box on its own, nothing leaves a wallet. <b>Default testing</b> sends every transaction for real but makes every price 0.001 SOL (and lab pay a hundredth), on the site too, so the plumbing can be proved for cents. <b>Default</b> is the real prices. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
-    <div class="row">
+    <div class="row3">
       <div><label>mode</label><select name="mode" style="width:100%;padding:8px 10px;font-size:13px"><option value="off" ${ch.mode === 'off' ? 'selected' : ''}>sandbox — the box only</option><option value="test" ${ch.mode === 'test' ? 'selected' : ''}>default testing — real transactions, every price 0.001 SOL</option><option value="live" ${ch.mode === 'live' ? 'selected' : ''}>default — real transactions at the real prices</option></select></div>
       <div><label>price multiplier — every price in the box and on the site times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
+      <div><label>pace — minutes between one cat's paid moves in testing and default (a meal, the heater, a spin, a trade); 0 = no limit. Sandbox ignores it.</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
     </div>
     <button class="btn">Save</button>
     <div style="margin-top:12px"><small class="mut">queued now: ${engine.intents.length} · last results, newest first</small>
