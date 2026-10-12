@@ -84,7 +84,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     const a = config.auto || {};
 
   const genBlock = generated ? `<div class="panel"><div class="ph"><span>New wallets — shown once</span></div><div class="pb">
-    <p><b>Copy these into your host's environment variables now.</b> They are not stored anywhere on this server. Close this page and they are gone. After adding them, redeploy the service.${wallets.ready ? ' <b>These replace the current eleven wallets</b>: the brain switches the moment it restarts with the new keys, and whatever is still in the old wallets stays there (pause transactions, pull everything back to the old treasury, then send it to the new treasury address from a wallet you control; the old treasury key still opens the old wallet in Phantom).' : ''}</p>
+    <p><b>Copy these into your host's environment variables now.</b> They are not stored anywhere on this server. Close this page and they are gone. After adding them, redeploy the service.</p>
     <label>TREASURY_KEY</label><div class="secret"><code>${esc(generated.TREASURY_KEY)}</code></div>
     <label>CAT_KEYS (ten keys, roster order)</label><div class="secret"><code>${esc(generated.CAT_KEYS)}</code></div>
     <label>Public addresses (safe to share)</label><table><tr><th>wallet</th><th>address</th></tr><tr><td>treasury</td><td><code>${esc(generated.treasury.pub)}</code></td></tr>${generated.cats.map(c => `<tr><td>${esc(c.name)}</td><td><code>${esc(c.pub)}</code></td></tr>`).join('')}</table>
@@ -152,7 +152,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
     <span style="display:flex;gap:12px;align-items:center">
-      <form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost mini" onclick="return confirm('${wallets.ready ? 'Generate a fresh treasury + ten cat wallets? Nothing changes until you replace TREASURY_KEY and CAT_KEYS on the host and redeploy. Pull everything back to the treasury first and move it to the new one yourself, or it stays in the old wallets.' : 'Generate a fresh treasury + ten cat wallets? They are shown once.'}')">${wallets.ready ? 'new wallets' : 'generate wallets'}</button></form>
+      ${wallets.ready ? '' : `<form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost mini" onclick="return confirm('Generate a fresh treasury + ten cat wallets? They are shown once.')">generate wallets</button></form>`}
       ${walletsReady ? `<form method="post" action="/admin/refresh" class="inline"><button class="btn ghost mini">refresh balances</button></form>` : ''}
     </span></div>
     <div class="pb">
@@ -233,6 +233,8 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   function armForms(){ document.querySelectorAll('form[method="post"]').forEach(function(f){ if(f.dataset.armed||f.action.indexOf('wallets/generate')>=0) return; f.dataset.armed='1'; f.addEventListener('submit',function(e){ if(e.defaultPrevented) return; e.preventDefault(); var fd=new FormData(f); if(e.submitter&&e.submitter.name) fd.append(e.submitter.name,e.submitter.value); var btns=f.querySelectorAll('button'); btns.forEach(function(b){ b.disabled=true; }); toast('working…',false,true);
     fetch(f.action,{method:'POST',body:new URLSearchParams(fd),headers:{'X-Requested-With':'fetch'},credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){ toast(j.msg||'done',!j.ok); return refreshPage(); }).catch(function(err){ toast('could not reach the brain: '+err.message,true); btns.forEach(function(b){ b.disabled=false; }); }); }); }); }
   initAdmin();
+  // the page keeps itself current: every 15 seconds it refreshes in place, unless you are typing in a field, a request is running, or fresh wallet keys are on screen
+  var inflight=false; setInterval(function(){ if(inflight||document.hidden) return; var a=document.activeElement; if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA')) return; if(document.querySelector('.secret')) return; inflight=true; refreshPage().catch(function(){}).then(function(){ inflight=false; }); }, 15000);
   </script>
   </body></html>`;
 }

@@ -145,8 +145,8 @@ async function pollBalances() {
         let sig = null, k = { kind: 'unknown', from: null }; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); if (sig) k = await wallets.inflowKind(RPC_URL, sig, [], ws.cats.map(c => c.pub)); } catch (_) {}
         // three kinds of money arrive in the treasury: a cat paying for something (already its own row, never a fee), a creator-fee claim through pump.fun (fees), and a plain transfer from any other wallet — yours — shown as a deposit with its signature, not counted as fees
         if (k.kind === 'cat') { console.log('treasury rise was a cat paying in', d, sig); }
-        else if (k.kind === 'deposit') { engine.noteDeposit(d, sig, k.from); chainNote({ id: 'D', type: 'deposit', cat: (k.from || 'a wallet').slice(0, 6) + '…', to: 'treasury', sol: d, memo: 'deposit · shown in the box, not counted as fees', ok: true, sig }); console.log('treasury deposit', d, sig); }
-        else if (k.kind === 'fees') { config.feesSeenSol += d; engine.noteFees(d, sig); }
+        else if (k.kind === 'deposit') { config.feesSeenSol += d; engine.noteFees(d, sig, 'into the treasury'); chainNote({ id: 'D', type: 'deposit', cat: (k.from || 'a wallet').slice(0, 6) + '…', to: 'treasury', sol: d, memo: 'SOL from outside · counted as creator rewards', ok: true, sig }); console.log('treasury deposit', d, sig); }
+        else if (k.kind === 'fees') { config.feesSeenSol += d; engine.noteFees(d, sig, 'claimed'); }
         else { chainNote({ id: 'U', type: 'rise', cat: 'treasury', to: 'treasury', sol: d, memo: 'the balance rose and no transaction could be matched to it (RPC lookup failed, or the money came through a transfer this brain made); not counted as fees', ok: true, sig }); console.log('treasury rise unexplained', d, sig); } // never booked as fees without a transaction that says so
       }
       catsPaidIn = 0;
@@ -350,14 +350,14 @@ async function distribute(b) {
   let spentSol = 0, needSol = 0;
   if (total > 0) {
     if (total > tre - 0.005) throw new Error(`treasury has ${tre.toFixed(4)} SOL; keep 0.005 for fees`);
-    const shares = engine.workShares(names);
-    const outs = names.map(n => ({ name: n, pub: ws.cats.find(c => c.name === n).pub, sol: Math.floor(total * shares[n] * 1e6) / 1e6 })).filter(o => o.sol >= 0.001);
+    const each = Math.floor(total / names.length * 1e6) / 1e6; // an even split, nothing in the box weighs it
+    const outs = names.map(n => ({ name: n, pub: ws.cats.find(c => c.name === n).pub, sol: each })).filter(o => o.sol >= 0.001);
     if (!outs.length) throw new Error('every SOL share would be under 0.001 SOL — send more or tick fewer cats');
-    const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs);
-    engine.payout(outs.map(o => ({ name: o.name, sol: o.sol })), sig); engine.resetWork(outs.map(o => o.name));
+    const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs, `${config.TICKER} · from the treasury`);
+    engine.payout(outs.map(o => ({ name: o.name, sol: o.sol })), sig);
     spentSol = outs.reduce((a, o) => a + o.sol, 0);
-    console.log('distributed', spentSol, 'SOL by chores:', outs.map(o => o.name + ' ' + o.sol).join(', '), sig);
-    parts.push(`paid ${spentSol.toFixed(4)} SOL by chores · ${outs.map(o => `${o.name} ${o.sol.toFixed(4)} (${Math.round(shares[o.name] * 100)}%)`).join(' · ')} · ${sig.slice(0, 8)}…`);
+    console.log('distributed', spentSol, 'SOL evenly:', outs.map(o => o.name + ' ' + o.sol).join(', '), sig);
+    parts.push(`sent ${spentSol.toFixed(4)} SOL, ${each.toFixed(4)} each to ${outs.map(o => o.name).join(', ')} · ${sig.slice(0, 8)}…`);
   }
   if (totalQi > 0) {
     if (!config.QI_MINT) throw new Error('set the $QI mint first');
@@ -550,7 +550,8 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/puppet') { const act = String(b.act || ''), tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
       if (p === '/admin/reset') { if ((b.word || b.confirm) !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
       if (p === '/admin/wallets/generate') {
-        return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html'); // a fresh set, shown once; nothing changes until the host's TREASURY_KEY and CAT_KEYS are replaced and the service restarts
+        if (wallets.load().ready) return back(res, 'wallets already set', true);
+        return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html');
       }
     }
     send(res, 404, 'not found', 'text/plain');

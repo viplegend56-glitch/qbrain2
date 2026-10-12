@@ -607,7 +607,7 @@ const CHATS = [
   ['did you see the treasury tonight', 'fees landed', 'payday soon', 'if they tick our names'],
 ];
 // prices, in SOL, before the chart multiplier. FOOD is the cheapest thing on the menu; the menu itself is below.
-const FOOD = 0.01, CRYO = 0.01, WARM_MAX = 0.1, WARM_MAX_MIN = 15, BUNK = 0, ARENA_FEE = 0.005, PLAY = 0.04, RESERVE = 0.02;
+const FOOD = 0.01, CRYO = 0, WARM_MAX = 0.1, WARM_MAX_MIN = 15, BUNK = 0, ARENA_FEE = 0.005, PLAY = 0.04, RESERVE = 0.02;
 const MENU = [
   { key: 'tin',     name: 'a tin of sardines',  price: 0.01,  fill: 0.30, stock: 20 },
   { key: 'head',    name: 'a fish head',        price: 0.02,  fill: 0.38, stock: 16 },
@@ -698,6 +698,13 @@ const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how 
 const tokSol = tok => (tok === QI ? qiSol() : mkt.price) * 0.99; // SOL per token, after the exchange's cut
 const stackOf = (c, tok) => (tok === QI ? c.qi : c.qcat) || 0, stackSol = (c, tok) => stackOf(c, tok) * tokSol(tok);
 const FRAC_WORD = { 0.25: 'a quarter of its stack', 0.5: 'half its stack', 0.75: 'three quarters of its stack', 1: 'its whole stack' };
+const BUY_WORD = { 0.25: 'a quarter of its spare SOL', 0.5: 'half its spare SOL', 0.75: 'three quarters of its spare SOL', 1: 'all its spare SOL' };
+function buyFrac(c) { // how much of the spare SOL goes into a buy, by feeling: a pump or a dip it believes in pulls more, a plain itch a quarter; a puppet buy a quarter
+  if (c.forced === 'buy') return 0.25;
+  if (c.tr.dip && mkt.mom < -0.004) return { degen: 1, greedy: 0.75, patient: 0.5, loyal: 0.5 }[c.trait] || 0.5; // the dip it was waiting for
+  if (mkt.mom > 0.002) return { degen: 1, greedy: 0.75, patient: 0.5, loyal: 0.25 }[c.trait] || 0.5; // into the pump
+  return { degen: 0.5, greedy: 0.5, patient: 0.25, loyal: 0.25 }[c.trait] || 0.25;
+}
 function sellFrac(c) { // how much of the stack goes, by feeling: starving sells everything, broke sells by hunger, panic by nerve, profit by greed, a pump a slice, the itch a quarter
   const meal = costOf(FOOD, c), broke = c.sol < meal * 4;
   if (c.forced === 'sell') return 0.25;
@@ -715,7 +722,7 @@ const testFlat = () => (Number(CONFIG.TEST_FLAT) > 0 ? Number(CONFIG.TEST_FLAT) 
 const costOf = (base, c) => testFlat() ? (base > 0 ? testFlat() : 0) : base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
 const spare = c => Math.max(0, c.sol - costOf(RESERVE, c));
 // pace: in the real modes a cat makes one paid move (a meal, the heater, a spin, a trade…) every so many minutes, so the chain is not hammered and the day reads at a human speed. Off in the box on its own.
-const PAID_ACTS = new Set(['eat', 'recohere', 'warm', 'buy', 'sell', 'wager', 'gamble', 'play', 'shop', 'donate']);
+const PAID_ACTS = new Set(['eat', 'warm', 'buy', 'sell', 'wager', 'gamble', 'play', 'shop', 'donate']); // cryo is free, so it is not paced
 const paceSec = () => (liveTx() ? (Number(CONFIG.PACE_MIN) >= 0 ? Number(CONFIG.PACE_MIN) : 6) * 60 : 0);
 const paced = (c, act) => PAID_ACTS.has(act) && paceSec() > 0 && T - (c.lastPaidT || -1e9) < paceSec() && !(act === 'eat' && c.hunger > 0.85); // a starving cat still eats
 // ---- skills: a cat gets better at each kind of job the more it does it. Fewer failed runs, bigger circuits, faster work.
@@ -790,7 +797,7 @@ const DRIVES = [
   { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (c.coh < 0.4 ? 0.2 : 1) * (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
   { act: 'buy',      label: c => (mkt.mom < -0.002 ? 'buying the dip' : 'feels like buying'), w: c => c.forced === 'buy' ? 1.5 : (T < (c.buyCool || 0) ? 0 : 1) * (spare(c) > 0 ? 0.22 + 0.4 * clamp(spare(c) / 0.05) : 0) * c.tr.eager * (0.5 + tradeItch(c)) * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40)) },
   { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) * 4 && !workToDo(c) ? 'short of SOL and nothing to do: selling' : c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? 'taking profit' : 'selling a quarter'), w: c => sellUrge(c) },
-  { act: 'steal',    label: 'light paws',               w: c => (c.sol < costOf(FOOD, c) * 2 ? 0.55 : 0.16) * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) },
+  { act: 'steal',    label: 'light paws',               w: c => 0.12 * c.tr.sneak * (anyoneAsleep(c) ? 1 : 0.15) * (shortOfSol(c) && workToDo(c) ? 0.2 : 1) }, // a sneaky cat now and then, for the drama; being broke sends a cat to work, never to the bunks
   { act: 'scrap',    label: 'has a grudge',             w: c => c.grudge * 0.95 },
   { act: 'wager',    label: 'feeling lucky',            w: c => (c.sol > costOf(FOOD, c) * 2 + 0.01 ? 1 : 0) * (0.06 + 0.26 * c.tr.gamble) * (c.qcat > 5000 ? 1 : 0.1) * (mkt.mom > 0.001 ? 1.25 : 1) * (T - (c.wagerT || -1e9) > 900 ? 1 : 0.25) },
   { act: 'gamble',   label: 'feeling lucky',            w: c => (0.2 + 0.4 * c.tr.gamble) * (c.sol > costOf(FOOD, c) * 12 ? 1 : 0) * (T - (c.casinoT || -1e9) > 1200 ? 1 : 0.08) }, // only a cat with a few meals in hand; a degen feels it most
@@ -834,7 +841,7 @@ const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
 const fmtPrice = () => fmtUsd(mcapUsd()) + ' MC';
 const fmtKeys = v => (v >= 1e12 ? (v / 1e12).toFixed(2) + 'T' : v >= 1e9 ? (v / 1e9).toFixed(1) + 'G' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v).toLocaleString('en-US'));
 const PLACES = {
-  cryo:     { title: 'The circle',    kind: 'where the box meets',                 pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'], desc: 'The meeting is the last ten minutes of every day. Recohering out here costs ' + fmtSol(CRYO) + ' SOL.' },
+  cryo:     { title: 'The circle',    kind: 'where the box meets',                 pt: [CRY.x, CRY.y], stats: ['here', 'spent', 'visits'], desc: 'The meeting is the last ten minutes of every day. Recohering out here is free: the lab runs a cat down, the circle restores it.' },
   crates:   { title: 'The diner',     kind: 'food · paid to the treasury',          pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'], desc: '' },
   vent:     { title: 'The heater',    kind: 'warmth · by the minute',               pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'], desc: '' },
   trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x + TRAYS.w / 2, TRAYS.y + TRAYS.d / 2], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up here. A cat takes a job off the bench, strips it for parts, and the treasury pays it in ' + TK + ' the moment it is done.' },
@@ -1089,7 +1096,7 @@ function applyTrade(c, dir, tok, sol, q, why, sig) {
     if (isQi) { c.qi += q; c.qiBought = (c.qiBought || 0) + q; stats.qiBought = (stats.qiBought || 0) + q; stats.qiBuySol = (stats.qiBuySol || 0) + sol; }
     else { c.entry = (c.entry * c.qcat + sol) / (c.qcat + q); c.qcat += q; c.bought += q; stats.buySol += sol; stats.boughtBack += q; placeStats.exchange.bought += q; if (!mkt.pinned && !sig) mkt.price *= 1 + sol / (mkt.price * SUPPLY * 0.35); }
     floatText(c, '+' + fq(q) + ' ' + tok, isQi ? '#C4B2FF' : '#5CFFAA'); buyFX(c); gainXp(c, isQi ? 3 : 4 + Math.min(14, q / catAlloc() * 100));
-    log(`${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL at the exchange`, 'gain', 'exchange'); txWith(c, 'buy', '+' + fq(q) + ' ' + tok, fmtSol(sol) + ' SOL', sig); did(c, `bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`); recordEvent('buy', `${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`);
+    log(`${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL at the exchange ${why || ''}`.trim(), 'gain', 'exchange'); txWith(c, 'buy', '+' + fq(q) + ' ' + tok, fmtSol(sol) + ' SOL', sig); did(c, `bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`); recordEvent('buy', `${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`);
   } else {
     c.sol += sol; c.sells++; stats.sells++;
     if (isQi) { c.qi = Math.max(0, c.qi - q); c.qiSold += q; c.qiSellSol += sol; stats.qiSold += q; stats.qiSellSol += sol; }
@@ -1236,12 +1243,12 @@ function finish(c, p) {
     c.cold = 0; gainXp(c, 1 + Math.round((c.warmMin || 3) / 5)); did(c, `${c.warmMin || 3} minutes at the heater`);
     if (Math.random() < 0.25) log(`${c.name} finished ${c.warmMin || 3} minutes at the heater`, 'info', 'vent');
   } else if (a === 'buy' && buyTok(c) === QI) {
-    // this one buys $QI: a slice of spare SOL, never more than fifteen dollars' worth
-    let amt = Math.min((c.forced === 'buy' ? c.sol * 0.5 : spare(c) * rand(0.25, 0.5)), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); c.forced = null; c.forceTok = null; c.lastBuyT = T;
-    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', QI, amt, Math.round(amt / qiSol() * 0.99), ''); } else log(`${c.name} looked at the ${QI} price and kept its SOL`, 'info', 'exchange');
+    // this one buys $QI: a quarter, half, three quarters or all of its spare SOL, by feeling; it knows what that is worth
+    const frac = buyFrac(c); let amt = spare(c) * frac; if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt); c.forced = null; c.forceTok = null; c.lastBuyT = T;
+    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', QI, amt, Math.round(amt / qiSol() * 0.99), `(${BUY_WORD[frac]})`); } else log(`${c.name} looked at the ${QI} price and kept its SOL`, 'info', 'exchange');
   } else if (a === 'buy') {
-    let amt = Math.min((c.forced === 'buy' ? c.sol * 0.5 : spare(c) * rand(0.25, 0.5)), 15 / (Number(CONFIG.SOL_USD) || 150)); if (testFlat()) amt = Math.min(c.sol, testFlat()); c.forced = null; c.forceTok = null; c.lastBuyT = T; // never more than fifteen dollars' worth in one buy
-    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, ''); } else log(`${c.name} looked at the ${TK} price and kept its SOL`, 'info', 'exchange');
+    const frac = buyFrac(c); let amt = spare(c) * frac; if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt); c.forced = null; c.forceTok = null; c.lastBuyT = T; // a quarter, half, three quarters or all of the spare SOL, by feeling
+    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, `(${BUY_WORD[frac]})`); } else log(`${c.name} looked at the ${TK} price and kept its SOL`, 'info', 'exchange');
   } else if (a === 'sell' && sellTok(c) === QI) {
     // $QI: a quarter, half, three quarters or all of the stack, by feeling
     const broke = c.sol < costOf(FOOD, c) * 4, frac = sellFrac(c); c.forced = null; c.forceTok = null; // it sees the stack's worth, then sells a quarter, half, three quarters or all of it by feeling
@@ -2798,10 +2805,10 @@ function noteDeposit(sol, sig, from) {
   feeFX(sol);
   log(`${fmtSol(sol)} SOL arrived in the treasury.`, 'gain', 'vault'); tx(null, 'deposit', '+' + fmtSol(sol) + ' SOL', 'into the treasury'); if (sig) txs[0].sig = sig;
 }
-function noteFees(sol, sig) {
+function noteFees(sol, sig, how) { // how: 'claimed' for a pump.fun fee claim, 'into the treasury' for SOL sent from outside; both count as creator rewards
   if (!(sol > 0)) return;
   stats.fees += sol; externalFees += sol; feeFX(sol);
-  log(`Creator fees landed: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); if (sig) txs[0].sig = sig;
+  log(`Creator rewards: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', how || 'claimed'); if (sig) txs[0].sig = sig;
 }
 function qcatGrant(list, sig) {
   // list: [{ name, q }] — real $QCATS that just left the treasury for each cat (the starting stack, or a top-up)
@@ -2822,10 +2829,10 @@ function payout(list, sig) {
     const c = cats.find(x => x.name === name); if (!c || !(sol > 0)) continue;
     c.sol += sol; c.earned += sol; stats.wages += sol; total += sol; n++;
     payFX(c); floatText(c, '+' + fmtSol(sol) + ' SOL', '#F7C86A');
-    txSig(c, 'wage', '+' + fmtSol(sol) + ' SOL', 'paid from creator fees', sig);
-    say(c, pick(['payday', 'fees hit', 'the treasury came through', 'that\u2019s my cut', 'wages in']));
+    txSig(c, 'wage', '+' + fmtSol(sol) + ' SOL', 'from the treasury', sig);
+    say(c, pick(['payday', 'the treasury came through', 'that\u2019s my cut', 'SOL in paw']));
   }
-  if (n) log(`Payday. The treasury paid ${fmtSol(total)} SOL to ${n} cat${n === 1 ? '' : 's'} \u2014 ${fmtSol(total / n)} SOL each.`, 'gain', 'vault');
+  if (n) log(`The treasury handed out ${fmtSol(total)} SOL to ${n} cat${n === 1 ? '' : 's'}, ${fmtSol(total / n)} SOL each.`, 'gain', 'vault');
   return { total, n };
 }
 function noteSell(name, qcat, sol, sig) {
