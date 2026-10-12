@@ -70,7 +70,7 @@ const LOFT = { x: M(16.3), y: M(5.3), w: 2.0, d: 1.1 };                        /
 const TRAYS = { x: M(16.2), y: M(11.2), w: 1.3, d: 3.7 };                      // the scrapyard: a fenced yard along the right edge, with a gantry over it
 const BENCH_SPOTS = [0, 1, 2, 3].map(i => [TRAYS.x - 0.42, TRAYS.y + 0.75 + i * 0.72]); // four places at the sorting bench, outside the fence, facing the yard
 const CRATES = { x: M(14.9), y: M(16.0), w: 1.6, d: 0.8 };                     // the diner counter
-const FUND = { x: M(16.35), y: M(14.75) };                                     // the build fund: a column in the corner between the scrapyard and the diner that fills as the cats put SOL in
+const FUND = { x: M(17.6), y: M(17.45) };                                      // the build fund: a column in the open corner of the plaza past the diner, that fills as the cats put SOL in
 const FUND_SPOTS = [0, 1, 2, 3, 4].map(i => { const a = -0.3 + i * 0.5; return [FUND.x - 0.95 * Math.cos(a), FUND.y - 0.95 * Math.sin(a)]; }); // where a cat stands to give
 const DINER_STOOLS = [0, 1, 2, 3].map(i => [CRATES.x + 0.08 + i * 0.48, CRATES.y + 1.3]); // four stools along the front of the counter
 const VENT = { x: M(10.7), y: M(16.6) };                                       // the heater grate (1.4 x 0.85)
@@ -2363,7 +2363,9 @@ const TOPIC_KIND = { grover: 'Grover', amplification: 'Grover', shor: 'Shor', qf
 for (const t of CURRICULUM_MORE) CURRICULUM.push(t); Object.assign(TOPIC_KIND, TOPIC_KIND_MORE); for (const g of PROBLEMS_MORE) PROBLEMS.push(g); for (const x of MEET_EXTRA_MORE) MEET_EXTRA.push(x); for (const r of MEET_REACT_MORE) MEET_REACT.push(r);
 restock();
 const research = []; let researchSeq = 0; // latest first: study notes and problems, what the lab actually produces
-const topicIdx = c => ((c.study && c.study.i) || 0) % CURRICULUM.length, topicDepth = c => Math.floor(((c.study && c.study.i) || 0) / CURRICULUM.length);
+// every cat climbs the same ladder but starts on its own rung, so ten cats are ten different lines of research, not one in chorus
+const ladderStart = c => { const k = Math.max(0, ROSTER.findIndex(r => r[0] === c.name)); return (k * 7) % CURRICULUM.length; };
+const topicIdx = c => (((c.study && c.study.i) || 0) + ladderStart(c)) % CURRICULUM.length, topicDepth = c => Math.floor(((c.study && c.study.i) || 0) / CURRICULUM.length);
 function pushResearch(e) { e.id = ++researchSeq; e.t = clock(simMin); e.day = dayNo(); research.unshift(e); if (research.length > 150) research.pop(); return e; }
 // ---------- goals: what the lab pays for ----------
 // A cat picks a goal; its lab jobs, notes and problems fill the bar; a full bar is paid in $QI (small, medium or big: the range set in the brain). On their own, jobs pay nothing.

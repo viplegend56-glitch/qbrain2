@@ -25,7 +25,6 @@ const DEFAULTS = {
   NAME: 'Quantum Cats', TICKER: 'QCATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   QI_MINT: process.env.QI_MINT || '',   // $QI: what the lab pays. The treasury wallet holds the supply.
-  OWN_WALLETS: [],                      // the operator's own wallets: SOL arriving in the treasury from these is funding, not creator fees
   FUND_PUB: '',                         // the build fund: a wallet of yours (address only, no key here). The cats give SOL to it; its balance is the bar on the site
   FUND_GOAL: 2.5,                       // SOL the build fund needs before the boarded-up buildings open
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
@@ -148,10 +147,11 @@ async function pollBalances() {
       if (busy) return; // a cat's transaction may be landing right now: judge the rise on the next read, once it has been counted
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005 + catsPaidIn) {
         const d = t - config.lastTreasurySol - catsPaidIn;
-        let sig = null, k = { kind: 'unknown', from: null }; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); if (sig) k = await wallets.inflowKind(RPC_URL, sig, config.OWN_WALLETS || [], ws.cats.map(c => c.pub)); } catch (_) {}
-        if (k.kind === 'cat') { console.log('treasury rise was a cat paying in', d, sig); } // already shown as that cat's own row; never a fee
-        else if (k.kind === 'own') { engine.noteDeposit(d, sig, k.from); chainNote({ id: 'D', type: 'deposit', cat: 'your wallet', to: 'treasury', sol: d, memo: 'your funding, from ' + (k.from || '').slice(0, 6) + '… · shown in the box, not counted as fees', ok: true, sig }); console.log('treasury funded by the operator', d, sig); }
-        else { config.feesSeenSol += d; engine.noteFees(d, sig); if (k.kind === 'deposit') chainNote({ id: 'D', type: 'deposit', cat: 'outside', to: 'treasury', sol: d, memo: 'from ' + (k.from || '').slice(0, 6) + '… · counted as fees (add the wallet to “your own wallets” if it was you)', ok: true, sig }); }
+        let sig = null, k = { kind: 'unknown', from: null }; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); if (sig) k = await wallets.inflowKind(RPC_URL, sig, [], ws.cats.map(c => c.pub)); } catch (_) {}
+        // three kinds of money arrive in the treasury: a cat paying for something (already its own row, never a fee), a creator-fee claim through pump.fun (fees), and a plain transfer from any other wallet — yours — shown as a deposit with its signature, not counted as fees
+        if (k.kind === 'cat') { console.log('treasury rise was a cat paying in', d, sig); }
+        else if (k.kind === 'deposit') { engine.noteDeposit(d, sig, k.from); chainNote({ id: 'D', type: 'deposit', cat: (k.from || 'a wallet').slice(0, 6) + '…', to: 'treasury', sol: d, memo: 'deposit · shown in the box, not counted as fees', ok: true, sig }); console.log('treasury deposit', d, sig); }
+        else { config.feesSeenSol += d; engine.noteFees(d, sig); }
       }
       catsPaidIn = 0;
       if (config.lastTreasurySol !== t) { config.lastTreasurySol = t; saveConfig(); }
@@ -479,7 +479,6 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/config') {
         const notes0 = [];
         for (const k of ['CA', 'X_URL', 'QI_MINT']) if (k in b) config[k] = String(b[k]).trim();
-        if ('OWN_WALLETS' in b) config.OWN_WALLETS = String(b.OWN_WALLETS).split(/[\s,;]+/).map(x => x.trim()).filter(x => x.length >= 32 && x.length <= 44);
         if ('FUND_PUB' in b) { const f = String(b.FUND_PUB).trim(); if (f && !wallets.fundOf(f)) notes0.push('build fund: that is not a valid Solana address'); else config.FUND_PUB = f; }
         if ('FUND_GOAL' in b && b.FUND_GOAL !== '') { config.FUND_GOAL = Math.max(0.01, Math.min(10000, Number(b.FUND_GOAL) || 2.5)); config.fundGoalSet = true; engine.setFundGoal(config.FUND_GOAL); }
         // the two token addresses must be mints, not pool addresses: check on-chain, and if a pair was pasted, resolve its mint
