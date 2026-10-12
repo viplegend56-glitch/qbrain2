@@ -44,7 +44,7 @@ const BUILD = [
   { x: 2, y: 12.8, w: 3, d: 2.6, h: 3.6 },
   { x: 2, y: 16, w: 3, d: 2.2, h: 2.4 },
   { x: 5.6, y: 2, w: 3.2, d: 3, h: 5.2 },
-  { x: 9.4, y: 2, w: 2.8, d: 3, h: 3.4, board: 'X' },   // the expansion billboard: on the face behind the lab's back-left corner, between the casino and the lab
+  { x: 9.4, y: 2, w: 2.8, d: 3, h: 3.4 },
   { x: 12.8, y: 2, w: 2.6, d: 3, h: 6.4, board: 'C' },
   { x: 16, y: 2, w: 2.2, d: 3, h: 4.0 },
   { x: 19.4, y: 2, w: 2.6, d: 3, h: 5.4 },
@@ -69,8 +69,8 @@ const VAULT = { x: M(16.9), y: M(8.9) };                                       /
 const LOFT = { x: M(16.3), y: M(5.3), w: 2.0, d: 1.1 };                        // the bunks, over the corner shop
 const TRAYS = { x: M(16.2), y: M(11.2), w: 1.3, d: 3.7 };                      // the scrapyard: a fenced yard along the right edge, with a gantry over it
 const BENCH_SPOTS = [0, 1, 2, 3].map(i => [TRAYS.x - 0.42, TRAYS.y + 0.75 + i * 0.72]); // four places at the sorting bench, outside the fence, facing the yard
-const CRATES = { x: M(14.9) + 1.3, y: M(16.0), w: 1.6, d: 0.8 };               // the diner counter, in the bottom corner of the plaza
-const FUND = { x: CRATES.x + CRATES.w / 2, y: CRATES.y + 2.45 };                  // the build fund: a column in the corner, centred in front of the diner
+const CRATES = { x: M(14.9) - 1.6, y: M(16.0), w: 1.6, d: 0.8 };               // the diner counter, close to the heater, with open floor between it and the build fund
+const FUND = { x: M(17.6), y: M(17.45) };                                      // the build fund: a column in the bottom corner of the plaza, past the diner
 const FUND_SPOTS = [[FUND.x - 0.95, FUND.y - 0.1], [FUND.x - 0.95, FUND.y + 0.35], [FUND.x + 0.95, FUND.y - 0.1], [FUND.x + 0.95, FUND.y + 0.35]]; // where a cat stands to give: either side of the column
 const DINER_STOOLS = [0, 1, 2, 3].map(i => [CRATES.x + 0.08 + i * 0.48, CRATES.y + 1.3]); // four stools along the front of the counter
 const VENT = { x: M(10.7), y: M(16.6) };                                       // the heater grate (1.4 x 0.85)
