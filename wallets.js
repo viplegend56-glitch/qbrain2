@@ -155,7 +155,7 @@ async function sweepSol(rpcUrl, ws, fromKp, toPub, memo) {
 }
 
 // ---- SPL tokens, by hand (no extra dependency): the mint's program + decimals, associated accounts, transferChecked ----
-const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnwqMYbqcmChnM', ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 async function mintInfo(rpcUrl, mint) {
   const { Connection, PublicKey } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
