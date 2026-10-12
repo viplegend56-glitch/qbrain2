@@ -70,7 +70,7 @@ const LOFT = { x: M(16.3), y: M(5.3), w: 2.0, d: 1.1 };                        /
 const TRAYS = { x: M(16.2), y: M(11.2), w: 1.3, d: 3.7 };                      // the scrapyard: a fenced yard along the right edge, with a gantry over it
 const BENCH_SPOTS = [0, 1, 2, 3].map(i => [TRAYS.x - 0.42, TRAYS.y + 0.75 + i * 0.72]); // four places at the sorting bench, outside the fence, facing the yard
 const CRATES = { x: M(14.9), y: M(16.0), w: 1.6, d: 0.8 };                     // the diner counter
-const FUND = { x: M(13.8), y: M(8.9) };                                        // the build fund: a column on the plaza between the lab and the treasury that fills as the cats put SOL in
+const FUND = { x: M(16.35), y: M(14.75) };                                     // the build fund: a column in the corner between the scrapyard and the diner that fills as the cats put SOL in
 const FUND_SPOTS = [0, 1, 2, 3, 4].map(i => { const a = -0.3 + i * 0.5; return [FUND.x - 0.95 * Math.cos(a), FUND.y - 0.95 * Math.sin(a)]; }); // where a cat stands to give
 const DINER_STOOLS = [0, 1, 2, 3].map(i => [CRATES.x + 0.08 + i * 0.48, CRATES.y + 1.3]); // four stools along the front of the counter
 const VENT = { x: M(10.7), y: M(16.6) };                                       // the heater grate (1.4 x 0.85)
@@ -715,6 +715,21 @@ function sellTok(c) { // what a selling cat parts with: a forced choice (testing
 }
 function buyTok(c) { if (c.forceTok) return c.forceTok === 'qi' ? QI : TK; if (c.trait === 'loyal') return TK; return Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4) ? QI : TK; }
 const shortOfSol = c => c.sol < costOf(FOOD, c) * 4;
+// what an act costs to start, so a cat never sets off for something it cannot pay for (forced trips from the admin puppet are let through)
+function canAfford(c, act) {
+  if (c.forced === act) return true;
+  switch (act) {
+    case 'eat': return menuFor(c).length > 0;
+    case 'recohere': return c.sol >= costOf(CRYO, c);
+    case 'warm': return c.sol >= warmCost(3, c);
+    case 'play': return c.sol >= costOf(PLAY, c);
+    case 'gamble': return c.sol >= costOf(FOOD, c) * 12;
+    case 'wager': return c.sol > costOf(FOOD, c) * 2 + 0.01;
+    case 'shop': return itemsFor(c).length > 0;
+    case 'donate': return spare(c) >= costOf(0.03, c);
+    default: return true;
+  }
+}
 const workToDo = c => tasksFor(c).length > 0 || scrapFor(c).length > 0; // something on the ground or on the yard bench it qualifies for
 function sellUrge(c) {
   if (!((c.qi || 0) >= 1 || (c.qcat || 0) >= 1)) return 0;
@@ -733,10 +748,10 @@ function sellUrge(c) {
 }
 const anyoneAsleep = c => cats.some(o => o !== c && asleep(o));
 const DRIVES = [
-  { act: 'eat',      label: 'hungry',                   w: c => c.hunger * 1.25 * (menuFor(c).length ? 1 : 0.15) },
+  { act: 'eat',      label: 'hungry',                   w: c => c.hunger * 1.25 * (menuFor(c).length ? 1 : 0) }, // nothing it can pay for: it does not go and stare at the menu
   { act: 'salvage',  label: c => (c.hunger > 0.6 && c.sol < costOf(FOOD, c) ? 'broke and hungry' : scrapFor(c).length ? 'a job on the yard bench, paid in ' + TK : 'nothing on the bench'), w: c => (scrapFor(c).length ? 0.32 + 0.12 * (c.trait === 'greedy' || c.trait === 'loyal' ? 1 : 0) + 0.1 * Math.min(2, skillLvl(skillOf(c, 'salvage'))) + (qcatPool() >= scrapPay(1) ? 0.2 : 0) : 0) * (c.ethic || 1) * (c.coh < 0.35 ? 0.3 : 1) + (c.hunger > 0.6 && c.sol < costOf(FOOD, c) ? 0.5 + c.hunger * 0.6 : 0) + (shortOfSol(c) && scrapFor(c).length && !tasksFor(c).length ? 0.5 : 0) },
-  { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= CRYO ? 1 : 0.45) },
-  { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= warmCost(3, c) ? 1 : 0.4) },
+  { act: 'recohere', label: 'decohering',               w: c => (1 - c.coh) * 1.3 * (c.sol >= costOf(CRYO, c) ? 1 : 0) },
+  { act: 'warm',     label: 'cold',                     w: c => c.cold * 0.95 * (c.sol >= warmCost(3, c) ? 1 : 0) },
   { act: 'work',     label: c => (c.sol < costOf(FOOD, c) * 3 ? 'needs SOL' : 'feels like working'), w: c => (c.coh < 0.4 ? 0.2 : 1) * (clamp(1 - c.sol / (0.004 * priceMul())) * 0.9 + 0.3) * c.ethic * (c.tr.label === 'momentum ape' ? rand(0.3, 1.7) : 1) },
   { act: 'buy',      label: c => (mkt.mom < -0.002 ? 'buying the dip' : 'feels like buying'), w: c => c.forced === 'buy' ? 1.5 : (T < (c.buyCool || 0) ? 0 : 1) * (spare(c) > 0 ? 0.22 + 0.4 * clamp(spare(c) / 0.05) : 0) * c.tr.eager * (0.5 + tradeItch(c)) * (1 + (c.tr.dip ? -mkt.mom * 40 * c.tr.dip : mkt.mom * 40)) },
   { act: 'sell',     label: c => (c.sol < costOf(FOOD, c) * 4 && !workToDo(c) ? 'short of SOL and nothing to do: selling' : c.sol < costOf(FOOD, c) && c.hunger > 0.5 ? 'broke, selling to eat' : c.tr.panic && mkt.mom < -0.004 ? 'chart is dumping' : c.tr.tp && mkt.price > c.entry * c.tr.tp ? 'taking profit' : 'selling a sliver'), w: c => sellUrge(c) },
@@ -747,7 +762,7 @@ const DRIVES = [
   { act: 'entangle', label: 'wants company',            w: c => c.lonely * 0.85 * c.tr.social },
   { act: 'idle',     label: () => (wx.rain + wx.snow > 0.3 ? 'caught in the weather' : 'nothing urgent'), w: () => 0.2 + wx.rain * 0.4 + wx.snow * 0.35 },
   { act: 'sleep',    label: 'tired',                    w: c => Math.pow(c.tired, 2.2) * 1.1 },
-  { act: 'play',     label: 'wants to play',            w: c => (0.42 + c.lonely * 0.4) * c.tr.social * (c.sol > costOf(PLAY, c) * 3 ? 1 : 0.05) * (T - (c.playT || -1e9) > 900 ? 1 : 0.25) },
+  { act: 'play',     label: 'wants to play',            w: c => (0.42 + c.lonely * 0.4) * c.tr.social * (c.sol > costOf(PLAY, c) * 3 ? 1 : 0) * (T - (c.playT || -1e9) > 900 ? 1 : 0.25) },
   { act: 'task',     label: c => (tasksFor(c).some(t => t.called != null && T - t.called < 180) ? 'somebody flagged something' : 'something wants doing'), w: c => { const ts = tasksFor(c); return ts.length ? (c.coh < 0.4 ? 0.2 : 1) * (0.42 + 0.12 * Math.max(...ts.map(t => t.tier)) + (shortOfSol(c) ? 0.6 : 0)) * c.ethic * (ts.some(t => t.called != null && T - t.called < 180) ? 1.8 : 1) : 0; } },
   { act: 'donate',   label: c => (fundOpen() ? 'the fund is full' : 'feels like giving'), w: c => (fundOpen() || (liveTx() && !fundLive()) || T < (c.donateCool || 0) || c.hunger > 0.6 || spare(c) < costOf(0.03, c) ? 0 : (0.3 + 0.33 * clamp(spare(c) / 0.05)) * ({ loyal: 1.5, patient: 1.15, degen: 0.85, greedy: 0.5 }[c.trait] || 1) * (c.ethic || 1)) },
   { act: 'shop',     label: 'feeling flush',            w: c => itemsFor(c).length ? (0.3 + 0.25 * (c.vanity || 1)) * (1 - (c.items || []).length / ITEMS.length) * (T - (c.shopT || -1e9) > 2400 ? 1 : 0.08) : 0 },
@@ -905,6 +920,7 @@ function decide(c) {
     if (o.act === 'scrap' || o.act === 'entangle' || o.act === 'wager') { partner = findPartner(c, o.act); if (!partner) continue; }
     if (paced(c, o.act)) continue;
     if (o.act === 'buy' && c.forced !== 'buy' && spare(c) < (testFlat() || 0.006)) continue;
+    if (!canAfford(c, o.act)) continue; // it knows what things cost: no trips to the diner, the heater, the beacon, the yard or the casino with an empty wallet
     if (o.act === 'shop' && !itemsFor(c).length) continue;
     if (o.act === 'task' && !tasksFor(c).length) continue;
     if (o.act === 'salvage' && !scrapFor(c).length && !(c.hunger > 0.6 && c.sol < costOf(FOOD, c))) continue;
@@ -1044,7 +1060,7 @@ function applyTrade(c, dir, tok, sol, q, why, sig) {
   }
 }
 // ---------- the build fund: the cats put SOL toward the boarded-up buildings; at the goal, the hoardings come down ----------
-const fundGoal = () => (Number(CONFIG.FUND_GOAL) > 0 ? Number(CONFIG.FUND_GOAL) : 5);
+const fundGoal = () => (Number(CONFIG.FUND_GOAL) > 0 ? Number(CONFIG.FUND_GOAL) : 2.5);
 const fundSol = () => (stats.fundSol || 0), fundOpen = () => fundSol() >= fundGoal() || !!stats.fundOpened, fundLive = () => !!CONFIG.FUND_LIVE; // FUND_LIVE: the brain has a fund wallet to read (set the moment it reports a balance)
 function give(c, amt) {
   const cost = Math.min(c.sol, amt); if (!(cost > 0)) return;
@@ -2385,7 +2401,8 @@ function pickGoal(c) {
   const lvl = c.lvl || 1, kind = JOBS[c.job].kind, last = c.goalLast || '';
   let pool = GOALS.filter(g => g.key !== last && (g.tier === 1 || (g.tier === 2 && lvl >= 2) || (g.tier === 3 && lvl >= 4)) && (!g.kind || g.kind === kind || Math.random() < 0.15));
   if (!pool.length) pool = GOALS.filter(g => g.tier === 1);
-  const w = g => (g.kind === kind ? 3 : 1) * ({ degen: g.tier === 3 || g.streak ? 2 : 1, greedy: g.tier === 3 ? 2.5 : g.tier === 2 ? 1.3 : 0.6, patient: g.parts.some(pt => pt[0] === 'topic' || pt[0] === 'note' || pt[0] === 'session' || pt[0] === 'topicnote') ? 2 : 1, loyal: g.tier === 1 ? 1.5 : 1 }[c.trait] || 1);
+  const held = {}; for (const o of cats) if (o !== c && o.goal) held[o.goal.key] = (held[o.goal.key] || 0) + 1; // what the others are on right now: a cat picks something different when it can
+  const w = g => (1 / (1 + 4 * (held[g.key] || 0))) * (g.kind === kind ? 3 : 1) * ({ degen: g.tier === 3 || g.streak ? 2 : 1, greedy: g.tier === 3 ? 2.5 : g.tier === 2 ? 1.3 : 0.6, patient: g.parts.some(pt => pt[0] === 'topic' || pt[0] === 'note' || pt[0] === 'session' || pt[0] === 'topicnote') ? 2 : 1, loyal: g.tier === 1 ? 1.5 : 1 }[c.trait] || 1);
   let tot = 0; for (const g of pool) tot += w(g); let r = Math.random() * tot, g = pool[0];
   for (const x of pool) { r -= w(x); if (r <= 0) { g = x; break; } }
   const topic = CURRICULUM[topicIdx(c)];
@@ -2725,6 +2742,12 @@ function noteGas(name, sol, sig) {
 function setSimulateFees(v) { CONFIG.SIMULATE_FEES = !!v; }
 // ---- real money, mirrored into the box (the server calls these after an on-chain tx confirmed) ----
 function txSig(c, type, amount, note, sig) { tx(c, type, amount, note); if (sig) txs[0].sig = sig; }
+function noteDeposit(sol, sig, from) {
+  // SOL you sent to the treasury yourself: shown in the box with its signature, kept out of the fee total
+  if (!(sol > 0)) return;
+  feeFX(sol);
+  log(`You put ${fmtSol(sol)} SOL in the treasury${from ? ' from ' + String(from).slice(0, 4) + '…' + String(from).slice(-4) : ''}.`, 'gain', 'vault'); tx(null, 'deposit', '+' + fmtSol(sol) + ' SOL', 'from your wallet'); if (sig) txs[0].sig = sig;
+}
 function noteFees(sol, sig) {
   if (!(sol > 0)) return;
   stats.fees += sol; externalFees += sol; feeFX(sol);
@@ -2805,7 +2828,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setScrapPay(v) { CONFIG.SCRAP_PAY = v > 0 ? v : 100; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setScrapPay(v) { CONFIG.SCRAP_PAY = v > 0 ? v : 100; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;

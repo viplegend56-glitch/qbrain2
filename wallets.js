@@ -156,8 +156,8 @@ async function recentSigs(rpcUrl, pub, limit) {
 // what a transfer into the treasury was: 'fees' (it went through pump.fun's programs: a creator-fee claim), 'own' (from one of the operator's own wallets),
 // 'deposit' (from any other wallet), or 'unknown' (the transaction could not be read)
 const PUMP_PROGRAMS = ['6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P', 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA', 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ'];
-async function inflowKind(rpcUrl, sig, ownWallets) {
-  const { Connection } = libs(); const conn = new Connection(rpcUrl, 'confirmed'); const own = new Set((ownWallets || []).map(String));
+async function inflowKind(rpcUrl, sig, ownWallets, catWallets) {
+  const { Connection } = libs(); const conn = new Connection(rpcUrl, 'confirmed'); const own = new Set((ownWallets || []).map(String)), catsSet = new Set((catWallets || []).map(String));
   for (let k = 0; k < 3; k++) {
     try {
       const t = await conn.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
@@ -165,7 +165,7 @@ async function inflowKind(rpcUrl, sig, ownWallets) {
         const msg = t.transaction.message, keys = (msg.staticAccountKeys || msg.accountKeys || []).map(x => x.toBase58 ? x.toBase58() : String(x));
         const la = t.meta && t.meta.loadedAddresses; if (la) for (const l of [...(la.writable || []), ...(la.readonly || [])]) keys.push(l.toBase58 ? l.toBase58() : String(l));
         const from = keys[0] || null; // the fee payer: whoever signed and sent
-        return { kind: keys.some(x => PUMP_PROGRAMS.includes(x)) ? 'fees' : own.has(from) ? 'own' : 'deposit', from };
+        return { kind: catsSet.has(from) ? 'cat' : keys.some(x => PUMP_PROGRAMS.includes(x)) ? 'fees' : own.has(from) ? 'own' : 'deposit', from }; // a cat paying the treasury is never fees, whatever the timing
       }
     } catch (_) {}
     await sleep(2000);
