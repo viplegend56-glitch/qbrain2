@@ -8,7 +8,7 @@ const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
-function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, fundBal, priceAt, logs, flash, err, env, generated, busy }) {
+function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, fundBal, logs, flash, err, env, generated, busy }) {
   marketQi = marketQi || {}; mintChecks = mintChecks || {}; adminJobs = adminJobs || []; const mc = k => mintChecks[k] ? ` · <span class="${mintChecks[k].ok ? 'ok' : 'bad'}">${esc(mintChecks[k].msg)}</span>` : ''; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
@@ -197,7 +197,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <p class="mut" style="margin:0 0 10px"><b>Sandbox</b> is the box on its own, nothing leaves a wallet. <b>Default testing</b> sends every transaction for real but makes every price 0.001 SOL (and a filled lab bar pays 20 cents of $QI), on the site too, so the plumbing can be proved for cents. <b>Default</b> is the real prices. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
     <div class="row3">
       <div><label>mode</label><select name="mode" style="width:100%;padding:8px 10px;font-size:13px"><option value="off" ${ch.mode === 'off' ? 'selected' : ''}>sandbox — the box only</option><option value="test" ${ch.mode === 'test' ? 'selected' : ''}>default testing — real transactions, every price 0.001 SOL</option><option value="live" ${ch.mode === 'live' ? 'selected' : ''}>default — real transactions at the real prices</option></select></div>
-      <div><label>prices</label><div class="tile" style="margin:0"><b>x${Number(config.PRICE_MUL || 1).toFixed(2)}</b><small>set automatically every 10 minutes from the SOL the treasury and the ten cats hold${priceAt ? ' · last ' + ago(priceAt) : ''}; a cat with more than the average pays up to 1.5x, one with less down to 0.7x</small></div></div>
+      <div><label>price multiplier — every price in the box and on the site times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
       <div><label>pace — minutes between one cat's paid moves in testing and default (a meal, the heater, a spin, a trade); 0 = no limit. Sandbox ignores it.</label><input type="number" step="1" min="0" max="120" name="PACE_MIN" value="${esc(config.PACE_MIN == null ? 6 : config.PACE_MIN)}"></div>
     </div>
     <div class="row" style="margin-top:6px"><input type="hidden" name="fundForm" value="1">
