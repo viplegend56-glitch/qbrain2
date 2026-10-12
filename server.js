@@ -52,7 +52,7 @@ if (config.FUND_GOAL === 5 && !config.fundGoalSet) config.FUND_GOAL = 2.5; // th
 config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; config.chain.maxPaySol = DEFAULTS.chain.maxPaySol; config.chain.dayCapSol = DEFAULTS.chain.dayCapSol; config.chain.testFlat = DEFAULTS.chain.testFlat; // the safety caps are code, not settings: an old saved value must never shrink them if (!(config.slippageBps >= 500)) config.slippageBps = 500; // the name, ticker and gas rule come from the code, not from an old saved config
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
-const simulateFees = () => !config.CA;
+const simulateFees = () => false; // the brain never invents money: no pretend fees, no pretend gas top-ups; every SOL row is a real transaction
 
 // ---------- engine ----------
 const logs = [];

@@ -406,6 +406,7 @@ const scrapPay = tier => { const per = mkt.price * (Number(CONFIG.SOL_USD) || 15
 const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
 function stepScrap() {
   if (!board.scrap) { board.scrap = []; board.scrapDone = []; }
+  if (liveTx() && !mkt.pinned) return; // for real, the yard posts nothing until the chart has been read: a job is priced in dollars at the chart, never at a placeholder
   if (board.scrap.length < 4 && T >= (board.scrapNext || 0)) {
     const [title, tier, out] = pick(SCRAP_JOBS);
     if (!board.scrap.some(j => j.title === title)) board.scrap.push({ id: 'S' + (++board.scrapSeq), title, tier, out, pay: scrapPay(tier), dur: 45 + tier * 30, posted: T, t: clock(simMin), status: 'open', by: null });
