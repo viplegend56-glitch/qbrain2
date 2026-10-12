@@ -400,8 +400,8 @@ const SCRAP_JOBS = [ // title, tier, what comes out of it
   ['strip a wrecked control rack for its DACs', 3, 'sixteen channels of arbitrary waveform, somehow fine'], ['sort a bucket of mixed cryogenic bolts', 1, 'bolts, by size, brass and steel apart'], ['clean a tray of sample holders', 1, 'twelve holders, gold still bright'],
   ['recover the window from a dead laser head', 2, 'one window, one lesson about dust'], ['salvage a turbo pump off the quay', 3, 'a pump that spins, for now'],
 ];
-// a salvage job pays a dollar of $QCATS at the chart price (tier 2 two and a half, tier 3 five), times the price multiplier, never more than a tenth of the treasury's supply
-const SCRAP_USD = [0, 1, 2.5, 5], scrapPayUsd = tier => SCRAP_USD[tier] * priceMul();
+// a salvage job pays a dollar and a half of $QCATS at the chart price (tier 2 two and a half, tier 3 five), times the price multiplier, never more than a tenth of the treasury's supply
+const SCRAP_USD = [0, 1.5, 2.5, 5], scrapPayUsd = tier => SCRAP_USD[tier] * priceMul();
 const scrapPay = tier => { const per = mkt.price * (Number(CONFIG.SOL_USD) || 150); if (!(per > 0)) return 0; let n = Math.round(scrapPayUsd(tier) / per); if (qcatPool() > 0) n = Math.min(n, Math.floor(qcatPool() * 0.1)); return Math.max(1, n); };
 const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
 function stepScrap() {

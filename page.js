@@ -82,7 +82,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     const a = config.auto || {};
 
   const genBlock = generated ? `<div class="panel"><div class="ph"><span>New wallets — shown once</span></div><div class="pb">
-    <p><b>Copy these into your host's environment variables now.</b> They are not stored anywhere on this server. Close this page and they are gone. After adding them, redeploy the service.</p>
+    <p><b>Copy these into your host's environment variables now.</b> They are not stored anywhere on this server. Close this page and they are gone. After adding them, redeploy the service.${wallets.ready ? ' <b>These replace the current eleven wallets</b>: the brain switches the moment it restarts with the new keys, and whatever is still in the old wallets stays there (pause transactions, pull everything back to the old treasury, then send it to the new treasury address from a wallet you control; the old treasury key still opens the old wallet in Phantom).' : ''}</p>
     <label>TREASURY_KEY</label><div class="secret"><code>${esc(generated.TREASURY_KEY)}</code></div>
     <label>CAT_KEYS (ten keys, roster order)</label><div class="secret"><code>${esc(generated.CAT_KEYS)}</code></div>
     <label>Public addresses (safe to share)</label><table><tr><th>wallet</th><th>address</th></tr><tr><td>treasury</td><td><code>${esc(generated.treasury.pub)}</code></td></tr>${generated.cats.map(c => `<tr><td>${esc(c.name)}</td><td><code>${esc(c.pub)}</code></td></tr>`).join('')}</table>
@@ -136,7 +136,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
     ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
-    <p class="mut" style="margin:0 0 6px">Everything here is paid on its own, from the treasury, the moment it is earned; the price multiplier (Economy) scales all of it. <b>Chores</b> pay SOL: two meals' worth for a small one, three and a half for a medium, five for a big one. <b>The lab</b> pays $QI when a cat fills a bar, within the range below. <b>The scrapyard</b> pays ${esc(config.TICKER)} at the chart price: a tier-1 job a dollar's worth, tier 2 two and a half, tier 3 five. <b>Payroll</b>: every 30 minutes, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll; a cat with SOL in paw gets nothing. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ', due: ' + esc(due.join(', ')) : ', nobody due as things stand'; })()}. A payout that cannot be sent is retried every ten minutes.</p>
+    <p class="mut" style="margin:0 0 6px">Everything here is paid on its own, from the treasury, the moment it is earned; the price multiplier (Economy) scales all of it. <b>Chores</b> pay SOL: two meals' worth for a small one, three and a half for a medium, five for a big one. <b>The lab</b> pays $QI when a cat fills a bar, within the range below. <b>The scrapyard</b> pays ${esc(config.TICKER)} at the chart price: a tier-1 job a dollar and a half, tier 2 two and a half, tier 3 five. <b>Payroll</b>: every 30 minutes, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll; a cat with SOL in paw gets nothing. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ', due: ' + esc(due.join(', ')) : ', nobody due as things stand'; })()}. A payout that cannot be sent is retried every ten minutes.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
         <div class="row">
@@ -155,7 +155,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
     <span style="display:flex;gap:12px;align-items:center">
-      ${wallets.ready ? '' : `<form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost mini" onclick="return confirm('Generate a fresh treasury + ten cat wallets? They are shown once.')">generate wallets</button></form>`}
+      <form method="post" action="/admin/wallets/generate" class="inline"><button class="btn ghost mini" onclick="return confirm('${wallets.ready ? 'Generate a fresh treasury + ten cat wallets? Nothing changes until you replace TREASURY_KEY and CAT_KEYS on the host and redeploy. Pull everything back to the treasury first and move it to the new one yourself, or it stays in the old wallets.' : 'Generate a fresh treasury + ten cat wallets? They are shown once.'}')">${wallets.ready ? 'new wallets' : 'generate wallets'}</button></form>
       ${walletsReady ? `<form method="post" action="/admin/refresh" class="inline"><button class="btn ghost mini">refresh balances</button></form>` : ''}
     </span></div>
     <div class="pb">

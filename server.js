@@ -577,8 +577,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/puppet') { const act = String(b.act || ''), tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
       if (p === '/admin/reset') { if (b.confirm !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
       if (p === '/admin/wallets/generate') {
-        const ws = wallets.load(); if (ws.ready) return back(res, 'wallets already set', true);
-        return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html');
+        return send(res, 200, adminPage({ generated: wallets.generate(engine.ROSTER.map(r => r[0])), logs: [] }), 'text/html'); // a fresh set, shown once; nothing changes until the host's TREASURY_KEY and CAT_KEYS are replaced and the service restarts
       }
     }
     send(res, 404, 'not found', 'text/plain');
