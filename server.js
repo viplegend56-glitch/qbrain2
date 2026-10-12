@@ -164,6 +164,8 @@ async function jobTick() {
   finally { j.ended = Date.now(); busy = false; while (adminJobs.filter(x => x.state !== 'queued' && x.state !== 'running').length > 12) { const k = adminJobs.findIndex(x => x.state !== 'queued' && x.state !== 'running'); adminJobs.splice(k, 1); } }
 }
 setInterval(() => { jobTick().catch(e => console.error('jobTick', e)); }, 1500);
+const mintCache = {}; // mint -> { decimals, program }, read once
+async function mintMeta(mint) { if (!mintCache[mint]) mintCache[mint] = await wallets.mintInfo(RPC_URL, mint); return mintCache[mint]; }
 async function runIntent(i) {
   const ws = wallets.load(); if (!ws.ready || !RPC_URL) throw new Error('wallets or RPC not ready');
   const catW = ws.cats.find(c => c.name === i.cat); if (!catW) throw new Error('unknown cat ' + i.cat);
@@ -191,8 +193,8 @@ async function runIntent(i) {
       const priceSol = mktQi.priceSol; if (!(priceSol > 0)) throw new Error('no $QI price yet, cannot size the buy');
       const solIn = Math.max((qi - tq) * priceSol * 1.03, 2 / (Number(config.SOL_USD) || 150)), tre = balances.treasury && balances.treasury.sol; // 3% over for slippage, and never a dust buy: at least two dollars' worth, the rest stays in the treasury for the next payouts
       if (typeof tre === 'number' && solIn > tre - 0.01) throw new Error(`treasury needs ${solIn.toFixed(4)} SOL to buy the $QI owed, has ${tre.toFixed(4)}`);
-      const r = await wallets.jupiterSwap(RPC_URL, ws.treasury.kp, config.QI_MINT, 'buy', Math.max(1000, Math.floor(solIn * wallets.LAMPORTS)), config.slippageBps, { maxFeeLamports: 300000 });
-      const got = r.outAmount / Math.pow(10, dec); tq += got; if (balances.treasury) balances.treasury.qi = tq;
+      const qm = await mintMeta(config.QI_MINT), r = await wallets.swapAny(RPC_URL, ws.treasury.kp, config.QI_MINT, 'buy', Math.max(1000, Math.floor(solIn * wallets.LAMPORTS)), config.slippageBps, { maxFeeLamports: 300000, decimals: dec, program: qm.program, slippageBps: config.slippageBps });
+      const got = (r.outcome && r.outcome.tokDeltaRaw > 0 ? r.outcome.tokDeltaRaw : (r.outAmount || 0)) / Math.pow(10, dec); tq += got; if (balances.treasury) balances.treasury.qi = tq;
       chainNote({ id: i.id + 'b', type: 'buy $QI', cat: 'treasury', to: 'treasury', sol: solIn, memo: `bought ${Math.floor(got).toLocaleString('en-US')} $QI for ${i.cat}'s pay`, ok: true, sig: r.sig }); console.log('treasury bought', got, '$QI for', solIn, 'SOL', r.sig);
       if (qi > tq) throw new Error('the $QI buy came up short; will retry');
     }
@@ -227,13 +229,15 @@ async function runIntent(i) {
       chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
     }
     const feeCap = ch.mode === 'test' ? 100000 : 300000; // lamports of priority at most: a tenth of a cent in testing
-    if (i.dir === 'buy') {
-      const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'buy', Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)), config.slippageBps, { maxFeeLamports: feeCap });
-      return { sig: r.sig, extra: { inSol: r.inAmount / wallets.LAMPORTS, outQ: r.outAmount / Math.pow(10, decimals) } };
-    }
-    const raw = Math.floor(i.q * Math.pow(10, decimals)); if (raw < 1) throw new Error('nothing to sell');
-    const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'sell', raw, config.slippageBps, { maxFeeLamports: feeCap });
-    return { sig: r.sig, extra: { inQ: r.inAmount / Math.pow(10, decimals), outSol: r.outAmount / wallets.LAMPORTS } };
+    const meta = await mintMeta(mint), sopts = { maxFeeLamports: feeCap, decimals, program: meta.program, slippageBps: config.slippageBps };
+    const raw = i.dir === 'buy' ? Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)) : Math.floor(i.q * Math.pow(10, decimals)); if (raw < 1) throw new Error('nothing to sell');
+    const r = await wallets.swapAny(RPC_URL, catW.kp, mint, i.dir, raw, config.slippageBps, sopts);
+    // what to book: the confirmed transaction's real balance changes when they could be read, else the quote, else the box's own estimate
+    const o = r.outcome; let extra;
+    const sane = o && typeof o.solDelta === 'number' && (i.dir === 'buy' ? o.tokDeltaRaw > 0 : o.solDelta > 0);
+    if (sane) extra = i.dir === 'buy' ? { inSol: Math.max(0, -o.solDelta), outQ: Math.max(0, o.tokDeltaRaw) / Math.pow(10, decimals) } : { inQ: Math.max(0, -o.tokDeltaRaw) / Math.pow(10, decimals), outSol: Math.max(0, o.solDelta) };
+    else if (r.inAmount != null && r.outAmount != null) extra = i.dir === 'buy' ? { inSol: r.inAmount / wallets.LAMPORTS, outQ: r.outAmount / Math.pow(10, decimals) } : { inQ: r.inAmount / Math.pow(10, decimals), outSol: r.outAmount / wallets.LAMPORTS };
+    return { sig: r.sig, extra, via: r.via };
   }
   if (i.type === 'win') { // treasury -> cat (a casino win)
     if (i.sol > (ch.maxPaySol || 0.2) * 4) throw new Error('win over the cap');
@@ -256,7 +260,7 @@ async function chainTick() {
   busy = true;
   const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : (i.to || 'treasury');
   const amt = i.type === 'qi' || i.type === 'qcat' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.type === 'qcat' ? `${Math.round(i.q).toLocaleString('en-US')} ${config.TICKER} · ${i.memo}` : i.memo;
-  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
+  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
   finally { busy = false; }
 }

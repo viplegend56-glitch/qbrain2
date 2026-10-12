@@ -236,6 +236,16 @@ async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps, 
     catch (e2) { throw new Error(explainSwapError(e2) + ` — even at ${(wider / 100).toFixed(0)}% tolerance`); }
   }
 }
+// Jupiter's free endpoint has moments: a 429 or a 5xx is asked again, up to three times, a few seconds apart, before it counts as a failure
+async function jfetch(url, init) {
+  let last = null;
+  for (let k = 0; k < 3; k++) {
+    try { const r = await fetch(url, init); if (r.ok || (r.status !== 429 && r.status < 500)) return r; last = r; console.warn('jupiter', r.status, 'on', url.replace(/\?.*$/, ''), k < 2 ? '— asking again' : ''); }
+    catch (e) { last = { ok: false, status: 0, text: async () => String(e.message || e) }; console.warn('jupiter unreachable:', e.message, k < 2 ? '— asking again' : ''); }
+    if (k < 2) await sleep(1500 * (k + 1));
+  }
+  return last;
+}
 async function jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts = {}) {
   const { Connection, VersionedTransaction } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
@@ -246,14 +256,14 @@ async function jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, slippageB
   const hdr = { accept: 'application/json' }; if (process.env.JUP_API_KEY) hdr['x-api-key'] = process.env.JUP_API_KEY;
   // slippage: Jupiter's own dynamic estimate (what the jup.ag site uses), under a generous ceiling; a fixed 3% refused small swaps on bonding-curve coins with "slippage tolerance exceeded" (0x1771)
   const maxBps = slippageBps || 1500;
-  const q = await fetch(`${base}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${maxBps}`, { headers: hdr });
-  if (!q.ok) throw new Error(`jupiter quote ${q.status}: ${(await q.text()).slice(0, 160)}`);
+  const q = await jfetch(`${base}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${maxBps}`, { headers: hdr });
+  if (!q.ok) throw new Error(q.status >= 500 || q.status === 0 ? `Jupiter's quote server was unavailable (${q.status || 'no answer'}) three times in a row` : `jupiter quote ${q.status}: ${(await q.text()).slice(0, 160)}`);
   const quote = await q.json();
   if (quote.error || !quote.outAmount) throw new Error('jupiter: ' + (quote.error || 'no route for this token yet'));
   const body = { quoteResponse: quote, userPublicKey: kp.publicKey.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true, dynamicSlippage: true, prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: Math.round(opts.maxFeeLamports || 300000) * attempt, priorityLevel: attempt > 1 ? 'veryHigh' : 'high' } } };
-  let sw = await fetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!sw.ok && sw.status === 400) { const txt = await sw.text(); if (/dynamicSlippage/i.test(txt)) { body.dynamicSlippage = { maxBps }; sw = await fetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) }); } else throw new Error(`jupiter swap 400: ${txt.slice(0, 160)}`); } // an older swap server wants the object form
-  if (!sw.ok) throw new Error(`jupiter swap ${sw.status}: ${(await sw.text()).slice(0, 160)}`);
+  let sw = await jfetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!sw.ok && sw.status === 400) { const txt = await sw.text(); if (/dynamicSlippage/i.test(txt)) { body.dynamicSlippage = { maxBps }; sw = await jfetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) }); } else throw new Error(`jupiter swap 400: ${txt.slice(0, 160)}`); } // an older swap server wants the object form
+  if (!sw.ok) throw new Error(sw.status >= 500 || sw.status === 0 ? `Jupiter's swap server was unavailable (${sw.status || 'no answer'}) three times in a row` : `jupiter swap ${sw.status}: ${(await sw.text()).slice(0, 160)}`);
   const { swapTransaction, dynamicSlippageReport } = await sw.json();
   if (dynamicSlippageReport && dynamicSlippageReport.slippageBps != null) console.log('jupiter dynamic slippage', dynamicSlippageReport.slippageBps, 'bps');
   if (!swapTransaction) throw new Error('jupiter returned no transaction');
@@ -271,4 +281,68 @@ async function jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, slippageB
   throw new Error('swap expired three times before it confirmed (network congested) — nothing was swapped');
 }
 
-module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, explainSwapError, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+// ---- what a swap actually did: the cat's SOL and token balance changes in the confirmed transaction (fees included), so the box books real numbers, not the quote ----
+async function swapOutcome(conn, sig, ownerPub, mint) {
+  try {
+    const t = await conn.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }); if (!t || !t.meta || t.meta.err) return null;
+    const solDelta = (t.meta.postBalances[0] - t.meta.preBalances[0]) / LAMPORTS; // the fee payer is always account 0: the cat
+    const sum = list => (list || []).filter(b => b.owner === ownerPub && b.mint === mint).reduce((a, b) => a + Number(b.uiTokenAmount.amount), 0);
+    return { solDelta, tokDeltaRaw: sum(t.meta.postTokenBalances) - sum(t.meta.preTokenBalances) };
+  } catch (_) { return null; }
+}
+// ---- other places to swap when Jupiter cannot: PumpPortal (pump.fun coins, on the curve or on PumpSwap; 0.5% fee), Raydium's trade API (Raydium pools) ----
+async function signSendVersioned(conn, bytes, kp) {
+  const { VersionedTransaction } = libs();
+  const tx = VersionedTransaction.deserialize(bytes); tx.sign([kp]); const raw = tx.serialize();
+  const bh = await conn.getLatestBlockhash('confirmed');
+  const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 0 });
+  const r = await broadcast(conn, raw, sig, bh.lastValidBlockHeight);
+  if (r !== 'ok') { await sleep(4000); const late = await statusOf(conn, sig, true); if (!isConfirmed(late)) throw new Error('swap expired before it confirmed (network congested) — nothing was swapped'); }
+  return sig;
+}
+async function pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, opts = {}) {
+  const { Connection } = libs();
+  const body = { publicKey: kp.publicKey.toBase58(), action: direction, mint, denominatedInSol: direction === 'buy' ? 'true' : 'false', amount: direction === 'buy' ? amountRaw / LAMPORTS : amountRaw / Math.pow(10, decimals), slippage: Math.min(25, Math.max(1, Math.round((opts.slippageBps || 1000) / 100))), priorityFee: Math.max(0.00001, (opts.maxFeeLamports || 100000) / LAMPORTS), pool: 'auto' };
+  const r = await jfetch('https://pumpportal.fun/api/trade-local', { method: 'POST', headers: { 'content-type': 'application/json', accept: '*/*' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`pumpportal ${r.status || 'unreachable'}: ${(await r.text()).slice(0, 160)}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (!buf.length || buf[0] === 0x7b || buf[0] === 0x3c) throw new Error('pumpportal: ' + buf.toString('utf8').slice(0, 160)); // JSON or HTML means an error, not a transaction
+  const conn = new Connection(rpcUrl, 'confirmed');
+  try { return { sig: await signSendVersioned(conn, buf, kp), via: 'PumpPortal' }; }
+  catch (e) { if (!/expired/.test(e.message) || opts.retried) throw e; return pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, { ...opts, retried: true }); } // one fresh build if the first expired
+}
+async function raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, program, opts = {}) {
+  const { Connection, PublicKey } = libs();
+  const RAY = 'https://transaction-v1.raydium.io', inputMint = direction === 'sell' ? mint : SOL_MINT, outputMint = direction === 'sell' ? SOL_MINT : mint;
+  const q = await jfetch(`${RAY}/compute/swap-base-in?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${opts.slippageBps || 1000}&txVersion=V0`, { headers: { accept: 'application/json' } });
+  if (!q.ok) throw new Error(`raydium quote ${q.status || 'unreachable'}: ${(await q.text()).slice(0, 160)}`);
+  const quote = await q.json(); if (!quote.success || !quote.data) throw new Error('raydium: ' + (quote.msg || 'no route on Raydium'));
+  const body = { computeUnitPriceMicroLamports: String(Math.max(1000, Math.round((opts.maxFeeLamports || 100000) / 200))), swapResponse: quote, txVersion: 'V0', wallet: kp.publicKey.toBase58(), wrapSol: direction === 'buy', unwrapSol: direction === 'sell' };
+  if (direction === 'sell') body.inputAccount = ataOf(kp.publicKey, new PublicKey(mint), program || TOKEN_PROGRAM).toBase58();
+  const b = await jfetch(`${RAY}/transaction/swap-base-in`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
+  if (!b.ok) throw new Error(`raydium build ${b.status || 'unreachable'}: ${(await b.text()).slice(0, 160)}`);
+  const built = await b.json(); if (!built.success || !Array.isArray(built.data) || !built.data.length) throw new Error('raydium: ' + (built.msg || 'could not build the swap'));
+  const conn = new Connection(rpcUrl, 'confirmed'); let sig = null;
+  try { for (const { transaction } of built.data) sig = await signSendVersioned(conn, Buffer.from(transaction, 'base64'), kp); } // setup first, then the swap, in the order given
+  catch (e) { if (!/expired/.test(e.message) || opts.retried) throw e; return raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, decimals, program, { ...opts, retried: true }); }
+  return { sig, via: 'Raydium', inAmount: Number(quote.data.inputAmount), outAmount: Number(quote.data.outputAmount) };
+}
+// Jupiter first; if it is unavailable or has no route, the others. A slippage or funds error is the cat's problem and is not retried elsewhere.
+const elsewhereWorthTrying = e => /unavailable|no route|any route|route not found|ROUTE_NOT_FOUND|unreachable|no answer|returned no transaction|jupiter (quote|swap) (0|5\d\d|429)/i.test(String(e && e.message || e));
+async function swapAny(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts = {}) {
+  const { Connection } = libs(); const owner = kp.publicKey.toBase58();
+  const finish = async r => { const conn = new Connection(rpcUrl, 'confirmed'); await sleep(1500); r.outcome = await swapOutcome(conn, r.sig, owner, mint); return r; };
+  let first;
+  try { return await finish(Object.assign(await jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts), { via: 'Jupiter' })); }
+  catch (e) { first = e; if (!elsewhereWorthTrying(e)) throw e; }
+  const others = /pump$/i.test(mint) ? ['pump', 'ray'] : ['ray', 'pump']; const errs = [String(first.message)];
+  for (const v of others) {
+    try {
+      console.warn('swap: Jupiter could not (' + String(first.message).slice(0, 80) + '); trying ' + (v === 'pump' ? 'PumpPortal' : 'Raydium'));
+      const r = v === 'pump' ? await pumpPortalSwap(rpcUrl, kp, mint, direction, amountRaw, opts.decimals, opts) : await raydiumSwap(rpcUrl, kp, mint, direction, amountRaw, opts.decimals, opts.program, opts);
+      return await finish(r);
+    } catch (e2) { errs.push(String(e2.message)); }
+  }
+  throw new Error('no venue could do it — ' + errs.map(x => x.slice(0, 90)).join(' / '));
+}
+module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, explainSwapError, swapAny, swapOutcome, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
