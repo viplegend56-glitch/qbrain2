@@ -32,8 +32,7 @@ const DEFAULTS = {
   SCRAP_PAY: 100,                       // $QCATS a tier-1 salvage job pays (tier 2 two and a half times, tier 3 five times), from the treasury's own supply
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; automatic by default (see PRICE_AUTO), or set by hand
-  PRICE_AUTO: true,                     // the multiplier follows the economy: the SOL the treasury and the ten cats hold, per cat, over PRICE_REF
-  PRICE_REF: 0.25,                      // SOL per cat (treasury + cats, divided by ten) at which the menu is x1; half that is x0.5, ten times is x10
+  PRICE_AUTO: true,                     // the multiplier follows the economy, every ten minutes: the SOL the treasury and the ten cats hold, per cat, over 0.25 SOL
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
   PACE_MIN: 6,                          // in the real modes: minutes between one cat's paid moves (a meal, a spin, a trade…), so the chain is not hammered
   chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001, fundSwaps: true }, // fundSwaps: a cat that cannot afford a swap's own costs is sent exactly the shortfall by the treasury first, quietly // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, a filled lab bar pays $0.20 of $QI) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
@@ -167,14 +166,15 @@ function economySol() {
   if (live) { const t = balances.treasury && balances.treasury.sol; let cats = 0; for (const b of Object.values(balances.cats || {})) if (b && typeof b.sol === 'number') cats += b.sol; return { total: (typeof t === 'number' ? t : 0) + cats, n: Math.max(1, engine.cats.length) }; }
   return { total: (engine.stats.treasury || 0) + engine.cats.reduce((a, c) => a + Math.max(0, c.sol || 0), 0), n: Math.max(1, engine.cats.length) };
 }
+let priceAt = 0;
 function priceTick() {
   if (config.PRICE_AUTO === false) return;
-  const { total, n } = economySol(), ref = Number(config.PRICE_REF) > 0 ? Number(config.PRICE_REF) : 0.25;
-  const target = Math.max(0.05, Math.min(20, (total / n) / ref)), cur = Number(config.PRICE_MUL) || 1;
-  const next = Math.round((cur + (target - cur) * 0.15) * 1000) / 1000; // 15% of the gap every 30 s: a change settles in a few minutes
-  if (Math.abs(next - cur) >= 0.001) { config.PRICE_MUL = next; engine.setPriceMul(next); if (Math.abs(next - target) < 0.002) saveConfig(); }
+  const { total, n } = economySol(), ref = 0.25; // 0.25 SOL per cat = the menu as written
+  const next = Math.round(Math.max(0.05, Math.min(20, (total / n) / ref)) * 1000) / 1000;
+  priceAt = Date.now();
+  if (next !== (Number(config.PRICE_MUL) || 1)) { config.PRICE_MUL = next; engine.setPriceMul(next); saveConfig(); console.log('prices now x' + next); }
 }
-setInterval(priceTick, 30000); setTimeout(priceTick, 5000);
+setInterval(priceTick, 600000); setTimeout(priceTick, 5000); // every ten minutes, and once shortly after start
 
 // ---------- the executor: one queued intent at a time, as a real transaction (or a log line in dry-run) ----------
 const chainLog = []; let chainSpentToday = { day: '', sol: 0 };
@@ -353,7 +353,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: loadWallets(), balances, fundBal, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: loadWallets(), balances, fundBal, priceAt, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -528,12 +528,9 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
       if (p === '/admin/chain') {
         const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
-        if ('priceForm' in b) config.PRICE_AUTO = !!b.PRICE_AUTO;
-        if ('PRICE_REF' in b && b.PRICE_REF !== '') config.PRICE_REF = Math.max(0.001, Math.min(100, Number(b.PRICE_REF) || 0.25));
-        if (config.PRICE_AUTO === false && 'PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.05, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
         if ('fundForm' in b) ch.fundSwaps = !!b.fundSwaps;
-        applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices ' + (config.PRICE_AUTO === false ? 'x' + config.PRICE_MUL + ' by hand' : 'automatic, x' + config.PRICE_MUL + ' now'));
+        applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL + ' (automatic)');
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }
       if (p === '/admin/distribute') {
