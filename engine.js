@@ -789,7 +789,7 @@ const TH = {
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
 
-const fmtSol = v => { const n = Number(v) || 0; return n !== 0 && Math.abs(n) < 0.005 ? n.toFixed(3) : n.toFixed(2); }; // x.xx everywhere; only a testing-mode price (0.001) gets a third place so it does not read as 0.00 // two decimals, everywhere, by request
+const fmtSol = v => { const n = Number(v) || 0; if (n !== 0 && Math.abs(n) < 0.0005) return n.toFixed(6).replace(/0+$/, ''); return n !== 0 && Math.abs(n) < 0.005 ? n.toFixed(3) : n.toFixed(2); }; // a dust amount (a tiny real sale) shows its real figure rather than 0.000; // x.xx everywhere; only a testing-mode price (0.001) gets a third place so it does not read as 0.00 // two decimals, everywhere, by request
 const fmtQ = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'K' : Math.round(v).toLocaleString('en-US'));
 const fmtUsd = v => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? '$' + Math.round(v / 1e3) + 'K' : v >= 1e4 ? '$' + (v / 1e3).toFixed(1) + 'K' : v >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + Math.round(v));
 const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;

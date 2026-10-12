@@ -253,10 +253,11 @@ async function runIntent(i) {
     const r = await wallets.swapAny(RPC_URL, catW.kp, mint, i.dir, raw, config.slippageBps, sopts);
     // what to book: the confirmed transaction's real balance changes when they could be read, else the quote, else the box's own estimate
     const o = r.outcome; let extra;
-    const sane = o && typeof o.solDelta === 'number' && (i.dir === 'buy' ? o.tokDeltaRaw > 0 : o.solDelta > 0);
+    // a sale is booked at what the wallet really gained, fee included — a dust sale can come out at a few lamports, or even below zero, and the box shows that figure, not the estimate
+    const sane = o && typeof o.solDelta === 'number' && (i.dir === 'buy' ? o.tokDeltaRaw > 0 : o.tokDeltaRaw < 0);
     if (sane) extra = i.dir === 'buy' ? { inSol: Math.max(0, -o.solDelta), outQ: Math.max(0, o.tokDeltaRaw) / Math.pow(10, decimals) } : { inQ: Math.max(0, -o.tokDeltaRaw) / Math.pow(10, decimals), outSol: Math.max(0, o.solDelta) };
     else if (r.inAmount != null && r.outAmount != null) extra = i.dir === 'buy' ? { inSol: r.inAmount / wallets.LAMPORTS, outQ: r.outAmount / Math.pow(10, decimals) } : { inQ: r.inAmount / Math.pow(10, decimals), outSol: r.outAmount / wallets.LAMPORTS };
-    return { sig: r.sig, extra, via: r.via };
+    return { sig: r.sig, extra, via: r.via, booked: sane ? 'chain' : extra ? 'quote' : 'estimate' };
   }
   if (i.type === 'win') { // treasury -> cat (a casino win)
     if (i.sol > (ch.maxPaySol || 0.2) * 4) throw new Error('win over the cap');
@@ -279,7 +280,7 @@ async function chainTick() {
   busy = true;
   const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : i.type === 'donate' ? 'build fund' : (i.to || 'treasury');
   const amt = i.type === 'qi' || i.type === 'qcat' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.type === 'qcat' ? `${Math.round(i.q).toLocaleString('en-US')} ${config.TICKER} · ${i.memo}` : i.memo;
-  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
+  try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: i.type === 'swap' && r && r.extra ? (i.dir === 'buy' ? r.extra.inSol : r.extra.outSol) : amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : '') + (r && r.booked && r.booked !== 'chain' ? ' · amount from the ' + r.booked : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
   finally { busy = false; }
 }
