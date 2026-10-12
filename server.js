@@ -25,6 +25,9 @@ const DEFAULTS = {
   NAME: 'Quantum Cats', TICKER: 'QCATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   QI_MINT: process.env.QI_MINT || '',   // $QI: what the lab pays. The treasury wallet holds the supply.
+  OWN_WALLETS: [],                      // the operator's own wallets: SOL arriving in the treasury from these is funding, not creator fees
+  FUND_PUB: '',                         // the build fund: a wallet of yours (address only, no key here). The cats give SOL to it; its balance is the bar on the site
+  FUND_GOAL: 5,                         // SOL the build fund needs before the boarded-up buildings open
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
   GOAL_MUL: 1,                          // every bar in the lab times this: 2 makes the pay twice as hard to reach
   SCRAP_PAY: 100,                       // $QCATS a tier-1 salvage job pays (tier 2 two and a half times, tier 3 five times), from the treasury's own supply
@@ -32,7 +35,7 @@ const DEFAULTS = {
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
   PACE_MIN: 6,                          // in the real modes: minutes between one cat's paid moves (a meal, a spin, a trade…), so the chain is not hammered
-  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001, fundSwaps: true, swapTopUp: 0.01 }, // fundSwaps: a cat that cannot afford a swap's own costs is topped up by the treasury first, to swapTopUp SOL // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, lab pay a hundredth) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
+  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001, fundSwaps: true }, // fundSwaps: a cat that cannot afford a swap's own costs is sent exactly the shortfall by the treasury first, quietly // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, a filled lab bar pays $0.20 of $QI) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: false, floor: 0.001, min: 0.002 }, // no gas rule: floor is only the chain's rent minimum; the admin table flags a cat under `min` so you can send it SOL by hand
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
@@ -77,7 +80,8 @@ const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
-  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100); applyChainMode();
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100); engine.setFundGoal(config.FUND_GOAL || 5); applyChainMode();
+  if (typeof fundBal.sol === 'number') engine.setFundSol(fundBal.sol);
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
   if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); const tc = balances.treasury && balances.treasury.qcat; engine.setQcatPool(typeof tc === 'number' ? tc : null, !!config.CA && typeof tc === 'number'); }
@@ -123,12 +127,15 @@ setInterval(pollSolPrice, 300000); pollSolPrice();
 
 // ---------- wallets: balances, and "fees landed" detection ----------
 let balances = { at: 0, err: null, cats: {}, treasury: null };
+let fundBal = { at: 0, sol: null, err: null }; // the build fund wallet's SOL, read every poll
+const loadWallets = () => { const ws = wallets.load(); if (ws.ready) ws.fund = wallets.fundOf(config.FUND_PUB); return ws; };
 let catsPaidIn = 0; // SOL the cats have paid into the treasury since the last balance read, so it is not mistaken for fees
 applySettings(); // now that the market and balance holders exist
 let busy = false; // one on-chain operation at a time
 async function pollBalances() {
-  const ws = wallets.load();
+  const ws = loadWallets();
   if (!ws.ready || !RPC_URL) return;
+  if (ws.fund) { try { const f = await wallets.solBalance(RPC_URL, ws.fund.pub); fundBal = { at: Date.now(), sol: f, err: null }; engine.setFundSol(f); } catch (e) { fundBal = { ...fundBal, err: String(e.message || e) }; } } else { fundBal = { at: 0, sol: null, err: null }; engine.setFundSol(null); }
   try {
     balances = { at: Date.now(), err: null, ...(await wallets.balances(RPC_URL, ws, config.CA, config.QI_MINT)) };
     const t = balances.treasury && balances.treasury.sol;
@@ -138,9 +145,10 @@ async function pollBalances() {
       engine.setTreasury(t);
       // a rise in the treasury is creator fees landing — except for what the cats themselves just paid in (meals, stakes, entries), which is counted and taken off first
       if (config.lastTreasurySol != null && t > config.lastTreasurySol + 0.0005 + catsPaidIn) {
-        const d = t - config.lastTreasurySol - catsPaidIn; config.feesSeenSol += d;
-        let sig = null; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); } catch (_) {}
-        engine.noteFees(d, sig);
+        const d = t - config.lastTreasurySol - catsPaidIn;
+        let sig = null, k = { kind: 'unknown', from: null }; try { const recent = await wallets.recentSigs(RPC_URL, ws.treasury.pub, 12); sig = (recent.find(x => !ourSigs.has(x)) || null); if (sig) k = await wallets.inflowKind(RPC_URL, sig, config.OWN_WALLETS || []); } catch (_) {}
+        if (k.kind === 'own') { chainNote({ id: 'D', type: 'deposit', cat: 'your wallet', to: 'treasury', sol: d, memo: 'funding from ' + (k.from || '').slice(0, 6) + '… · not counted as fees', ok: true, sig }); console.log('treasury funded by the operator', d, sig); }
+        else { config.feesSeenSol += d; engine.noteFees(d, sig); if (k.kind === 'deposit') chainNote({ id: 'D', type: 'deposit', cat: 'outside', to: 'treasury', sol: d, memo: 'from ' + (k.from || '').slice(0, 6) + '… · counted as fees (add the wallet to “your own wallets” if it was you)', ok: true, sig }); }
       }
       catsPaidIn = 0;
       if (config.lastTreasurySol !== t) { config.lastTreasurySol = t; saveConfig(); }
@@ -167,15 +175,23 @@ setInterval(() => { jobTick().catch(e => console.error('jobTick', e)); }, 1500);
 const mintCache = {}; // mint -> { decimals, program }, read once
 async function mintMeta(mint) { if (!mintCache[mint]) mintCache[mint] = await wallets.mintInfo(RPC_URL, mint); return mintCache[mint]; }
 async function runIntent(i) {
-  const ws = wallets.load(); if (!ws.ready || !RPC_URL) throw new Error('wallets or RPC not ready');
+  const ws = loadWallets(); if (!ws.ready || !RPC_URL) throw new Error('wallets or RPC not ready');
   const catW = ws.cats.find(c => c.name === i.cat); if (!catW) throw new Error('unknown cat ' + i.cat);
   const ch = config.chain || {}; const day = new Date().toISOString().slice(0, 10); if (chainSpentToday.day !== day) chainSpentToday = { day, sol: 0 };
   const memo = `${config.TICKER} · ${i.cat} · ${i.memo}`;
-  const RENT = 0.001, SWAP_FLOOR = 0.0045; // the chain's own minimum, and what a Jupiter swap needs on top of the amount (fee + the wrapped-SOL deposit)
+  const RENT = 0.001, SWAP_FLOOR = 0.0024; // the chain's own minimum, and what a swap needs on top of the amount: the wrapped-SOL deposit (0.00204, refunded) plus the fee and priority
   if (i.type === 'pay') { // cat -> treasury
     if (i.sol > (ch.maxPaySol || 1)) throw new Error(`over the per-payment cap (${i.sol} SOL)`);
     const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this and the fee`);
     return wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.treasury.pub, sol: i.sol }], memo, true);
+  }
+  if (i.type === 'donate') { // cat -> the build fund (an address of yours; the brain never holds its key)
+    if (!ws.fund) throw new Error('no build-fund wallet set (Token panel)');
+    if (i.sol > (ch.maxPaySol || 1)) throw new Error(`over the per-payment cap (${i.sol} SOL)`);
+    const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this and the fee`);
+    const sig = await wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.fund.pub, sol: i.sol }], memo, true);
+    if (typeof fundBal.sol === 'number') { fundBal.sol += i.sol; engine.setFundSol(fundBal.sol); }
+    return sig;
   }
   if (i.type === 'wage') { // treasury -> cat: SOL for a chore, the moment it is done
     if (i.sol > (ch.maxPaySol || 1)) throw new Error('wage over the cap');
@@ -222,11 +238,11 @@ async function runIntent(i) {
     const need = SWAP_FLOOR + (i.dir === 'buy' ? i.sol : 0) + (i.dir === 'buy' && !hasAcct ? 0.0021 : 0);
     if (typeof b.sol === 'number' && b.sol < need) {
       if (ch.fundSwaps === false) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this swap and its fees (funding is off)`);
-      const topTo = Math.max(need + 0.0005, Number(ch.swapTopUp) || 0.01), amt = Math.round((topTo - b.sol) * 1e6) / 1e6, tre = balances.treasury && balances.treasury.sol;
+      const amt = Math.ceil((need - b.sol + 0.0002) * 1e4) / 1e4, tre = balances.treasury && balances.treasury.sol; // just the shortfall for this swap, rounded up to the next 0.0001
       if (typeof tre === 'number' && tre - amt < 0.005) throw new Error(`treasury has ${tre.toFixed(4)} SOL, cannot fund ${i.cat}'s swap (${amt.toFixed(4)} needed)`);
       if (chainSpentToday.sol + amt > (ch.dayCapSol || 25)) throw new Error('treasury day cap reached'); chainSpentToday.sol += amt;
       const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, [{ pub: catW.pub, sol: amt }], `${config.TICKER} · ${i.cat} · SOL to swap with`, true);
-      chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
+      chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig, true); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
     }
     const feeCap = ch.mode === 'test' ? 100000 : 300000; // lamports of priority at most: a tenth of a cent in testing
     const meta = await mintMeta(mint), sopts = { maxFeeLamports: feeCap, decimals, program: meta.program, slippageBps: config.slippageBps };
@@ -258,7 +274,7 @@ async function chainTick() {
   engine.markIntent(i.id, 'sending');
   if (ch.mode === 'dry') { engine.intentDone(i.id, null); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, dry: true }); return; }
   busy = true;
-  const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : (i.to || 'treasury');
+  const fromTre = i.type === 'wage' || i.type === 'qi' || i.type === 'qcat', who = fromTre ? 'treasury' : i.cat, to = fromTre ? i.cat : i.type === 'swap' ? 'jupiter' : i.type === 'donate' ? 'build fund' : (i.to || 'treasury');
   const amt = i.type === 'qi' || i.type === 'qcat' ? null : (i.type === 'swap' && i.dir === 'sell' ? null : i.sol), what = i.type === 'qi' ? `${Math.round(i.qi).toLocaleString('en-US')} $QI · ${i.memo}` : i.type === 'qcat' ? `${Math.round(i.q).toLocaleString('en-US')} ${config.TICKER} · ${i.memo}` : i.memo;
   try { const r = await runIntent(i); const sig = r && r.sig ? r.sig : r; if (i.type === 'pay') catsPaidIn += i.sol || 0; engine.intentDone(i.id, sig, r && r.extra); chainNote({ id: i.id, type: i.type, cat: who, to: r && r.via ? r.via : to, sol: amt, memo: what + (r && r.via && r.via !== 'Jupiter' ? ' · via ' + r.via : ''), ok: true, sig }); console.log('chain', i.type, who, '->', to, amt != null ? amt : '', what, sig); pollBalances(); }
   catch (e) { engine.intentFailed(i.id, e.message); chainNote({ id: i.id, type: i.type, cat: who, to, sol: amt, memo: what, ok: false, err: String(e.message).slice(0, 160) }); console.error('chain failed', i.type, who, what, e.message); }
@@ -317,7 +333,7 @@ function authed(req, res) {
   if (pw === ADMIN_PASSWORD) return true;
   send(res, 401, 'password required', 'text/plain', { 'WWW-Authenticate': 'Basic realm="quantum cats"' }); return false;
 }
-const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: wallets.load(), balances, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
+const adminPage = (extra = {}) => renderAdmin({ config, engine, market: mkt, marketQi: mktQi, mintChecks, chainLog, adminJobs, wallets: loadWallets(), balances, fundBal, logs: logs.slice(0, 40), flash: '', err: '', busy, env: { RPC_URL: !!RPC_URL, DATA_DIR, simulateFees: simulateFees(), llm: llm.status }, ...extra });
 
 // ---------- the two real-money actions ----------
 async function distribute(b) {
@@ -432,12 +448,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/') return send(res, 200, 'quantum cats brain · /state.json · /admin', 'text/plain');
     if (req.method === 'GET' && p === '/health') return send(res, 200, { ok: true, up: process.uptime() });
     if (req.method === 'GET' && p === '/state.json') {
-      const ws = wallets.load();
+      const ws = loadWallets();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, FUND_GOAL: config.FUND_GOAL || 5, FUND_LIVE: !!config.FUND_PUB, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
-        wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), balances, feesSeenSol: config.feesSeenSol } : null,
+        wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), fund: config.FUND_PUB || null, fundSol: fundBal.sol, balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
         ai: llm.enabled(),
       });
@@ -458,9 +474,13 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== 'POST') return send(res, 404, 'not found', 'text/plain');
       const b = await readBody(req);
       if (p === '/admin/config') {
+        const notes0 = [];
         for (const k of ['CA', 'X_URL', 'QI_MINT']) if (k in b) config[k] = String(b[k]).trim();
+        if ('OWN_WALLETS' in b) config.OWN_WALLETS = String(b.OWN_WALLETS).split(/[\s,;]+/).map(x => x.trim()).filter(x => x.length >= 32 && x.length <= 44);
+        if ('FUND_PUB' in b) { const f = String(b.FUND_PUB).trim(); if (f && !wallets.fundOf(f)) notes0.push('build fund: that is not a valid Solana address'); else config.FUND_PUB = f; }
+        if ('FUND_GOAL' in b && b.FUND_GOAL !== '') { config.FUND_GOAL = Math.max(0.01, Math.min(10000, Number(b.FUND_GOAL) || 5)); engine.setFundGoal(config.FUND_GOAL); }
         // the two token addresses must be mints, not pool addresses: check on-chain, and if a pair was pasted, resolve its mint
-        const notes = [];
+        const notes = notes0;
         for (const k of ['CA', 'QI_MINT']) { const a = config[k]; if (!a || !RPC_URL) continue; const label = k === 'CA' ? config.TICKER : '$QI';
           try { const m = await wallets.mintInfo(RPC_URL, a); notes.push(`${label}: mint ok, ${m.decimals} decimals`); mintChecks[k] = { ok: true, msg: `mint · ${m.decimals} decimals` }; }
           catch (e) { try { const r = await market.mintFromPair(a); const m = await wallets.mintInfo(RPC_URL, r.mint); config[k] = r.mint; notes.push(`${label}: that was the pair address — using the mint ${r.mint.slice(0, 6)}… (${r.symbol}, ${m.decimals} decimals)`); mintChecks[k] = { ok: true, msg: `mint · ${m.decimals} decimals · resolved from the pair you pasted` }; }
@@ -470,7 +490,7 @@ const server = http.createServer(async (req, res) => {
         if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.payoutEveryMin = Math.max(5, config.payoutEveryMin || 20);
         if ('gasFloor' in b || 'gasMin' in b || 'gasForm' in b) { const g = config.gas; g.auto = !!b.gasAuto; if (b.gasFloor !== '' && b.gasFloor != null) g.floor = Math.max(0.001, Number(b.gasFloor)); if (b.gasMin !== '' && b.gasMin != null) g.min = Math.max(0.0005, Math.min(g.floor, Number(b.gasMin))); }
         engine.setSimulateFees(simulateFees()); engine.setQiConfig(0, config.QI_SOL); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL);
-        saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved' + (notes.length ? ' · ' + notes.join(' · ') : ''), notes.some(n => /not a token mint|not found|not a known/.test(n)));
+        saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved' + (notes.length ? ' · ' + notes.join(' · ') : ''), notes.some(n => /not a token mint|not found|not a known|not a valid/.test(n)));
       }
       if (p === '/admin/payouts') { // the lab pay range
         for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'GOAL_MUL', 'SCRAP_PAY']) if (k in b && b[k] !== '') config[k] = Number(b[k]); config.SCRAP_PAY = Math.max(1, Math.round(config.SCRAP_PAY || 100)); engine.setScrapPay(config.SCRAP_PAY);
@@ -491,7 +511,7 @@ const server = http.createServer(async (req, res) => {
         const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
         if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
-        if ('fundForm' in b) { ch.fundSwaps = !!b.fundSwaps; if (b.swapTopUp !== '' && b.swapTopUp != null) ch.swapTopUp = Math.max(0.005, Math.min(1, Number(b.swapTopUp) || 0.01)); }
+        if ('fundForm' in b) ch.fundSwaps = !!b.fundSwaps;
         applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }

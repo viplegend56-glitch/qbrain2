@@ -56,15 +56,18 @@ async function balances(rpcUrl, ws, mint, qiMint) {
 }
 
 // ---------- the only three things this server ever signs ----------
-// 1) SOL from the treasury to cat wallets (and nowhere else): payroll and gas top-ups.
+// 1) SOL from the treasury to cat wallets (and nowhere else): payroll and gas top-ups — and from a cat to the build fund's address.
 // 2) $QI (or the project's own token) from the treasury to cat wallets (and nowhere else).
 // 3) Swaps between SOL and the project's own mint or $QI, from a cat's wallet, via Jupiter.
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const LAMPORTS = 1e9;
 
 function assertKnown(ws, pub) {
-  if (pub !== ws.treasury.pub && !ws.cats.some(c => c.pub === pub)) throw new Error('refusing to send to an address that is not one of the ten cats or the treasury');
+  if (pub !== ws.treasury.pub && !ws.cats.some(c => c.pub === pub) && !(ws.fund && ws.fund.pub === pub)) throw new Error('refusing to send to an address that is not one of the ten cats, the treasury or the build fund');
 }
+// the build fund is a plain address (this brain never holds its key): the cats give SOL to it, and its balance is read like any other
+function fundOf(pub) { if (!pub) return null; try { const { PublicKey } = libs(); return { pub: new PublicKey(String(pub).trim()).toBase58() }; } catch (_) { return null; } }
+async function solBalance(rpcUrl, pub) { const { Connection, PublicKey } = libs(); const conn = new Connection(rpcUrl, 'confirmed'); return (await conn.getBalance(new PublicKey(pub))) / LAMPORTS; }
 
 const MEMO_PROGRAM = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 function memoIx(text) { const { PublicKey, TransactionInstruction } = libs(); return new TransactionInstruction({ programId: new PublicKey(MEMO_PROGRAM), keys: [], data: Buffer.from(String(text).slice(0, 200), 'utf8') }); }
@@ -149,6 +152,25 @@ async function recentSigs(rpcUrl, pub, limit) {
   const conn = new Connection(rpcUrl, 'confirmed');
   const list = await conn.getSignaturesForAddress(new PublicKey(pub), { limit: limit || 10 }, 'confirmed');
   return (list || []).filter(x => !x.err).map(x => x.signature);
+}
+// what a transfer into the treasury was: 'fees' (it went through pump.fun's programs: a creator-fee claim), 'own' (from one of the operator's own wallets),
+// 'deposit' (from any other wallet), or 'unknown' (the transaction could not be read)
+const PUMP_PROGRAMS = ['6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P', 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA', 'pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ'];
+async function inflowKind(rpcUrl, sig, ownWallets) {
+  const { Connection } = libs(); const conn = new Connection(rpcUrl, 'confirmed'); const own = new Set((ownWallets || []).map(String));
+  for (let k = 0; k < 3; k++) {
+    try {
+      const t = await conn.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+      if (t && t.transaction) {
+        const msg = t.transaction.message, keys = (msg.staticAccountKeys || msg.accountKeys || []).map(x => x.toBase58 ? x.toBase58() : String(x));
+        const la = t.meta && t.meta.loadedAddresses; if (la) for (const l of [...(la.writable || []), ...(la.readonly || [])]) keys.push(l.toBase58 ? l.toBase58() : String(l));
+        const from = keys[0] || null; // the fee payer: whoever signed and sent
+        return { kind: keys.some(x => PUMP_PROGRAMS.includes(x)) ? 'fees' : own.has(from) ? 'own' : 'deposit', from };
+      }
+    } catch (_) {}
+    await sleep(2000);
+  }
+  return { kind: 'unknown', from: null };
 }
 // Everything a wallet holds, to one of the known addresses: balance minus the exact fee, so the wallet lands on zero (the chain refuses to leave dust under the rent minimum). Returns { sig, sol }.
 async function sweepSol(rpcUrl, ws, fromKp, toPub, memo) {
@@ -345,4 +367,4 @@ async function swapAny(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts
   }
   throw new Error('no venue could do it — ' + errs.map(x => x.slice(0, 90)).join(' / '));
 }
-module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, explainSwapError, swapAny, swapOutcome, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+module.exports = { load, fundOf, solBalance, generate, balances, transferSol, sweepSol, recentSigs, inflowKind, explainSwapError, swapAny, swapOutcome, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
