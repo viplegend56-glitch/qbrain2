@@ -268,7 +268,7 @@ const WXICON = {
 };
 
 /* ---------- agents ---------- */
-const SUPPLY = 1e9, CAT_ALLOC = 1e5; // 100,000 per cat: 1,000,000 across the ten, 0.1% of supply
+const SUPPLY = 1e9; const catAlloc = () => (Number(CONFIG.START_QCATS) > 0 ? Number(CONFIG.START_QCATS) : 10000); // the stack each cat starts with; set in the brain's admin when the treasury hands it out
 const COATS = [
   { c: '#E08A3C', e: '#B6FF6A' }, { c: '#1C2033', e: '#F2D45C', d: 1 }, { c: '#9097B3', e: '#5CF2FF' },
   { c: '#ECEFF7', e: '#5CA8FF' }, { c: '#9A6B43', e: '#C8FF7A' }, { c: '#E8CC98', e: '#7AF0C8' }, { c: '#4B4F66', e: '#FFD36A', d: 1 },
@@ -759,7 +759,7 @@ function makeCat(i) {
   return {
     id: ++uid, name, job, trait, tr: TRAITS[trait], coat: coat.c, eye: coat.e, dark: !!coat.d,
     x: sp[0], y: sp[1], tx: sp[0], ty: sp[1], face: Math.random() < 0.5 ? 1 : -1,
-    sol: 0.1, gas: GAS_FLOOR, qi: 0, qiEarned: 0, qiSold: 0, qiSellSol: 0, twork: 0, qcat: CAT_ALLOC, earned: 0, xp: 0, lvl: 1, meetings: 0, hist: [], said: [], bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: mkt.price, sellCool: 0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
+    sol: 0.1, gas: GAS_FLOOR, qi: 0, qiEarned: 0, qiSold: 0, qiSellSol: 0, twork: 0, qcat: catAlloc(), earned: 0, xp: 0, lvl: 1, meetings: 0, hist: [], said: [], bought: 0, solSpent: 0, stole: 0, robbed: 0, found: 0, buys: 0, sells: 0, sold: 0, sellSol: 0, entry: mkt.price, sellCool: 0, arenaNet: 0, arenaSol: 0, arenaW: 0, arenaL: 0, arrived: false, released: T,
     hunger: rand(0, 0.75), coh: rand(0.35, 1), cold: rand(0, 0.6), lonely: rand(0, 0.6),
     grudge: 0, grudgeOn: null, grudgeWhy: '', starve: 0, tired: rand(0, 0.7), stamina: rand(0.75, 1.35), memory: [],
     ethic: ({ degen: 0.85, patient: 1.0, greedy: 1.35, loyal: 1.15 }[trait] || 1) * rand(0.85, 1.15), qjobs: 0, qwork: 0, qnq: 0, qmax: 0, skills: {}, tasks: 0, taskPay: 0, meals: 0, plays: 0, faints: 0, decohered: 0, acts: [], items: [], wearing: null, vanity: rand(0.5, 1.6),
@@ -941,7 +941,7 @@ function applyTrade(c, dir, tok, sol, q, why, sig) {
     c.sol -= sol; c.solSpent += sol; c.buys++; stats.buys++; placeStats.exchange.buysol += sol;
     if (isQi) { c.qi += q; c.qiBought = (c.qiBought || 0) + q; stats.qiBought = (stats.qiBought || 0) + q; stats.qiBuySol = (stats.qiBuySol || 0) + sol; }
     else { c.entry = (c.entry * c.qcat + sol) / (c.qcat + q); c.qcat += q; c.bought += q; stats.buySol += sol; stats.boughtBack += q; placeStats.exchange.bought += q; if (!mkt.pinned && !sig) mkt.price *= 1 + sol / (mkt.price * SUPPLY * 0.35); }
-    floatText(c, '+' + fq(q) + ' ' + tok, isQi ? '#C4B2FF' : '#5CFFAA'); buyFX(c); gainXp(c, isQi ? 3 : 4 + Math.min(14, q / CAT_ALLOC * 100));
+    floatText(c, '+' + fq(q) + ' ' + tok, isQi ? '#C4B2FF' : '#5CFFAA'); buyFX(c); gainXp(c, isQi ? 3 : 4 + Math.min(14, q / catAlloc() * 100));
     log(`${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL at the exchange`, 'gain', 'exchange'); txWith(c, 'buy', '+' + fq(q) + ' ' + tok, fmtSol(sol) + ' SOL', sig); did(c, `bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`); recordEvent('buy', `${c.name} bought ${fq(q)} ${tok} for ${fmtSol(sol)} SOL`);
   } else {
     c.sol += sol; c.sells++; stats.sells++;
@@ -1150,7 +1150,7 @@ function release(i) {
   c.doing = 'walking into the box'; c.thought = 'finally'; c.because = UNLOCK_MC[i] ? `the chart hit ${fmtUsd(UNLOCK_MC[i])}` : 'the box opened';
   c.hunger = 0.3; c.cold = 0.2; c.tired = 0.1; c.coh = 0.95;
   cats.push(c);
-  log(`${fmtUsd(mcapUsd())} MC. ${c.name} has been released into the box: a ${JOBS[c.job].label}, ${c.tr.label}, ${fmtQ(CAT_ALLOC)} ${TK} in its wallet.`, 'gain', 'boxes');
+  log(`${fmtUsd(mcapUsd())} MC. ${c.name} has been released into the box: a ${JOBS[c.job].label}, ${c.tr.label}, ${fmtQ(c.qcat)} ${TK} in its wallet.`, 'gain', 'boxes');
   if (dayCur) dayCur.cats0[c.name] = snapCat(c); recordEvent('release', `${c.name} was released into the box at ${fmtUsd(mcapUsd())} MC`);
   say(c, pick(['finally', 'what did I miss', 'which one of you is winning', 'where is the exchange']));
   ringFX(c.x, c.y, '92,242,255', 1.8); burst(c, '92,242,255', 30);
@@ -2069,6 +2069,18 @@ function noteFees(sol) {
   stats.fees += sol; externalFees += sol; feeFX(sol);
   log(`Creator fees landed: +${fmtSol(sol)} SOL in the treasury wallet.`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed');
 }
+function qcatGrant(list, sig) {
+  // list: [{ name, q }] — real $QCATS that just left the treasury for each cat (the starting stack, or a top-up)
+  let total = 0, n = 0;
+  for (const { name, q } of list) {
+    const c = cats.find(x => x.name === name); if (!c || !(q > 0)) continue;
+    c.qcat = (c.qcat || 0) + q; total += q; n++;
+    payFX(c); floatText(c, '+' + fmtQ(q) + ' ' + TK, '#5CFFAA');
+    txSig(c, 'grant', '+' + fmtQ(q) + ' ' + TK, 'from the treasury', sig);
+  }
+  if (n) log(`The treasury handed ${fmtQ(total)} ${TK} to ${n} cat${n === 1 ? '' : 's'}.`, 'gain', 'vault');
+  return { total, n };
+}
 function payout(list, sig) {
   // list: [{ name, sol }] — real SOL that just left the treasury wallet for each cat
   let total = 0, n = 0;
@@ -2132,7 +2144,7 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = snap.simMin || simMin;
