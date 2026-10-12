@@ -70,7 +70,7 @@ const hooks = {
   // a cat finished a study session in the lab: the model writes its note (at most one every 90 seconds; the box's own line stands otherwise)
   onStudy: (ctx, name, info) => { if (!llm.enabled() || Date.now() - lastStudyAt < (Number(config.aiStudyGapSec) || 0) * 1000) return; lastStudyAt = Date.now(); llm.studyNote(ctx, name, info).then(t => { if (t) engine.setNote(info.noteId, t); }).catch(e => console.error('study note', e.message)); },
   // the day's lesson, written at the end of each day and read back into every later meeting
-  onDayEnd: (recap, ctx) => { if (!llm.enabled()) { engine.setLesson(`day ${recap.day}: ${recap.fees.toFixed ? recap.fees.toFixed(4) : recap.fees} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); return; } llm.daySummary(ctx, recap).then(line => { if (line) engine.setLesson(line); }).catch(e => console.error('day summary', e.message)); },
+  onDayEnd: (recap, ctx) => { if (!llm.enabled()) { engine.setLesson(`day ${recap.day}: treasury ${recap.gained >= 0 ? '+' : ''}${Number(recap.gained || 0).toFixed(2)} SOL, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); return; } llm.daySummary(ctx, recap).then(line => { if (line) engine.setLesson(line); }).catch(e => console.error('day summary', e.message)); },
 };
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
@@ -129,7 +129,7 @@ setInterval(pollSolPrice, 300000); pollSolPrice();
 let balances = { at: 0, err: null, cats: {}, treasury: null };
 let fundBal = { at: 0, sol: null, err: null }; // the build fund wallet's SOL, read every poll
 const loadWallets = () => { const ws = wallets.load(); if (ws.ready) ws.fund = wallets.fundOf(config.FUND_PUB); return ws; };
-let catsPaidIn = 0; // SOL the cats have paid into the treasury since the last balance read, so it is not mistaken for fees
+let catsPaidIn = 0; // SOL that arrived in the treasury through this brain's own transfers since the last balance read (cats paying for things, pull-backs), so it is not mistaken for fees
 applySettings(); // now that the market and balance holders exist
 let busy = false; // one on-chain operation at a time
 async function pollBalances() {
@@ -151,7 +151,8 @@ async function pollBalances() {
         // three kinds of money arrive in the treasury: a cat paying for something (already its own row, never a fee), a creator-fee claim through pump.fun (fees), and a plain transfer from any other wallet — yours — shown as a deposit with its signature, not counted as fees
         if (k.kind === 'cat') { console.log('treasury rise was a cat paying in', d, sig); }
         else if (k.kind === 'deposit') { engine.noteDeposit(d, sig, k.from); chainNote({ id: 'D', type: 'deposit', cat: (k.from || 'a wallet').slice(0, 6) + '…', to: 'treasury', sol: d, memo: 'deposit · shown in the box, not counted as fees', ok: true, sig }); console.log('treasury deposit', d, sig); }
-        else { config.feesSeenSol += d; engine.noteFees(d, sig); }
+        else if (k.kind === 'fees') { config.feesSeenSol += d; engine.noteFees(d, sig); }
+        else { chainNote({ id: 'U', type: 'rise', cat: 'treasury', to: 'treasury', sol: d, memo: 'the balance rose and no transaction could be matched to it (RPC lookup failed, or the money came through a transfer this brain made); not counted as fees', ok: true, sig }); console.log('treasury rise unexplained', d, sig); } // never booked as fees without a transaction that says so
       }
       catsPaidIn = 0;
       if (config.lastTreasurySol !== t) { config.lastTreasurySol = t; saveConfig(); }
@@ -542,7 +543,7 @@ const server = http.createServer(async (req, res) => {
             try {
               if (what.qcat && bal.qcatRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.CA, [{ pub: ws.treasury.pub, raw: bal.qcatRaw }], `${config.TICKER} · ${n} · back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} back to the treasury`, ok: true, sig: sigs[0] }); }
               if (what.qi && bal.qiRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.QI_MINT, [{ pub: ws.treasury.pub, raw: bal.qiRaw }], `${config.TICKER} · ${n} · $QI back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qi).toLocaleString('en-US')} $QI ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qi).toLocaleString('en-US')} $QI back to the treasury`, ok: true, sig: sigs[0] }); }
-              if (what.sol && bal.sol > 0.00002) { const r = await wallets.sweepSol(RPC_URL, ws, catW.kp, ws.treasury.pub, `${config.TICKER} · ${n} · SOL back to the treasury`); parts.push(`${n}: ${r.sol.toFixed(6)} SOL ${r.sig.slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: r.sol, memo: 'all SOL back to the treasury', ok: true, sig: r.sig }); }
+              if (what.sol && bal.sol > 0.00002) { const r = await wallets.sweepSol(RPC_URL, ws, catW.kp, ws.treasury.pub, `${config.TICKER} · ${n} · SOL back to the treasury`); parts.push(`${n}: ${r.sol.toFixed(6)} SOL ${r.sig.slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: r.sol, memo: 'all SOL back to the treasury', ok: true, sig: r.sig }); catsPaidIn += r.sol; }
             } catch (e) { errs.push(`${n}: ${e.message}`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: 'back to the treasury', ok: false, err: String(e.message).slice(0, 160) }); console.error('collect', n, e.message); }
           }
           pollBalances();

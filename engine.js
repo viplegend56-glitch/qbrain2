@@ -527,21 +527,22 @@ let dayCur = null;
 const snapCat = c => ({ earned: c.earned, qi: c.qiEarned || 0, jobs: c.qjobs || 0, tasks: c.tasks || 0, sold: c.sold, bought: c.bought, spent: c.upkeep || 0, meetings: c.meetings || 0, lvl: c.lvl || 1, xp: c.xp || 0 });
 function dayStart() {
   for (const k of Object.keys(PLACES)) placeDay[k] = { visits: 0, spent: 0 }; restock(); diner.sold = 0;
-  dayCur = { day: dayNo(), startT: T, fees0: stats.fees, wages0: stats.wages, upkeep0: stats.upkeep, sold0: stats.sold, bought0: stats.boughtBack, jobs0: stats.circuits, mcapStart: mcapUsd(), meeting: { held: false, at: '', lines: [] }, events: [], tasks: [], cats0: {} };
+  dayCur = { day: dayNo(), startT: T, tre0: liveTreasurySol(), fees0: stats.fees, wages0: stats.wages, upkeep0: stats.upkeep, sold0: stats.sold, bought0: stats.boughtBack, jobs0: stats.circuits, mcapStart: mcapUsd(), meeting: { held: false, at: '', lines: [] }, events: [], tasks: [], cats0: {} };
   for (const c of cats) dayCur.cats0[c.name] = snapCat(c);
 }
+const liveTreasurySol = () => stats.treasury; // the treasury as the box knows it (set from the wallet by the brain in the real modes)
 function recapOf(d, final) {
   const perCat = {};
   for (const c of cats) { const a = d.cats0[c.name] || snapCat(c), b = snapCat(c); perCat[c.name] = { earned: b.earned - a.earned, jobs: b.jobs - a.jobs, tasks: b.tasks - a.tasks, sold: b.sold - a.sold, bought: b.bought - a.bought, spent: b.spent - a.spent, meetings: b.meetings - a.meetings, lvlFrom: a.lvl, lvlTo: b.lvl, xp: b.xp - a.xp }; }
   const names = Object.keys(perCat), by = f => names.slice().sort((p, q) => f(perCat[q]) - f(perCat[p]))[0];
-  return { day: d.day, final: !!final, fees: stats.fees - d.fees0, wages: stats.wages - d.wages0, upkeep: stats.upkeep - d.upkeep0, sold: stats.sold - d.sold0, bought: stats.boughtBack - d.bought0, jobs: stats.circuits - d.jobs0, tasks: d.tasks.length, mcapStart: d.mcapStart, mcapEnd: mcapUsd(), treasuryEnd: stats.treasury, meeting: d.meeting, events: d.events.slice(-80), tasksDone: d.tasks.slice(-60), cats: perCat, topWorker: names.length ? by(x => x.jobs + x.tasks) : null, topEarner: names.length ? by(x => x.earned) : null };
+  return { day: d.day, final: !!final, fees: stats.fees - d.fees0, gained: liveTreasurySol() - (d.tre0 != null ? d.tre0 : liveTreasurySol()), wages: stats.wages - d.wages0, upkeep: stats.upkeep - d.upkeep0, sold: stats.sold - d.sold0, bought: stats.boughtBack - d.bought0, jobs: stats.circuits - d.jobs0, tasks: d.tasks.length, mcapStart: d.mcapStart, mcapEnd: mcapUsd(), treasuryEnd: stats.treasury, meeting: d.meeting, events: d.events.slice(-80), tasksDone: d.tasks.slice(-60), cats: perCat, topWorker: names.length ? by(x => x.jobs + x.tasks) : null, topEarner: names.length ? by(x => x.earned) : null };
 }
 function dayEnd() {
   if (!dayCur) return; const r = recapOf(dayCur, true); days.unshift(r); if (days.length > 14) days.pop();
-  log(`Day ${dayCur.day} is over. Recap: ${fmtSol(r.fees)} SOL of fees in, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topWorker ? ', ' + r.topWorker + ' worked hardest' : ''}${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}. The full recap is on the Recap page.`, 'link');
+  log(`Day ${dayCur.day} is over. Recap: treasury ${r.gained >= 0 ? '+' : ''}${fmtSol(r.gained)} SOL, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topWorker ? ', ' + r.topWorker + ' worked hardest' : ''}${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}. The full recap is on the Recap page.`, 'link');
   if (dayEndHook) { try { dayEndHook(r, meetingContext()); } catch (_) {} }
   else setLesson(pick([
-    `day ${r.day}: ${fmtSol(r.fees)} SOL of fees in, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}`,
+    `day ${r.day}: treasury ${r.gained >= 0 ? '+' : ''}${fmtSol(r.gained)} SOL, ${fmtSol(r.wages)} SOL paid out, ${r.jobs} job${r.jobs === 1 ? '' : 's'} run, ${r.tasks} thing${r.tasks === 1 ? '' : 's'} dealt with${r.topEarner ? ', ' + r.topEarner + ' earned most' : ''}`,
     `day ${r.day}: ${r.events.filter(e => e.kind === 'faint').length} faint${r.events.filter(e => e.kind === 'faint').length === 1 ? '' : 's'}, ${r.events.filter(e => e.kind === 'decohere').length} decoherence${r.events.filter(e => e.kind === 'decohere').length === 1 ? '' : 's'}${r.events.some(e => e.kind === 'theft') ? ', somebody robbed the bunks' : ''}${r.topWorker ? ', ' + r.topWorker + ' worked hardest' : ''}`,
   ]));
   dayStart();
@@ -828,7 +829,7 @@ const stats = { circuits: 0, labSol: 0, qiPool: 500000000, qcatPool: 500000, qca
 const P0 = CONFIG.START_MC_USD / CONFIG.SOL_USD / SUPPLY; // SOL per token at the starting market cap
 const mkt = { price: P0, p0: P0, hist: [], mom: 0, acc: 0, nextMove: rand(180, 400), last: 0, pinned: false }; // pinned: the chart follows the real market cap, so the cats' own trades don't move it
 const txs = [];
-let uid = 0, simMin = 22 * 60 + randi(0, 30), T = 0;
+let uid = 0, simMin = 0, T = 0; // the clock starts at midnight and a box day is one real hour, so the day number and the clock agree
 let selId = null, hoverId = null, userPickT = -1e9, lastAutoT = 0;
 const byId = id => id == null ? null : cats.find(c => c.id === id) || null;
 const DAY_SECS = 3600; // one day in the box lasts a real hour
@@ -2838,7 +2839,7 @@ stepWeather(0);
 return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setScrapPay(v) { CONFIG.SCRAP_PAY = v > 0 ? v : 100; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
-  T = snap.T || 0; simMin = snap.simMin || simMin;
+  T = snap.T || 0; simMin = (T % DAY_SECS) / DAY_SECS * 1440; // the clock follows the day: midnight is the day boundary
   cats.length = 0; uid = 0;
   for (const sc of snap.cats) { const i = ROSTER.findIndex(r => r[0] === sc.name); if (i < 0) continue; const c = makeCat(i); Object.assign(c, sc); uid = Math.max(uid, c.id); cats.push(c); }
   if (snap.stats) Object.assign(stats, snap.stats);

@@ -120,7 +120,7 @@ Reply with ONLY a JSON array of strings, alternating ${aName}, ${bName}, ${aName
 async function daySummary(ctx, recap) {
   const user = `${describeDay(ctx)}
 
-The day that just ended, day ${recap.day}: ${recap.fees} SOL of fees in, ${recap.wages} SOL paid out, ${recap.jobs} lab jobs, ${recap.tasks} chores, top worker ${recap.topWorker || 'nobody'}, top earner ${recap.topEarner || 'nobody'}.
+The day that just ended, day ${recap.day}: the treasury moved ${Number(recap.gained || 0).toFixed(3)} SOL, ${recap.wages} SOL paid out, ${recap.jobs} lab jobs, ${recap.tasks} chores, top worker ${recap.topWorker || 'nobody'}, top earner ${recap.topEarner || 'nobody'}.
 Notable: ${(recap.events || []).slice(-14).map(e => e.text).join('; ') || 'nothing much'}.
 The meeting's lines: ${(recap.meeting && recap.meeting.lines || []).slice(0, 14).map(l => l.who + ': ' + l.text).join(' / ') || 'no meeting'}.
 
