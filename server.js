@@ -68,14 +68,20 @@ const hooks = {
 const newEngine = () => createEngine({ ...config, SIMULATE_FEES: simulateFees() }, hooks);
 let engine = newEngine();
 try { const snap = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); engine.restore(snap.engine); console.log('restored state from disk'); } catch (_) {}
-engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
 const applyChainMode = () => { const ch = config.chain || {}; if (ch.mode === 'dry') ch.mode = 'off'; ch.buyQi = true; const m = ch.mode || 'off'; engine.setLiveTx(m === 'live' || m === 'test'); engine.setDryRun(false); engine.setTestFlat(m === 'test' ? (ch.testFlat || 0.001) : 0); }; applyChainMode();
 const testFlatNow = () => ((config.chain || {}).mode === 'test' ? (config.chain.testFlat || 0.001) : 0);
+// everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
+function applySettings() {
+  engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); applyChainMode();
+  if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
+  if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
+  if (balances.at) { const tq = balances.treasury && balances.treasury.qi; engine.setQiPool(typeof tq === 'number' ? tq : null, !!config.QI_MINT && typeof tq === 'number'); const t = balances.treasury && balances.treasury.sol; if (typeof t === 'number') engine.setTreasury(t); if (['test', 'live'].includes((config.chain || {}).mode)) engine.setLiveBalances(balances.cats || {}); }
+}
 const saveState = () => { try { fs.writeFileSync(STATE_PATH, JSON.stringify({ at: Date.now(), engine: engine.snapshot() })); } catch (e) { console.error('save failed', e); } };
 function resetBox() {
-  logs.length = 0; engine = newEngine(); engine.setPaused(config.paused);
-  if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
-  saveState(); console.log('box reset');
+  logs.length = 0; chainLog.length = 0; engine = newEngine(); applySettings();
+  saveState(); console.log('box reset (mode ' + ((config.chain || {}).mode || 'off') + ', prices x' + (config.PRICE_MUL || 1) + ')');
 }
 
 const TICK = 0.25;
@@ -112,6 +118,7 @@ setInterval(pollSolPrice, 300000); pollSolPrice();
 
 // ---------- wallets: balances, and "fees landed" detection ----------
 let balances = { at: 0, err: null, cats: {}, treasury: null };
+applySettings(); // now that the market and balance holders exist
 let busy = false; // one on-chain operation at a time
 async function pollBalances() {
   const ws = wallets.load();
