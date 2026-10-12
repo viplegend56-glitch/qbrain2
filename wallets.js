@@ -159,14 +159,20 @@ const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', TOKEN_2022 
 async function mintInfo(rpcUrl, mint) {
   const { Connection, PublicKey } = libs();
   const conn = new Connection(rpcUrl, 'confirmed');
-  const info = await conn.getParsedAccountInfo(new PublicKey(mint));
-  if (!info.value) throw new Error('mint not found: ' + mint);
-  const owner = info.value.owner.toBase58();
-  if (owner !== TOKEN_PROGRAM && owner !== TOKEN_2022) throw new Error('that address is not a token mint');
-  const parsed = info.value.data && info.value.data.parsed;
-  const decimals = parsed && parsed.info && typeof parsed.info.decimals === 'number' ? parsed.info.decimals : null;
-  if (decimals == null) throw new Error('could not read the mint\u2019s decimals');
-  return { program: owner, decimals };
+  let pk; try { pk = new PublicKey(mint); } catch { throw new Error('not a valid Solana address'); }
+  // getTokenSupply only answers for a mint (and gives its decimals); that is the real test
+  let decimals = null, supplyErr = null;
+  try { const sup = await conn.getTokenSupply(pk); decimals = sup && sup.value && typeof sup.value.decimals === 'number' ? sup.value.decimals : null; } catch (e) { supplyErr = String(e.message || e); }
+  const info = await conn.getAccountInfo(pk, 'confirmed');
+  if (!info) throw new Error('no account at that address' + (supplyErr ? ' (' + supplyErr.slice(0, 80) + ')' : ''));
+  const owner = info.owner && info.owner.toBase58 ? info.owner.toBase58() : String(info.owner);
+  const program = owner === TOKEN_2022 || (info.owner && info.owner.equals && info.owner.equals(new PublicKey(TOKEN_2022))) ? TOKEN_2022 : TOKEN_PROGRAM;
+  if (decimals == null) {
+    // not answered as a mint: say what is there instead, so the next step is obvious
+    if (owner !== TOKEN_PROGRAM && owner !== TOKEN_2022) throw new Error(`that address is not a token mint (owned by ${owner.slice(0, 8)}…, ${info.data ? info.data.length : 0} bytes${supplyErr ? '; ' + supplyErr.slice(0, 60) : ''})`);
+    throw new Error('that address belongs to the token program but is not a mint (a token account?)' + (supplyErr ? ': ' + supplyErr.slice(0, 80) : ''));
+  }
+  return { program, decimals, owner };
 }
 function ataOf(owner, mint, program) { const { PublicKey } = libs(); return PublicKey.findProgramAddressSync([owner.toBuffer(), new PublicKey(program).toBuffer(), mint.toBuffer()], new PublicKey(ATA_PROGRAM))[0]; }
 // outs: [{ pub, raw }] (raw = smallest units). Creates the cat's token account if it has none (idempotent), then transferChecked. Five cats per transaction. Returns the signatures.
