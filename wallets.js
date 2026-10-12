@@ -212,29 +212,63 @@ async function transferToken(rpcUrl, ws, fromKp, mint, outs, memo) {
 }
 
 // Jupiter swap. direction 'sell' = mint → SOL, 'buy' = SOL → mint. amountRaw is in the input token's smallest unit.
-async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps) {
+// Jupiter's own error codes, so a refusal reads as a sentence
+const JUP_ERR = { 6000: 'no route (empty route)', 6001: 'the price moved more than the slippage allowed between quote and send', 6002: 'Jupiter: invalid calculation', 6004: 'Jupiter: invalid slippage', 6005: 'Jupiter: not enough percent', 6016: 'Jupiter: swap not supported for this token', 6017: 'Jupiter: exact-out amount not matched' };
+function explainSwapError(e) {
+  const txt = String(e && e.message || e);
+  let m = txt.match(/custom program error: 0x([0-9a-f]+)/i), code = null;
+  if (m) code = parseInt(m[1], 16); else { const k = txt.match(/"Custom":(\d+)/); if (k) { code = parseInt(k[1], 10); m = [null, code.toString(16)]; } }
+  if (code == null) return /insufficient lamports/i.test(txt) ? 'not enough SOL in the wallet for the swap’s fees and deposits' : txt; if (JUP_ERR[code]) return `${JUP_ERR[code]} (0x${m[1]})`;
+  if (code === 1) return 'insufficient funds in the wallet for this swap (0x1)';
+  if (code === 0x1772) return 'the curve moved: too much SOL would be needed now (pump.fun 0x1772)';
+  if (code === 0x1773) return 'the curve moved: too little SOL would come out now (pump.fun 0x1773)';
+  return `program error 0x${m[1]}`;
+}
+const isSlippage = e => /0x1771|0x1772|0x1773|SlippageToleranceExceeded|slippage/i.test(String(e && e.message || e));
+// Jupiter swap with one retry at a wider tolerance when the price moved (small swaps on thin coins do that constantly, and the cost of the tolerance is dust)
+async function jupiterSwap(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts) {
+  const first = slippageBps || 300;
+  try { return await jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, first, opts); }
+  catch (e) {
+    if (!isSlippage(e)) throw new Error(explainSwapError(e));
+    const wider = Math.min(2500, Math.max(first * 3, 1000));
+    try { const r = await jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, wider, opts); r.retried = wider; return r; }
+    catch (e2) { throw new Error(explainSwapError(e2) + ` — even at ${(wider / 100).toFixed(0)}% tolerance`); }
+  }
+}
+async function jupiterSwapOnce(rpcUrl, kp, mint, direction, amountRaw, slippageBps, opts = {}) {
   const { Connection, VersionedTransaction } = libs();
+  const conn = new Connection(rpcUrl, 'confirmed');
+  for (let attempt = 1; attempt <= 3; attempt++) { // a swap that expires is rebuilt from a fresh quote (Jupiter stamps the blockhash; it cannot simply be re-signed)
   if (!mint) throw new Error('no CA set');
   const inputMint = direction === 'sell' ? mint : SOL_MINT, outputMint = direction === 'sell' ? SOL_MINT : mint;
   const base = (process.env.JUP_API || 'https://lite-api.jup.ag/swap/v1').replace(/\/$/, '');
   const hdr = { accept: 'application/json' }; if (process.env.JUP_API_KEY) hdr['x-api-key'] = process.env.JUP_API_KEY;
-  const q = await fetch(`${base}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${slippageBps || 300}`, { headers: hdr });
+  // slippage: Jupiter's own dynamic estimate (what the jup.ag site uses), under a generous ceiling; a fixed 3% refused small swaps on bonding-curve coins with "slippage tolerance exceeded" (0x1771)
+  const maxBps = slippageBps || 1500;
+  const q = await fetch(`${base}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${Math.floor(amountRaw)}&slippageBps=${maxBps}`, { headers: hdr });
   if (!q.ok) throw new Error(`jupiter quote ${q.status}: ${(await q.text()).slice(0, 160)}`);
   const quote = await q.json();
   if (quote.error || !quote.outAmount) throw new Error('jupiter: ' + (quote.error || 'no route for this token yet'));
-  const sw = await fetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify({ quoteResponse: quote, userPublicKey: kp.publicKey.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true, prioritizationFeeLamports: 'auto' }) });
+  const body = { quoteResponse: quote, userPublicKey: kp.publicKey.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true, dynamicSlippage: true, prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: Math.round(opts.maxFeeLamports || 300000) * attempt, priorityLevel: attempt > 1 ? 'veryHigh' : 'high' } } };
+  let sw = await fetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!sw.ok && sw.status === 400) { const txt = await sw.text(); if (/dynamicSlippage/i.test(txt)) { body.dynamicSlippage = { maxBps }; sw = await fetch(`${base}/swap`, { method: 'POST', headers: { ...hdr, 'content-type': 'application/json' }, body: JSON.stringify(body) }); } else throw new Error(`jupiter swap 400: ${txt.slice(0, 160)}`); } // an older swap server wants the object form
   if (!sw.ok) throw new Error(`jupiter swap ${sw.status}: ${(await sw.text()).slice(0, 160)}`);
-  const { swapTransaction } = await sw.json();
+  const { swapTransaction, dynamicSlippageReport } = await sw.json();
+  if (dynamicSlippageReport && dynamicSlippageReport.slippageBps != null) console.log('jupiter dynamic slippage', dynamicSlippageReport.slippageBps, 'bps');
   if (!swapTransaction) throw new Error('jupiter returned no transaction');
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
   tx.sign([kp]);
-  const conn = new Connection(rpcUrl, 'confirmed');
   const raw = tx.serialize();
   const bh = await conn.getLatestBlockhash('confirmed'); // Jupiter stamped the blockhash moments ago; this height is a close upper bound for when it expires
   const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 0 });
   const r = await broadcast(conn, raw, sig, bh.lastValidBlockHeight);
-  if (r !== 'ok') throw new Error('swap expired before it confirmed (network congested) — nothing was swapped, try again');
-  return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
+  if (r === 'ok') return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount), attempt };
+  await sleep(4000); const late = await statusOf(conn, sig, true); // one more look before rebuilding, so a late landing is never doubled
+  if (isConfirmed(late)) return { sig, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount), attempt };
+  console.warn(`swap ${sig.slice(0, 8)}… expired (attempt ${attempt}); rebuilding from a fresh quote`);
+  }
+  throw new Error('swap expired three times before it confirmed (network congested) — nothing was swapped');
 }
 
-module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };
+module.exports = { load, generate, balances, transferSol, sweepSol, recentSigs, explainSwapError, transferToken, mintInfo, jupiterSwap, ROSTER_NAMES, SOL_MINT, LAMPORTS, MEMO_PROGRAM };

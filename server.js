@@ -32,14 +32,14 @@ const DEFAULTS = {
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
   PACE_MIN: 6,                          // in the real modes: minutes between one cat's paid moves (a meal, a spin, a trade…), so the chain is not hammered
-  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001 }, // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, lab pay a hundredth) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
+  chain: { mode: 'off', buyQi: true, maxPaySol: 1, dayCapSol: 25, testFlat: 0.001, fundSwaps: true, swapTopUp: 0.01 }, // fundSwaps: a cat that cannot afford a swap's own costs is topped up by the treasury first, to swapTopUp SOL // mode: off = sandbox (the box only) · test (default testing: real transactions, every price 0.001 SOL, lab pay a hundredth) · live (default: the real deal). The caps are a safety net against a bug, not a setting.
   QI_SOL: 0,                            // fallback SOL price of one $QI for the box's own sells, until the chart is read
   gas: { auto: false, floor: 0.001, min: 0.002 }, // no gas rule: floor is only the chain's rent minimum; the admin table flags a cat under `min` so you can send it SOL by hand
   aiStudyGapSec: 0,                     // with an API key: the model writes every study note (0), or at most one every N seconds
   SOL_USD: 150, START_MC_USD: 3100,
   sellCapPct: 5,          // max % of its stack a cat may sell per day (enforced once the cats trade for real)
   buyPct: 15,             // % of spare SOL a cat spends per buy (same)
-  slippageBps: 300,       // 3% slippage on operator sells
+  slippageBps: 500,       // 5% slippage on swaps (the cats' are dust-sized on thin coins; a refusal retries once at three times this)
   paused: false,
   lastTreasurySol: null,  // last treasury balance we saw, so a rise can be logged as "fees landed"
   feesSeenSol: 0,         // total real SOL that has landed in the treasury
@@ -47,7 +47,7 @@ const DEFAULTS = {
 };
 let config = { ...DEFAULTS };
 try { const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); config = { ...DEFAULTS, ...saved, auto: { ...DEFAULTS.auto, ...(saved.auto || {}) }, gas: { ...DEFAULTS.gas, ...(saved.gas || {}) }, chain: { ...DEFAULTS.chain, ...(saved.chain || {}) } }; } catch (_) {}
-config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; // the name, ticker and gas rule come from the code, not from an old saved config
+config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; if (!(config.slippageBps >= 500)) config.slippageBps = 500; // the name, ticker and gas rule come from the code, not from an old saved config
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
 const simulateFees = () => !config.CA;
@@ -169,7 +169,7 @@ async function runIntent(i) {
   const catW = ws.cats.find(c => c.name === i.cat); if (!catW) throw new Error('unknown cat ' + i.cat);
   const ch = config.chain || {}; const day = new Date().toISOString().slice(0, 10); if (chainSpentToday.day !== day) chainSpentToday = { day, sol: 0 };
   const memo = `${config.TICKER} · ${i.cat} · ${i.memo}`;
-  const RENT = 0.001; // the chain's own minimum: a wallet cannot be emptied below it (there is no gas rule of ours any more)
+  const RENT = 0.001, SWAP_FLOOR = 0.0045; // the chain's own minimum, and what a Jupiter swap needs on top of the amount (fee + the wrapped-SOL deposit)
   if (i.type === 'pay') { // cat -> treasury
     if (i.sol > (ch.maxPaySol || 1)) throw new Error(`over the per-payment cap (${i.sol} SOL)`);
     const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this and the fee`);
@@ -191,7 +191,7 @@ async function runIntent(i) {
       const priceSol = mktQi.priceSol; if (!(priceSol > 0)) throw new Error('no $QI price yet, cannot size the buy');
       const solIn = Math.max((qi - tq) * priceSol * 1.03, 2 / (Number(config.SOL_USD) || 150)), tre = balances.treasury && balances.treasury.sol; // 3% over for slippage, and never a dust buy: at least two dollars' worth, the rest stays in the treasury for the next payouts
       if (typeof tre === 'number' && solIn > tre - 0.01) throw new Error(`treasury needs ${solIn.toFixed(4)} SOL to buy the $QI owed, has ${tre.toFixed(4)}`);
-      const r = await wallets.jupiterSwap(RPC_URL, ws.treasury.kp, config.QI_MINT, 'buy', Math.max(1000, Math.floor(solIn * wallets.LAMPORTS)), config.slippageBps);
+      const r = await wallets.jupiterSwap(RPC_URL, ws.treasury.kp, config.QI_MINT, 'buy', Math.max(1000, Math.floor(solIn * wallets.LAMPORTS)), config.slippageBps, { maxFeeLamports: 300000 });
       const got = r.outAmount / Math.pow(10, dec); tq += got; if (balances.treasury) balances.treasury.qi = tq;
       chainNote({ id: i.id + 'b', type: 'buy $QI', cat: 'treasury', to: 'treasury', sol: solIn, memo: `bought ${Math.floor(got).toLocaleString('en-US')} $QI for ${i.cat}'s pay`, ok: true, sig: r.sig }); console.log('treasury bought', got, '$QI for', solIn, 'SOL', r.sig);
       if (qi > tq) throw new Error('the $QI buy came up short; will retry');
@@ -214,14 +214,25 @@ async function runIntent(i) {
     const mint = i.tok === 'qi' ? config.QI_MINT : config.CA; if (!mint) throw new Error(`no ${i.tok === 'qi' ? '$QI' : config.TICKER} CA set`);
     const dec = i.tok === 'qi' ? (balances.treasury && balances.treasury.qiDec) : (balances.treasury && balances.treasury.decimals);
     const decimals = dec != null ? dec : (await wallets.mintInfo(RPC_URL, mint)).decimals;
+    if (i.dir === 'buy' && i.sol > (ch.maxPaySol || 1)) throw new Error('buy over the cap');
+    // a swap costs the cat more than it trades: the fee, a deposit for the temporary wrapped-SOL account (refunded), and on a first buy the token account (not). Short of that, the treasury tops it up first.
+    const b = balances.cats[i.cat] || {}, hasAcct = i.tok === 'qi' ? (b.qiRaw > 0) : (b.qcatRaw > 0);
+    const need = SWAP_FLOOR + (i.dir === 'buy' ? i.sol : 0) + (i.dir === 'buy' && !hasAcct ? 0.0021 : 0);
+    if (typeof b.sol === 'number' && b.sol < need) {
+      if (ch.fundSwaps === false) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this swap and its fees (funding is off)`);
+      const topTo = Math.max(need + 0.0005, Number(ch.swapTopUp) || 0.01), amt = Math.round((topTo - b.sol) * 1e6) / 1e6, tre = balances.treasury && balances.treasury.sol;
+      if (typeof tre === 'number' && tre - amt < 0.005) throw new Error(`treasury has ${tre.toFixed(4)} SOL, cannot fund ${i.cat}'s swap (${amt.toFixed(4)} needed)`);
+      if (chainSpentToday.sol + amt > (ch.dayCapSol || 25)) throw new Error('treasury day cap reached'); chainSpentToday.sol += amt;
+      const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, [{ pub: catW.pub, sol: amt }], `${config.TICKER} · ${i.cat} · SOL to swap with`, true);
+      chainNote({ id: i.id + 'f', type: 'fund', cat: 'treasury', to: i.cat, sol: amt, memo: 'SOL to swap with', ok: true, sig }); engine.noteFund(i.cat, amt, sig); b.sol += amt; console.log('funded', i.cat, amt, 'SOL to swap with', sig);
+    }
+    const feeCap = ch.mode === 'test' ? 100000 : 300000; // lamports of priority at most: a tenth of a cent in testing
     if (i.dir === 'buy') {
-      if (i.sol > (ch.maxPaySol || 1)) throw new Error('buy over the cap');
-      const b = balances.cats[i.cat]; if (b && b.sol - i.sol < RENT + 0.0025) throw new Error(`${i.cat} has ${b.sol.toFixed(4)} SOL, not enough for this swap and its fees`); // a first buy also creates the token account (rent ~0.002)
-      const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'buy', Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)), config.slippageBps);
+      const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'buy', Math.max(1000, Math.floor(i.sol * wallets.LAMPORTS)), config.slippageBps, { maxFeeLamports: feeCap });
       return { sig: r.sig, extra: { inSol: r.inAmount / wallets.LAMPORTS, outQ: r.outAmount / Math.pow(10, decimals) } };
     }
     const raw = Math.floor(i.q * Math.pow(10, decimals)); if (raw < 1) throw new Error('nothing to sell');
-    const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'sell', raw, config.slippageBps);
+    const r = await wallets.jupiterSwap(RPC_URL, catW.kp, mint, 'sell', raw, config.slippageBps, { maxFeeLamports: feeCap });
     return { sig: r.sig, extra: { inQ: r.inAmount / Math.pow(10, decimals), outSol: r.outAmount / wallets.LAMPORTS } };
   }
   if (i.type === 'win') { // treasury -> cat (a casino win)
@@ -476,6 +487,7 @@ const server = http.createServer(async (req, res) => {
         const ch = config.chain; ch.mode = ['off', 'test', 'live'].includes(b.mode) ? b.mode : 'off'; ch.buyQi = true; ch.testFlat = 0.001;
         if ('PRICE_MUL' in b && b.PRICE_MUL !== '') { config.PRICE_MUL = Math.max(0.1, Math.min(20, Number(b.PRICE_MUL) || 1)); engine.setPriceMul(config.PRICE_MUL); }
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
+        if ('fundForm' in b) { ch.fundSwaps = !!b.fundSwaps; if (b.swapTopUp !== '' && b.swapTopUp != null) ch.swapTopUp = Math.max(0.005, Math.min(1, Number(b.swapTopUp) || 0.01)); }
         applyChainMode(); saveConfig(); return back(res, 'economy: ' + ({ off: 'sandbox', test: 'default testing — every price 0.001 SOL', live: 'default — real prices' })[ch.mode] + ' · prices x' + config.PRICE_MUL);
       }
       if (p === '/admin/payowed') { const n = engine.retryUnpaid(); return back(res, n ? n + ' payout' + (n === 1 ? '' : 's') + ' queued again' : 'nothing waiting'); }
@@ -508,6 +520,23 @@ const server = http.createServer(async (req, res) => {
           }
           pollBalances();
           return (parts.length ? 'sent to the treasury — ' + parts.join(' · ') : 'nothing to send') + (errs.length ? ' · failed: ' + errs.join(' · ') : '');
+        });
+        return back(res, 'queued — see Pending');
+      }
+      if (p === '/admin/topup') { // every ticked cat below the target gets the difference from the treasury, in one transaction
+        const ws = wallets.load(); if (!ws.ready || !RPC_URL) return back(res, 'wallets or RPC not ready', true);
+        const target = Math.max(0.002, Math.min(5, Number(b.target) || 0)); if (!(target > 0)) return back(res, 'enter a target balance', true);
+        const names = wallets.ROSTER_NAMES.filter(n => b['dist_' + n]); if (!names.length) return back(res, 'no cat is ticked', true);
+        queueJob('topup', `top up ${names.length} cats to ${target.toFixed(3)} SOL`, async () => {
+          await pollBalances();
+          const outs = names.map(n => ({ name: n, pub: ws.cats.find(c => c.name === n).pub, sol: Math.round((target - ((balances.cats[n] || {}).sol || 0)) * 1e6) / 1e6 })).filter(o => o.sol >= 0.0002);
+          if (!outs.length) return 'every ticked cat is already at or above ' + target.toFixed(3) + ' SOL';
+          const need = outs.reduce((a, o) => a + o.sol, 0), tre = balances.treasury && balances.treasury.sol;
+          if (typeof tre === 'number' && need > tre - 0.01) throw new Error(`treasury has ${tre.toFixed(4)} SOL; ${need.toFixed(4)} needed`);
+          const sig = await wallets.transferSol(RPC_URL, ws, ws.treasury.kp, outs, `${config.TICKER} · top-up`, true);
+          for (const o of outs) { engine.noteFund(o.name, o.sol, sig); chainNote({ id: 'T', type: 'topup', cat: 'treasury', to: o.name, sol: o.sol, memo: 'top-up to ' + target.toFixed(3) + ' SOL', ok: true, sig }); }
+          config.lastTreasurySol = (tre || 0) - need; saveConfig(); pollBalances();
+          return `topped up ${outs.map(o => o.name + ' +' + o.sol.toFixed(4)).join(', ')} · ${sig.slice(0, 8)}…`;
         });
         return back(res, 'queued — see Pending');
       }
