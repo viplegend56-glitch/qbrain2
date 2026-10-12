@@ -38,7 +38,7 @@ async function balances(rpcUrl, ws, mint, qiMint) {
   const pkOf = m => { try { return m ? new PublicKey(m) : null; } catch (_) { return null; } };
   const mintPk = pkOf(mint), qiPk = pkOf(qiMint);
   async function tok(pk, mp) {
-    if (!mp) return { ui: null, raw: null, dec: null };
+    if (!mp) return { ui: 0, raw: 0, dec: null }; // no mint set yet: the wallets hold none of it, and the box shows exactly that
     const r = await conn.getParsedTokenAccountsByOwner(pk, { mint: mp });
     let ui = 0, raw = 0, dec = null;
     for (const a of r.value) { const ta = a.account.data.parsed.info.tokenAmount; ui += Number(ta.uiAmount || 0); raw += Number(ta.amount || 0); dec = ta.decimals; }
