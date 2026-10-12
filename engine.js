@@ -401,7 +401,8 @@ const SCRAP_JOBS = [ // title, tier, what comes out of it
   ['recover the window from a dead laser head', 2, 'one window, one lesson about dust'], ['salvage a turbo pump off the quay', 3, 'a pump that spins, for now'],
 ];
 const scrapPayBase = () => (Number(CONFIG.SCRAP_PAY) > 0 ? Number(CONFIG.SCRAP_PAY) : 100); // $QCATS a tier-1 job pays; tier 2 two and a half times that, tier 3 five times
-const scrapPay = tier => Math.round(scrapPayBase() * [0, 1, 2.5, 5][tier]);
+// a salvage job pays half a meal's worth of $QCATS at the chart price (tier 2 one and a quarter meals, tier 3 two and a half), capped at 25,000; with no chart yet, the admin's flat figure by tier
+const scrapPay = tier => { const f = [0, 1, 2.5, 5][tier]; if (mkt.pinned && mkt.price > 0) return Math.max(1, Math.min(25000, Math.round(costOf(FOOD) * 0.5 * f / mkt.price))); return Math.round(scrapPayBase() * f); };
 const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
 function stepScrap() {
   if (!board.scrap) { board.scrap = []; board.scrapDone = []; }
@@ -633,7 +634,7 @@ const GAS_FLOOR = 0.001, GAS_MIN = 0.0005, TX_FEE = 0.000005; // no gas rule: a 
 const spendGas = c => { c.gas = Math.max(0, (c.gas == null ? GAS_FLOOR : c.gas) - TX_FEE); };
 // $QI: what the lab pays. Paid per job out of the lab's pool while the box runs on its own; once the real $QI wallet is wired in, jobs only earn a share of the next payout.
 const QI = '$QI';
-const labPayMin = () => Number(CONFIG.LAB_PAY_MIN_USD) > 0 ? Number(CONFIG.LAB_PAY_MIN_USD) : 5, labPayMax = () => Number(CONFIG.LAB_PAY_MAX_USD) > 0 ? Number(CONFIG.LAB_PAY_MAX_USD) : 15; // a lab job pays between these, in dollars' worth of $QI
+const labPayMin = () => (Number(CONFIG.LAB_PAY_MIN_USD) > 0 ? Number(CONFIG.LAB_PAY_MIN_USD) : 5) * priceMul(), labPayMax = () => (Number(CONFIG.LAB_PAY_MAX_USD) > 0 ? Number(CONFIG.LAB_PAY_MAX_USD) : 15) * priceMul(); // a filled bar pays between these, in dollars' worth of $QI; the admin's figures are for x1 and follow the price multiplier
 const qiUsd = () => qiSol() * (Number(CONFIG.SOL_USD) || 150); // dollars per $QI, from the chart once it is wired in
 const qiFor = usd => Math.max(1, Math.round(usd / Math.max(1e-12, qiUsd()))); // how many $QI that many dollars is right now
 const qiPerJob = () => qiFor((labPayMin() + labPayMax()) / 2);
@@ -1112,7 +1113,8 @@ function finish(c, p) {
     }
     if (t && t.by === c.name && (t.status === 'taken' || t.status === 'carried')) {
       const sk = skillLvl(skillOf(c, 'tasks')), quantum = !!t.q;
-      let pay = stats.treasury * (quantum ? 0.03 : 0.012) * t.tier + Math.min(t.bounty, stats.treasury); pay = Math.max(0, Math.min(pay, stats.treasury, 0.05 * priceMul())); if (pay < 0.0005) pay = 0; if (testFlat() && pay > 0) pay = Math.min(testFlat(), stats.treasury); // a slice of the treasury, by tier; the flat amount in testing
+      // a chore pays in meals: a tier-1 job two meals, tier 2 three and a half, tier 3 five (a quantum chore half as much again), plus any bounty on it; never more than a quarter of what the treasury holds
+      let pay = costOf(FOOD) * [0, 2, 3.5, 5][t.tier] * (quantum ? 1.5 : 1) + Math.min(t.bounty, stats.treasury); pay = Math.max(0, Math.min(pay, stats.treasury * 0.25)); if (pay < 0.0005) pay = 0; if (testFlat() && pay > 0) pay = Math.min(testFlat(), stats.treasury); // the flat amount in testing
       const credit = (quantum ? 1.0 : 0.4) * t.tier;
       c.twork = (c.twork || 0) + credit; c.tasks = (c.tasks || 0) + 1; if (quantum) { c.qjobs++; c.qnq += 2 + t.tier * 2; } learn(c, 'tasks', 1); learn(c, quantum ? 'quantum tasks' : 'chores', 1);
       if (pay > 0) { if (feePool()) stats.treasury -= pay; c.taskPay = (c.taskPay || 0) + pay; payCat(c, pay, 0, t.title, 'vault'); }

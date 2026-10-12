@@ -140,11 +140,11 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <div class="dist">
       <form method="post" action="/admin/payouts">
         <div class="row3">
-          <div><label>a small bar pays ($ of $QI)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
+          <div><label>a small bar pays ($ of $QI, at prices x1; it follows the price multiplier)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
           <div><label>a big bar pays ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
           <div><label>bar size × — every bar this many times longer (2 = twice the work for the same pay)</label><input type="number" step="0.1" min="0.1" max="20" name="GOAL_MUL" value="${esc(config.GOAL_MUL || 1)}"></div>
         </div>
-        <label>the scrapyard: a tier-1 salvage job pays this many ${esc(config.TICKER)} from the treasury's own supply (tier 2 pays 2.5×, tier 3 pays 5×; nothing is bought — send the coin to the treasury and the yard pays from it)</label><input type="number" step="1" min="1" name="SCRAP_PAY" value="${esc(config.SCRAP_PAY || 100)}" style="max-width:220px">
+        <label>the scrapyard: once the CA is set and the chart is read, a tier-1 job pays half a meal's worth of ${esc(config.TICKER)} at the chart price (tier 2 one and a quarter meals, tier 3 two and a half), from the treasury's own supply. Until then it pays this flat figure (tier 2 pays 2.5×, tier 3 pays 5×). Nothing is bought — send the coin to the treasury and the yard pays from it.</label><input type="number" step="1" min="1" name="SCRAP_PAY" value="${esc(config.SCRAP_PAY || 100)}" style="max-width:220px">
         <button class="btn">Save</button>
       </form>
       <form method="post" action="/admin/payowed" style="text-align:right">
