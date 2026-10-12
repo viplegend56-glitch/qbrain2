@@ -400,10 +400,9 @@ const SCRAP_JOBS = [ // title, tier, what comes out of it
   ['strip a wrecked control rack for its DACs', 3, 'sixteen channels of arbitrary waveform, somehow fine'], ['sort a bucket of mixed cryogenic bolts', 1, 'bolts, by size, brass and steel apart'], ['clean a tray of sample holders', 1, 'twelve holders, gold still bright'],
   ['recover the window from a dead laser head', 2, 'one window, one lesson about dust'], ['salvage a turbo pump off the quay', 3, 'a pump that spins, for now'],
 ];
-const scrapPayBase = () => (Number(CONFIG.SCRAP_PAY) > 0 ? Number(CONFIG.SCRAP_PAY) : 100); // $QCATS a tier-1 job pays before there is a chart; tier 2 two and a half times that, tier 3 five times
-const scrapPayUsd = tier => (Number(CONFIG.SCRAP_PAY_USD) > 0 ? Number(CONFIG.SCRAP_PAY_USD) : 1) * [0, 1, 2.5, 5][tier] * priceMul(); // dollars a job pays: the admin's tier-1 figure ($1 by default), tier 2 two and a half times, tier 3 five times, times the price multiplier
-// a salvage job pays that many dollars' worth of $QCATS at the chart price, never more than a tenth of the treasury's supply; with no chart yet, the admin's flat figure by tier
-const scrapPay = tier => { if (qcatUsd() > 0) { let n = Math.round(scrapPayUsd(tier) / qcatUsd()); if (qcatPool() > 0) n = Math.min(n, Math.floor(qcatPool() * 0.1)); return Math.max(1, n); } return Math.round(scrapPayBase() * [0, 1, 2.5, 5][tier] * priceMul()); };
+// a salvage job pays a dollar of $QCATS at the chart price (tier 2 two and a half, tier 3 five), times the price multiplier, never more than a tenth of the treasury's supply
+const SCRAP_USD = [0, 1, 2.5, 5], scrapPayUsd = tier => SCRAP_USD[tier] * priceMul();
+const scrapPay = tier => { const per = mkt.price * (Number(CONFIG.SOL_USD) || 150); if (!(per > 0)) return 0; let n = Math.round(scrapPayUsd(tier) / per); if (qcatPool() > 0) n = Math.min(n, Math.floor(qcatPool() * 0.1)); return Math.max(1, n); };
 const qcatPool = () => (stats.qcatPool || 0), qcatLive = () => CONFIG.QCAT_LIVE === true; // the treasury's own $QCATS: a pretend pile while the box runs on its own, the real balance once the brain reads it
 function stepScrap() {
   if (!board.scrap) { board.scrap = []; board.scrapDone = []; }
@@ -636,16 +635,15 @@ const GAS_FLOOR = 0.001, GAS_MIN = 0.0005, TX_FEE = 0.000005; // no gas rule: a 
 const spendGas = c => { c.gas = Math.max(0, (c.gas == null ? GAS_FLOOR : c.gas) - TX_FEE); };
 // $QI: what the lab pays. Paid per job out of the lab's pool while the box runs on its own; once the real $QI wallet is wired in, jobs only earn a share of the next payout.
 const QI = '$QI';
-// payroll: every half hour the treasury pays back a share of what each cat spent since the last payroll, but only to a cat that is short (under a few meals' worth), and only up to that line
-const payrollPct = () => (Number(CONFIG.PAYROLL_PCT) >= 0 ? Number(CONFIG.PAYROLL_PCT) : 60) / 100, payrollFloorMeals = () => (Number(CONFIG.PAYROLL_MEALS) > 0 ? Number(CONFIG.PAYROLL_MEALS) : 4);
+// payroll: every half hour, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll, from the treasury; a cat with SOL in paw gets nothing
 let payrollNext = 1800;
+const payrollSpent = c => Math.max(0, (c.upkeep || 0) - (c.payrollMark || 0)), payrollDue = c => c.sol < costOf(FOOD, c) && payrollSpent(c) > 0; // who the next payroll would pay, as things stand
 function stepPayroll() {
   if (T < payrollNext) return; payrollNext = T + 1800;
-  const floor = costOf(FOOD) * payrollFloorMeals();
   for (const c of cats) {
-    const spent = Math.max(0, (c.upkeep || 0) - (c.payrollMark || 0)); c.payrollMark = c.upkeep || 0;
-    if (!(spent > 0) || c.sol >= floor) continue;
-    let pay = Math.min(spent * payrollPct(), floor - c.sol, stats.treasury * 0.2); if (testFlat() && pay > 0) pay = Math.min(testFlat(), stats.treasury);
+    const spent = payrollSpent(c), due = payrollDue(c); c.payrollMark = c.upkeep || 0;
+    if (!due) continue;
+    let pay = Math.min(spent, stats.treasury * 0.2); if (testFlat() && pay > 0) pay = Math.min(testFlat(), stats.treasury);
     pay = Math.floor(pay * 1e6) / 1e6; if (pay < 0.0005) continue;
     if (feePool()) stats.treasury -= pay; payCat(c, pay, 0, 'payroll: half an hour of work', 'vault');
   }
@@ -711,6 +709,7 @@ function sellFrac(c) { // how much of the stack goes, by feeling: starving sells
 // survival gets dearer as the chart climbs: x1 at the starting cap, x4 at 16x, x8 at 64x, capped at x40
 const priceMul = () => (Number(CONFIG.PRICE_MUL) > 0 ? Number(CONFIG.PRICE_MUL) : 1); // every price in the box times this; set by hand in the brain's admin (x1 by default)
 const liveTx = () => CONFIG.LIVE_TX === true; // set by the brain once it is executing for real
+const isPaused = () => CONFIG.PAUSED === true, PAUSE_OK = new Set(['idle', 'sleep', 'entangle', 'meet']); // transactions paused from the admin: no money moves and no wages, the cats just hang about, needs stand still
 const testFlat = () => (Number(CONFIG.TEST_FLAT) > 0 ? Number(CONFIG.TEST_FLAT) : 0); // the brain's 'default testing' mode: every price in the box is this flat amount of SOL
 const costOf = (base, c) => testFlat() ? (base > 0 ? testFlat() : 0) : base * priceMul() * (c ? 1 - 0.04 * Math.min(9, (c.lvl || 1) - 1) : 1);
 const spare = c => Math.max(0, c.sol - costOf(RESERVE, c));
@@ -824,7 +823,7 @@ const TH = {
   sleep: ['eyes won’t stay open', 'the bunks. now.', 'wake me if the chart moves'],
 };
 
-const fmtSol = v => { const n = Number(v) || 0; if (n !== 0 && Math.abs(n) < 0.0005) return n.toFixed(6).replace(/0+$/, ''); return n !== 0 && Math.abs(n) < 0.005 ? n.toFixed(3) : n.toFixed(2); }; // a dust amount (a tiny real sale) shows its real figure rather than 0.000; // x.xx everywhere; only a testing-mode price (0.001) gets a third place so it does not read as 0.00 // two decimals, everywhere, by request
+const fmtSol = v => { const n = Number(v) || 0; return n !== 0 && Math.abs(n) < 0.01 ? n.toFixed(3) : n.toFixed(2); }; // x.xx everywhere; under 0.01 SOL three places (0.009 to 0.001), never more
 const fmtQ = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'K' : Math.round(v).toLocaleString('en-US'));
 const fmtUsd = v => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e5 ? '$' + Math.round(v / 1e3) + 'K' : v >= 1e4 ? '$' + (v / 1e3).toFixed(1) + 'K' : v >= 1e3 ? '$' + (v / 1e3).toFixed(2) + 'K' : '$' + Math.round(v));
 const mcapUsd = () => mkt.price * SUPPLY * CONFIG.SOL_USD;
@@ -953,6 +952,7 @@ function decide(c) {
   let ch = null, partner = null;
   for (const o of ws) {
     if (o.act === 'scrap' || o.act === 'entangle' || o.act === 'wager') { partner = findPartner(c, o.act); if (!partner) continue; }
+    if (isPaused() && !PAUSE_OK.has(o.act)) continue; // paused: nothing that moves money or earns it
     if (paced(c, o.act)) continue;
     if (o.act === 'buy' && c.forced !== 'buy' && spare(c) < (testFlat() || 0.006)) continue;
     if (!canAfford(c, o.act)) continue; // it knows what things cost: no trips to the diner, the heater, the beacon, the yard or the casino with an empty wallet
@@ -2634,15 +2634,16 @@ function catDir(c, vx, vy, dt) {
   c.dirT = (c.dirT || 0) + dt; if (c.dirT > 0.22) { c.dir = cand; c.dirT = 0; if (cand === 'R') c.face = 1; else if (cand === 'L') c.face = -1; }
 }
 function update(c, dt) {
+  if (isPaused() && !PAUSE_OK.has(c.act) && c.state !== 'pause') { if (c.partner) endPair(c, byId(c.partner)); releaseTask(c); c.partner = null; c.initiator = false; c.state = 'pause'; c.pauseT = rand(1, 3); c.doing = 'off the clock'; c.because = 'transactions are paused'; } // paused: whatever it was about to pay for or earn, it drops
   const working = c.state === 'act' && c.act === 'work', sleeping = asleep(c);
-  const R = 0.16; // pace: meters fill slowly; a cat does a dozen things in an hour-long day
+  const R = isPaused() ? 0 : 0.16; // pace: meters fill slowly; a cat does a dozen things in an hour-long day (nothing fills while transactions are paused)
   c.hunger = clamp(c.hunger + (sleeping ? 0.0006 : 0.002 + (working ? 0.0008 : 0)) * R * dt); // a meal every 45 minutes or so awake
   c.coh = clamp(c.coh - (0.0055 * wx.coh + (working ? 0.008 : 0) + (working && c.job === 'tunneler' ? 0.005 : 0)) * R * dt, working ? 0 : 0.08); // only the lab can run a cat all the way down
   if (!(c.state === 'act' && c.act === 'warm') && !sleeping) c.cold = clamp(c.cold + 0.0065 * wx.cold * R * dt);
   if (!(c.state === 'act' && c.act === 'entangle')) c.lonely = clamp(c.lonely + 0.005 * R * dt);
   c.tired = clamp(c.tired + (sleeping ? -0.0015 : (0.0012 + (working ? 0.0016 : 0)) * R * (c.stamina || 1)) * dt);
   c.grudge = Math.max(0, c.grudge - 0.0012 * dt); if (c.grudge <= 0) { c.grudgeOn = null; c.grudgeWhy = ''; }
-  if (c.hunger >= 1 && !sleeping) { c.starve += dt; if (c.starve > 300) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
+  if (c.hunger >= 1 && !sleeping && !isPaused()) { c.starve += dt; if (c.starve > 300) { c.starve = 0; c.hunger = 0.7; log(`${c.name} fainted from hunger`, 'loss'); faint(c, 'went too long without food'); return; } } else c.starve = 0;
   if (c.coh <= 0 && working) {
     c.coh = 0.45; const drop = 0; c.qcat -= drop; stats.lostPool += drop; c.decohered = (c.decohered || 0) + 1;
     if (drop > 0) { did(c, `decohered and scattered ${fmtQ(drop)} ${TK}`); recordEvent('decohere', `${c.name} decohered in the lab and scattered ${fmtQ(drop)} ${TK}`); log(`${c.name} decohered and scattered ${fmtQ(drop)} ${TK} across the block. It ended up in the scrapyard.`, 'loss', 'trays'); tx(c, 'lost', '-' + fmtQ(drop) + ' ' + TK, 'decohered'); }
@@ -2706,11 +2707,10 @@ function update(c, dt) {
 
 /* ---------- server-side control ---------- */
 let realMcap = null;      // when set, the chart follows the real market cap instead of the random walk
-let paused = false;
 let nextFee = rand(20, 50);
 let externalFees = 0;     // SOL dropped into the treasury from outside (real fee claims)
 function setMarketCapUsd(v) { if (v == null || !(v > 0)) { realMcap = null; mkt.pinned = false; return; } realMcap = v; mkt.pinned = true; mkt.price = v / CONFIG.SOL_USD / SUPPLY; mkt.p0 = mkt.price; }
-function setPaused(p) { paused = !!p; }
+function setPaused(p) { CONFIG.PAUSED = !!p; } // transactions paused: no money moves, no wages, needs stand still; the cats keep wandering
 function dropFees(sol) { if (!(sol > 0)) return; stats.treasury += sol; stats.fees += sol; externalFees += sol; if (stats.treasury >= 0.02) stats.low = false; feeFX(sol); log(`Creator fees dropped ${fmtSol(sol)} SOL in the treasury`, 'gain', 'vault'); tx(null, 'fees', '+' + fmtSol(sol) + ' SOL', 'claimed'); }
 function setReleased(names) { for (const n of names) { benched.delete(n); const i = ROSTER.findIndex(r => r[0] === n); if (i >= 0 && !cats.some(c => c.name === n)) release(i); } }
 function unrelease(name) {
@@ -2835,7 +2835,6 @@ studyHook = (c, info) => { if (hooks.onStudy) hooks.onStudy(meetingContext(), c.
 dayEndHook = (recap, ctx) => { if (hooks.onDayEnd) hooks.onDayEnd(recap, ctx); else setLesson(`day ${recap.day}: ${fmtSol(recap.fees)} SOL of fees in, ${recap.jobs} job${recap.jobs === 1 ? '' : 's'} run, ${recap.tasks} thing${recap.tasks === 1 ? '' : 's'} dealt with${recap.topEarner ? ', ' + recap.topEarner + ' earned most' : ''}`); };
 function setTreasury(sol) { if (CONFIG.SIMULATE_FEES === false && typeof sol === 'number' && sol >= 0) stats.treasury = sol; } // the box shows the real treasury wallet once the coin is live
 function step(dt) {
-  if (paused) return;
   T += dt; simMin += dt * (1440 / DAY_SECS);
   stepWeather(dt);
   if (realMcap == null) stepMarket(dt);
@@ -2846,7 +2845,7 @@ function step(dt) {
 }
 function snapshot() {
   return {
-    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next, said: (meeting.said || []).slice(-90), tre0: meeting.tre0 || 0 }, paused, realMcap,
+    v: 1, T, simMin, clock: clock(simMin), day: dayNo(), priceMul: priceMul(), meeting: { on: meeting.on, until: meeting.until, next: meeting.next, said: (meeting.said || []).slice(-90), tre0: meeting.tre0 || 0 }, paused: isPaused(), payrollNext, realMcap,
     cats: cats.map(c => ({ id: c.id, name: c.name, job: c.job, trait: c.trait, coat: c.coat, eye: c.eye, dark: c.dark, x: c.x, y: c.y, tx: c.tx, ty: c.ty, face: c.face, state: c.state, act: c.act, actT: c.actT, actDur: c.actDur, partner: c.partner, initiator: c.initiator, arrived: c.arrived, doing: c.doing, thought: c.thought, because: c.because, weighed: c.weighed, bubble: c.bubble, bubbleT: c.bubbleT, sol: c.sol, gas: c.gas == null ? GAS_FLOOR : c.gas, qi: c.qi || 0, qiEarned: c.qiEarned || 0, qiSold: c.qiSold || 0, qiSellSol: c.qiSellSol || 0, twork: c.twork || 0, study: c.study || { i: 0 }, notes: (c.notes || []).slice(0, 24), qiBought: c.qiBought || 0, solved: c.solved || 0, failed: c.failed || 0, lastSellTok: c.lastSellTok || null, lastSellT: c.lastSellT || 0, lastPaidT: c.lastPaidT || 0, lastBuyT: c.lastBuyT || 0, salvaged: c.salvaged || 0, qcatEarned: c.qcatEarned || 0, scrapJob: c.scrapJob || null, donated: c.donated || 0, donateCool: c.donateCool || 0, payrollMark: c.payrollMark || 0, goal: c.goal || null, goalLog: (c.goalLog || []).slice(0, 12), goalsDone: c.goalsDone || 0, goalLast: c.goalLast || '', goalNext: c.goalNext || 0, lvlT: c.lvlT || 0, qcat: c.qcat, earned: c.earned, bought: c.bought, sold: c.sold, buys: c.buys, sells: c.sells, solSpent: c.solSpent, sellSol: c.sellSol, stole: c.stole, robbed: c.robbed, found: c.found, arenaNet: c.arenaNet, arenaSol: c.arenaSol, arenaW: c.arenaW, arenaL: c.arenaL, memory: (c.memory || []).slice(0, 8), casinoW: c.casinoW || 0, casinoL: c.casinoL || 0, casinoNet: c.casinoNet || 0, casinoT: c.casinoT || 0, entry: c.entry, hunger: c.hunger, coh: c.coh, cold: c.cold, lonely: c.lonely, tired: c.tired, grudge: c.grudge, grudgeOn: c.grudgeOn, grudgeWhy: c.grudgeWhy, phase: c.phase, released: c.released, xp: c.xp || 0, lvl: c.lvl || 1, qjobs: c.qjobs || 0, qwork: c.qwork || 0, qnq: c.qnq || 0, ethic: c.ethic || 1, meetings: c.meetings || 0, upkeep: c.upkeep || 0, qmax: c.qmax || 0, items: c.items || [], wearing: c.wearing || null, vanity: c.vanity || 1, skills: c.skills || {}, tasks: c.tasks || 0, taskPay: c.taskPay || 0, task: c.task || null, taskPlace: c.taskPlace || null, chair: c.chair == null ? null : c.chair, meals: c.meals || 0, plays: c.plays || 0, faints: c.faints || 0, decohered: c.decohered || 0, hist: (c.hist || []).slice(0, 40), said: (c.said || []).slice(0, 30), acts: (c.acts || []).slice(0, 40) })),
     stats: { ...stats }, mkt: { price: mkt.price, p0: mkt.p0, mom: mkt.mom, hist: mkt.hist.slice(-120), mcapUsd: mcapUsd() },
     weather: { key: wxKey, next: wxNext, until: wxUntil, dur: wxDur, wx: { ...wx }, labBoostUntil, boat: { ...boat } },
@@ -2864,10 +2863,11 @@ for (let i = 0; i < 2; i++) { const a = pick(cats), b = pick(cats); if (a !== b)
 for (let i = 0; i < 60; i++) mkt.hist.push(mkt.p0 * (1 + rand(-0.05, 0.05)));
 log(`The box woke up. ${cats.map(c => c.name).join(' and ')} are in. Eight more cats are waiting on the chart.`, 'info');
 stepWeather(0);
-return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setScrapPay(v, usd) { CONFIG.SCRAP_PAY = v > 0 ? v : 100; if (usd !== undefined) CONFIG.SCRAP_PAY_USD = usd > 0 ? usd : 1; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, setPayroll(pct, meals) { if (pct >= 0) CONFIG.PAYROLL_PCT = pct; if (meals > 0) CONFIG.PAYROLL_MEALS = meals; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
+return { step, snapshot, postTask(def, by) { return postTask(def, by); }, callTask(id) { return callTask(id); }, setMemory, setLesson, setChat, get lessons() { return lessons; }, get deliveries() { return deliveries; }, labShares, resetLab, setQiPool, setQiPrice, setQiConfig, setNote, qcatGrant, puppet, setGoalMul(v) { CONFIG.GOAL_MUL = v > 0 ? v : 1; }, setQcatPool(n, live) { if (typeof n === 'number' && n >= 0) stats.qcatPool = n; CONFIG.QCAT_LIVE = !!live; }, setStartQcats(v) { CONFIG.START_QCATS = v > 0 ? v : 10000; }, setFundSol, setFundGoal(v) { CONFIG.FUND_GOAL = v > 0 ? v : 2.5; }, get fund() { return { sol: fundSol(), goal: fundGoal(), open: fundOpen(), givers: cats.filter(c => c.donated > 0).length }; }, get research() { return research; }, retryUnpaid, get intents() { return intents; }, get intentLog() { return intentLog; }, intentDone, intentFailed, setLiveBalances, setLiveTx(v) { CONFIG.LIVE_TX = !!v; }, takeIntent() { return intents.find(i => i.state === 'queued') || null; }, markIntent(id, state) { const i = intents.find(x => x.id === id); if (i) i.state = state; }, get payouts() { return payouts; }, setLabPay(lo, hi) { if (lo > 0) CONFIG.LAB_PAY_MIN_USD = lo; if (hi > 0) CONFIG.LAB_PAY_MAX_USD = hi; }, setPriceMul(v) { CONFIG.PRICE_MUL = v > 0 ? v : 1; }, setPace(min) { CONFIG.PACE_MIN = Number(min) >= 0 ? Number(min) : 6; }, setDryRun(v) { CONFIG.DRY_RUN = !!v; }, setTestFlat(v) { CONFIG.TEST_FLAT = v > 0 ? v : 0; }, sellIntent, qiPayout, noteSellQi, noteGas, noteFund, get bots() { return bots; }, sendDrone, get board() { return board; }, get days() { return days; }, TASK_KINDS, setMarketCapUsd, setTreasury, setPaused, get paused() { return isPaused(); }, get payrollNext() { return payrollNext; }, payrollDue(name) { const c = cats.find(x => x.name === name); return !!c && payrollDue(c); }, dropFees, setReleased, unrelease, setTrait, setSolUsd, setSimulateFees, noteFees, noteDeposit, payout, noteSell, noteBuy, workShares, resetWork, setMeetingScript, setThought, meetingContext, TRAITS, OBST, OBC, PERSONA, get cats() { return cats; }, get stats() { return stats; }, get T() { return T; }, get mkt() { return mkt; }, ROSTER, UNLOCK_MC, STAGES, fmtSol, fmtQ, fmtUsd, mcapUsd, stageOn, restore(snap) { restoreFrom(snap); } };
 function restoreFrom(snap) {
   if (!snap || !snap.cats) return;
   T = snap.T || 0; simMin = (T % DAY_SECS) / DAY_SECS * 1440; // the clock follows the day: midnight is the day boundary
+  payrollNext = snap.payrollNext > T ? snap.payrollNext : T + 1800;
   cats.length = 0; uid = 0;
   for (const sc of snap.cats) { const i = ROSTER.findIndex(r => r[0] === sc.name); if (i < 0) continue; const c = makeCat(i); Object.assign(c, sc); uid = Math.max(uid, c.id); cats.push(c); }
   if (snap.stats) Object.assign(stats, snap.stats);

@@ -99,7 +99,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <div class="tile c"><small>market cap</small><b>${usd(snap.mkt.mcapUsd)}</b><small>${market.ok ? 'live · dexscreener · ' + ago(market.at) : 'simulated · ' + esc(market.err || '')}</small></div>
     <div class="tile"><small>treasury wallet</small><b>${tre != null ? sol(tre) : '—'}</b><small>${balances && balances.at ? 'read ' + ago(balances.at) : (wallets.ready ? (env.RPC_URL ? 'reading…' : 'set RPC_URL') : 'no wallets')}${balances && balances.err ? ' · <span class="bad">' + esc(balances.err.slice(0, 60)) + '</span>' : ''}</small></div>
     <div class="tile g"><small>paid to the cats so far</small><b>${sol(snap.stats.wages)}</b><small>${num(snap.stats.qiPaid || 0)} $QI</small></div>
-    <div class="tile"><small>economy</small><b>live</b><small>prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
+    <div class="tile"><small>economy</small><b>${config.paused ? '<span class="bad">paused</span>' : 'live'}</b><small>prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
   </div>
 
   <form method="post" action="/admin/config">
@@ -136,16 +136,13 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
     ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
-    <p class="mut" style="margin:0 0 6px">A chore pays SOL the moment it is done. A salvage job in the scrapyard pays ${esc(config.TICKER)} the moment it is done, from the treasury's own supply. The lab pays by goals: each cat picks one (the Payments bars on the site's Work page), lab work fills it, and a <b>full bar</b> pays $QI — a small bar the minimum, a big bar the maximum. One transfer from the treasury each, shown in the box only once it has landed; the treasury buys the $QI it lacks through Jupiter first, with SOL from the fees. A payout that cannot be sent is retried every ten minutes.</p>
+    <p class="mut" style="margin:0 0 6px">Everything here is paid on its own, from the treasury, the moment it is earned; the price multiplier (Economy) scales all of it. <b>Chores</b> pay SOL: two meals' worth for a small one, three and a half for a medium, five for a big one. <b>The lab</b> pays $QI when a cat fills a bar, within the range below. <b>The scrapyard</b> pays ${esc(config.TICKER)} at the chart price: a tier-1 job a dollar's worth, tier 2 two and a half, tier 3 five. <b>Payroll</b>: every 30 minutes, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll; a cat with SOL in paw gets nothing. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ', due: ' + esc(due.join(', ')) : ', nobody due as things stand'; })()}. A payout that cannot be sent is retried every ten minutes.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
-        <div class="row3">
-          <div><label>a small bar pays ($ of $QI, at prices x1; it follows the price multiplier)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
-          <div><label>a big bar pays ($)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
-          <div><label>bar size × — every bar this many times longer (2 = twice the work for the same pay)</label><input type="number" step="0.1" min="0.1" max="20" name="GOAL_MUL" value="${esc(config.GOAL_MUL || 1)}"></div>
+        <div class="row">
+          <div><label>a small lab bar pays ($ of $QI, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
+          <div><label>a big lab bar pays ($ of $QI, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
         </div>
-        <div class="row" style="margin-top:8px"><div><label>payroll — every half hour, a cat that is short gets this % of what it spent since the last payroll back, from the treasury (0 = off)</label><input type="number" step="5" min="0" max="100" name="PAYROLL_PCT" value="${esc(config.PAYROLL_PCT == null ? 60 : config.PAYROLL_PCT)}"></div><div><label>short means under this many meals' worth of SOL; payroll tops a cat up to there, never past it</label><input type="number" step="0.5" min="0.5" max="50" name="PAYROLL_MEALS" value="${esc(config.PAYROLL_MEALS || 4)}"></div></div>
-        <div class="row" style="margin-top:8px"><div><label>the scrapyard: a tier-1 job pays this many dollars' worth of ${esc(config.TICKER)} at the chart price, at prices x1 (tier 2 pays 2.5×, tier 3 pays 5×; the multiplier scales it). Paid from the treasury's own supply, never more than a tenth of it in one job. Nothing is bought: send the coin to the treasury and the yard pays from it.</label><input type="number" step="0.25" min="0.05" name="SCRAP_PAY_USD" value="${esc(config.SCRAP_PAY_USD || 1)}"></div><div><label>before the chart is read, a tier-1 job pays this flat number of ${esc(config.TICKER)} instead</label><input type="number" step="1" min="1" name="SCRAP_PAY" value="${esc(config.SCRAP_PAY || 100)}"></div></div>
         <button class="btn">Save</button>
       </form>
       <form method="post" action="/admin/payowed" style="text-align:right">
@@ -165,19 +162,20 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <table><tr><th>cat</th><th>status</th><th>trait</th><th>SOL earned (box)</th><th>wallet</th><th>real balance</th></tr>${catRows}</table>
   </div></div>
 
-  <div class="panel"><div class="ph"><span>Pull back to treasury</span><small class="mut">everything the ticked cats hold, sent to the treasury wallet — for a reset, or when you are done testing</small></div><div class="pb">
+  <div class="panel"><div class="ph"><span>Pull back to treasury</span><small class="mut">a share of what the ticked cats hold, sent to the treasury wallet; pause transactions first if you want nothing moving while it runs</small></div><div class="pb">
     ${walletsReady ? `
-    <form method="post" action="/admin/collect" onsubmit="return confirm('Send everything ticked from the ticked cats to the treasury wallet? The cats end up empty.')">
+    <form method="post" action="/admin/collect" onsubmit="return confirm('Send ' + this.colPct.value + '% of what is ticked from the ticked cats to the treasury wallet?')">
       <div class="dist">
         <div>
           <div class="chk" style="grid-template-columns:repeat(3,auto);justify-content:start;gap:18px;margin-bottom:8px">
-            <label><input type="checkbox" name="colSol" checked> all SOL</label>
-            <label class="${config.CA ? '' : 'off'}"><input type="checkbox" name="colQcat" ${config.CA ? 'checked' : 'disabled'}> all ${esc(config.TICKER)}${config.CA ? '' : ' <span class="mut">(no CA)</span>'}</label>
-            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> all $QI${config.QI_MINT ? '' : ' <span class="mut">(no $QI CA)</span>'}</label>
+            <label><input type="checkbox" name="colSol" checked> SOL</label>
+            <label class="${config.CA ? '' : 'off'}"><input type="checkbox" name="colQcat" ${config.CA ? 'checked' : 'disabled'}> ${esc(config.TICKER)}${config.CA ? '' : ' <span class="mut">(no CA)</span>'}</label>
+            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> $QI${config.QI_MINT ? '' : ' <span class="mut">(no $QI CA)</span>'}</label>
           </div>
           <div class="chk">${engine.ROSTER.map(([name]) => `<label><input type="checkbox" name="col_${esc(name)}" class="cchk" checked> ${esc(name)}</label>`).join('')}</div>${allNone('cchk')}
+          <label style="margin-top:10px">how much of each cat's holdings comes back: <b id="colPctLbl">100%</b></label><input type="range" name="colPct" min="10" max="100" step="10" value="100" style="width:100%;max-width:420px" oninput="document.getElementById('colPctLbl').textContent=this.value+'%'">
         </div>
-        <div style="text-align:right"><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px">tokens first, then the SOL to the last lamport<br>(a wallet left at zero is simply empty, not broken)</div>
+        <div style="text-align:right"><div class="mut" style="font-family:'IBM Plex Mono',monospace;font-size:12px">tokens first, then the SOL; at 100% the SOL goes to the last lamport<br>(a wallet left at zero is simply empty, not broken)</div>
           <button class="btn warn" ${busy ? 'disabled' : ''}>Send to treasury</button></div>
       </div>
     </form>` : '<p class="mut">Needs wallets + RPC_URL.</p>'}
@@ -192,9 +190,10 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       </div>`; })()}
   </div></div>
 
-  <form method="post" action="/admin/chain">
   <div class="panel"><div class="ph"><span>Economy</span><small class="mut"><span class="ok">every payment the cats make is a real transaction at the prices as set</span></small></div><div class="pb">
     ${walletsReady ? `
+    <form method="post" action="/admin/pause" class="inline" style="margin:0 0 12px;padding:10px 12px;border:1px solid ${config.paused ? '#ff7878' : 'var(--line)'};border-radius:8px;display:flex;gap:12px;align-items:center;justify-content:space-between"><div><b>${config.paused ? '<span class="bad">transactions paused</span>' : 'transactions on'}</b><div class="mut" style="font-size:12px">${config.paused ? 'nothing is sent and no money moves in the box; the cats hang about with their meters frozen. Your own jobs (Distribute, Pull back) still run.' : 'pause to stop every cat transaction and payout while you move SOL around; the box keeps running, nobody faints.'}</div></div><input type="hidden" name="on" value="${config.paused ? '0' : '1'}"><button class="btn ${config.paused ? '' : 'warn'}" style="margin-top:0;white-space:nowrap">${config.paused ? 'Resume transactions' : 'Pause transactions'}</button></form>
+    <form method="post" action="/admin/chain">
     <p class="mut" style="margin:0 0 10px">Every transaction is real, at the prices as set. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; chore wages, lab $QI, salvage $QCATS and casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
     <div class="row3">
 

@@ -29,10 +29,6 @@ const DEFAULTS = {
   FUND_GOAL: 2.5,                       // SOL the build fund needs before the boarded-up buildings open
   LAB_PAY_MIN_USD: 5, LAB_PAY_MAX_USD: 15, // a filled bar in the lab pays this many dollars of $QI: small bars the minimum, big bars the maximum
   GOAL_MUL: 1,                          // every bar in the lab times this: 2 makes the pay twice as hard to reach
-  PAYROLL_PCT: 60,                      // payroll: every half hour a cat that is short gets this % of what it spent since the last payroll back from the treasury, up to the floor below
-  PAYROLL_MEALS: 4,                     // 'short' means holding less than this many meals' worth of SOL; payroll tops it up to there and no further
-  SCRAP_PAY_USD: 1,                     // dollars' worth of $QCATS a tier-1 salvage job pays at the chart price (tier 2 two and a half times, tier 3 five times), times the price multiplier, from the treasury's own supply
-  SCRAP_PAY: 100,                       // $QCATS a tier-1 job pays before the chart is read
   payoutEveryMin: 20,                   // the payout timer: everything owed is paid at once, this often
   PRICE_MUL: 1,                         // every price in the box times this; raise it by hand as the chart climbs
   START_QCATS: 10000,                   // the stack of $QCATS each cat is given (the Distribute panel hands it out; the site copy reads it)
@@ -83,7 +79,7 @@ const testFlatNow = () => 0;
 // everything the engine must be told from the config: on start, and again after a reset (a fresh engine knows none of it)
 function applySettings() {
   engine.setPaused(config.paused); engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setPriceMul(config.PRICE_MUL || 1);
-  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setScrapPay(config.SCRAP_PAY || 100, config.SCRAP_PAY_USD || 1); engine.setFundGoal(config.FUND_GOAL || 2.5); engine.setPayroll(Number(config.PAYROLL_PCT), Number(config.PAYROLL_MEALS)); applyChainMode();
+  engine.setQiConfig(0, config.QI_SOL); engine.setSolUsd(config.SOL_USD); engine.setSimulateFees(simulateFees()); engine.setPace(config.PACE_MIN); engine.setStartQcats(config.START_QCATS); engine.setGoalMul(config.GOAL_MUL || 1); engine.setFundGoal(config.FUND_GOAL || 2.5); applyChainMode();
   if (typeof fundBal.sol === 'number') engine.setFundSol(fundBal.sol);
   if (mkt.ok && mkt.mcapUsd) engine.setMarketCapUsd(mkt.mcapUsd);
   if (mktQi.ok && mktQi.priceSol > 0) engine.setQiPrice(mktQi.priceSol);
@@ -279,6 +275,7 @@ async function runIntent(i) {
 async function chainTick() {
   const ch = config.chain || {}; if (!['live', 'dry', 'test'].includes(ch.mode)) return;
   if (busy || adminJobs.some(x => x.state === 'queued')) return; // the operator's jobs go first
+  if (config.paused) return; // transactions paused from the admin: whatever is queued waits
   const i = engine.takeIntent(); if (!i) return;
   engine.markIntent(i.id, 'sending');
   if (ch.mode === 'dry') { engine.intentDone(i.id, null); chainNote({ id: i.id, type: i.type, cat: i.cat, to: i.to || 'treasury', sol: i.sol, memo: i.memo, ok: true, dry: true }); return; }
@@ -460,7 +457,7 @@ const server = http.createServer(async (req, res) => {
       const ws = loadWallets();
       return send(res, 200, {
         at: Date.now(),
-        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, SCRAP_PAY: config.SCRAP_PAY || 100, SCRAP_PAY_USD: config.SCRAP_PAY_USD || 1, FUND_GOAL: config.FUND_GOAL || 2.5, FUND_LIVE: !!config.FUND_PUB, PAYROLL_PCT: config.PAYROLL_PCT, PAYROLL_MEALS: config.PAYROLL_MEALS, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
+        config: { NAME: config.NAME, TICKER: config.TICKER, CA: config.CA, X_URL: config.X_URL, SOL_USD: config.SOL_USD, sellCapPct: config.sellCapPct, QI_MINT: config.QI_MINT, gas: config.gas, chain: { mode: (config.chain || {}).mode || 'off' }, PRICE_MUL: config.PRICE_MUL || 1, PACE_MIN: config.PACE_MIN == null ? 6 : config.PACE_MIN, START_QCATS: config.START_QCATS || 10000, GOAL_MUL: config.GOAL_MUL || 1, FUND_GOAL: config.FUND_GOAL || 2.5, FUND_LIVE: !!config.FUND_PUB, PAUSED: !!config.paused, LIVE_TX: ['test', 'live'].includes((config.chain || {}).mode), TEST_FLAT: testFlatNow(), QI_SOL: config.QI_SOL || 0, LAB_PAY_MIN_USD: config.LAB_PAY_MIN_USD, LAB_PAY_MAX_USD: config.LAB_PAY_MAX_USD, QI_LIVE: !!config.QI_MINT },
         market: { ...mkt, qi: mktQi },
         wallets: ws.ready ? { treasury: ws.treasury.pub, cats: ws.cats.map(w => ({ name: w.name, pub: w.pub })), fund: config.FUND_PUB || null, fundSol: fundBal.sol, balances, feesSeenSol: config.feesSeenSol } : null,
         engine: engine.snapshot(),
@@ -501,11 +498,10 @@ const server = http.createServer(async (req, res) => {
         saveConfig(); pollMarket(); pollQi(); pollBalances(); return back(res, 'saved' + (notes.length ? ' · ' + notes.join(' · ') : ''), notes.some(n => /not a token mint|not found|not a known|not a valid/.test(n)));
       }
       if (p === '/admin/payouts') { // the lab pay range
-        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD', 'GOAL_MUL', 'SCRAP_PAY', 'SCRAP_PAY_USD', 'PAYROLL_PCT', 'PAYROLL_MEALS']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
-        config.PAYROLL_PCT = Math.max(0, Math.min(100, Number(config.PAYROLL_PCT) || 0)); config.PAYROLL_MEALS = Math.max(0.5, Math.min(50, Number(config.PAYROLL_MEALS) || 4)); engine.setPayroll(config.PAYROLL_PCT, config.PAYROLL_MEALS); config.SCRAP_PAY = Math.max(1, Math.round(config.SCRAP_PAY || 100)); config.SCRAP_PAY_USD = Math.max(0.05, Math.round((Number(config.SCRAP_PAY_USD) || 1) * 100) / 100); engine.setScrapPay(config.SCRAP_PAY, config.SCRAP_PAY_USD);
-        if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD; config.GOAL_MUL = Math.max(0.1, Math.min(20, config.GOAL_MUL || 1));
-        engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD); engine.setGoalMul(config.GOAL_MUL);
-        saveConfig(); return back(res, 'a filled bar pays $' + config.LAB_PAY_MIN_USD + '–$' + config.LAB_PAY_MAX_USD + ' of $QI · bars x' + config.GOAL_MUL);
+        for (const k of ['LAB_PAY_MIN_USD', 'LAB_PAY_MAX_USD']) if (k in b && b[k] !== '') config[k] = Number(b[k]);
+        if (config.LAB_PAY_MAX_USD < config.LAB_PAY_MIN_USD) config.LAB_PAY_MAX_USD = config.LAB_PAY_MIN_USD;
+        engine.setLabPay(config.LAB_PAY_MIN_USD, config.LAB_PAY_MAX_USD);
+        saveConfig(); return back(res, 'a filled bar pays $' + config.LAB_PAY_MIN_USD + ' to $' + config.LAB_PAY_MAX_USD + ' of $QI at prices x1');
       }
       if (p === '/admin/task') {
         const t = engine.postTask({ kind: b.kind, bounty: Math.max(0, Number(b.bounty) || 0) }, 'the operator');
@@ -516,6 +512,11 @@ const server = http.createServer(async (req, res) => {
       if (p === '/admin/unrelease') { const ok = b.name && engine.unrelease(b.name); return back(res, ok ? b.name + ' taken out' : 'not in the box', !ok); }
       if (p === '/admin/trait') { const ok = b.name && engine.setTrait(b.name, b.trait); return back(res, ok ? b.name + ' is now ' + b.trait : 'no change', !ok); }
       if (p === '/admin/refresh') { await pollBalances(); await pollMarket(); return back(res, 'balances refreshed'); }
+      if (p === '/admin/pause') { // transactions paused: the cats stop spending and earning and nothing is sent; the operator's own jobs (Distribute, Pull back) still run
+        config.paused = b.on === '1'; engine.setPaused(config.paused); saveConfig();
+        logs.unshift({ t: engine.snapshot().clock, kind: 'info', text: config.paused ? 'transactions paused from the admin: the cats are off the clock' : 'transactions back on: the cats are back at work', at: Date.now() });
+        return back(res, config.paused ? 'transactions paused · nothing moves until you resume' : 'transactions resumed');
+      }
       if (p === '/admin/chain') {
         const ch = config.chain;
         if ('PACE_MIN' in b && b.PACE_MIN !== '') { config.PACE_MIN = Math.max(0, Math.min(120, Number(b.PACE_MIN) || 0)); engine.setPace(config.PACE_MIN); }
@@ -539,15 +540,16 @@ const server = http.createServer(async (req, res) => {
         const ws = wallets.load(); if (!ws.ready || !RPC_URL) return back(res, 'wallets or RPC not ready', true);
         const names = wallets.ROSTER_NAMES.filter(n => b['col_' + n]); if (!names.length) return back(res, 'no cat is ticked', true);
         const what = { sol: !!b.colSol, qcat: !!b.colQcat && !!config.CA, qi: !!b.colQi && !!config.QI_MINT }; if (!what.sol && !what.qcat && !what.qi) return back(res, 'nothing ticked to send', true);
-        queueJob('collect', `pull ${[what.sol ? 'SOL' : '', what.qcat ? config.TICKER : '', what.qi ? '$QI' : ''].filter(Boolean).join(' + ')} back from ${names.length} cats`, async () => {
+        const pct = Math.max(1, Math.min(100, Math.round(Number(b.colPct) || 100))), part = pct / 100; // the slider: how much of what each cat holds comes back
+        queueJob('collect', `pull ${pct}% of ${[what.sol ? 'SOL' : '', what.qcat ? config.TICKER : '', what.qi ? '$QI' : ''].filter(Boolean).join(' + ')} back from ${names.length} cats`, async () => {
           const parts = [], errs = [];
           await pollBalances();
           for (const n of names) {
             const catW = ws.cats.find(c => c.name === n), bal = balances.cats[n] || {};
             try {
-              if (what.qcat && bal.qcatRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.CA, [{ pub: ws.treasury.pub, raw: bal.qcatRaw }], `${config.TICKER} · ${n} · back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} back to the treasury`, ok: true, sig: sigs[0] }); }
-              if (what.qi && bal.qiRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.QI_MINT, [{ pub: ws.treasury.pub, raw: bal.qiRaw }], `${config.TICKER} · ${n} · $QI back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qi).toLocaleString('en-US')} $QI ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qi).toLocaleString('en-US')} $QI back to the treasury`, ok: true, sig: sigs[0] }); }
-              if (what.sol && bal.sol > 0.00002) { const r = await wallets.sweepSol(RPC_URL, ws, catW.kp, ws.treasury.pub, `${config.TICKER} · ${n} · SOL back to the treasury`); parts.push(`${n}: ${r.sol.toFixed(6)} SOL ${r.sig.slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: r.sol, memo: 'all SOL back to the treasury', ok: true, sig: r.sig }); catsPaidIn += r.sol; }
+              if (what.qcat && bal.qcatRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.CA, [{ pub: ws.treasury.pub, raw: Math.floor(bal.qcatRaw * part) }], `${config.TICKER} · ${n} · back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qcat).toLocaleString('en-US')} ${config.TICKER} back to the treasury`, ok: true, sig: sigs[0] }); }
+              if (what.qi && bal.qiRaw > 0) { const { sigs } = await wallets.transferToken(RPC_URL, ws, catW.kp, config.QI_MINT, [{ pub: ws.treasury.pub, raw: Math.floor(bal.qiRaw * part) }], `${config.TICKER} · ${n} · $QI back to the treasury`); parts.push(`${n}: ${Math.floor(bal.qi).toLocaleString('en-US')} $QI ${sigs[0].slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: `${Math.floor(bal.qi).toLocaleString('en-US')} $QI back to the treasury`, ok: true, sig: sigs[0] }); }
+              if (what.sol && bal.sol > 0.00002) { let r; if (pct >= 100) r = await wallets.sweepSol(RPC_URL, ws, catW.kp, ws.treasury.pub, `${config.TICKER} · ${n} · SOL back to the treasury`); else { const amt = Math.floor(bal.sol * part * 1e6) / 1e6; r = { sol: amt, sig: await wallets.transferSol(RPC_URL, ws, catW.kp, [{ pub: ws.treasury.pub, sol: amt }], `${config.TICKER} · ${n} · ${pct}% of its SOL back to the treasury`, true) }; } parts.push(`${n}: ${r.sol.toFixed(6)} SOL ${r.sig.slice(0, 8)}…`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: r.sol, memo: (pct >= 100 ? 'all' : pct + '% of its') + ' SOL back to the treasury', ok: true, sig: r.sig }); catsPaidIn += r.sol; }
             } catch (e) { errs.push(`${n}: ${e.message}`); chainNote({ id: 'C', type: 'collect', cat: n, to: 'treasury', sol: null, memo: 'back to the treasury', ok: false, err: String(e.message).slice(0, 160) }); console.error('collect', n, e.message); }
           }
           pollBalances();
