@@ -74,10 +74,9 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   }).join('');
   const allNone = cls => `<span class="selall"><button type="button" class="btn ghost mini" data-all="${cls}">select all</button> <button type="button" class="btn ghost mini" data-none="${cls}">unselect all</button></span>`;
   const inNames = engine.ROSTER.map(r => r[0]).filter(n => inBox.has(n));
-  const shares = engine.workShares(inNames), labShares = engine.labShares(inNames);
   const distChecks = engine.ROSTER.map(([name]) => {
     const on = inBox.has(name);
-    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? ` <span class="mut">${Math.round((shares[name] || 0) * 100)}% of the SOL</span>` : ' <span class="mut">(not released)</span>'}</label>`;
+    return `<label class="${on ? '' : 'off'}"><input type="checkbox" name="dist_${esc(name)}" class="dchk" ${on ? 'checked' : 'disabled'}> ${esc(name)}${on ? '' : ' <span class="mut">(not released)</span>'}</label>`;
   }).join('');
   const treQi = balances && balances.treasury && typeof balances.treasury.qi === 'number' ? balances.treasury.qi : null;
   const treQcat = balances && balances.treasury && typeof balances.treasury.qcat === 'number' ? balances.treasury.qcat : null;
@@ -194,7 +193,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">puppet: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
       <form method="post" action="/admin/puppet" class="inline"><div class="row3" style="align-items:end">
         <div><select name="name" style="width:100%;padding:8px 10px;font-size:13px">${engine.ROSTER.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
-        <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqi', 'the exchange — buy $QI'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell $QI'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['donate', 'the build fund — put some SOL in'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+        <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell $QI'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['donate', 'the build fund — put some SOL in'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
         <div><button class="btn ghost" style="margin-top:0">Go</button></div>
       </div></form>
     </div>

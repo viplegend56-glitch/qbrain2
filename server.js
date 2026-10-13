@@ -548,7 +548,7 @@ const server = http.createServer(async (req, res) => {
         });
         return back(res, 'queued — see Pending');
       }
-      if (p === '/admin/puppet') { const act = String(b.act || ''), tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
+      if (p === '/admin/puppet') { const act = String(b.act || ''); if (act === 'buyqi') return back(res, 'cats do not buy $QI: it is earned in the lab and only ever sold', true); const tok = act === 'buyqi' || act === 'sellqi' ? 'qi' : act === 'buyqcats' || act === 'sellqcats' ? 'qcats' : null, a = act.replace(/qi$|qcats$/, ''); const r = engine.puppet(String(b.name || ''), a, { tok }); return back(res, r, /no such|nobody|try after/.test(r)); }
       if (p === '/admin/reset') { if ((b.word || b.confirm) !== 'RESET') return back(res, 'type RESET to confirm', true); resetBox(); return back(res, 'box reset to day zero'); }
       if (p === '/admin/wallets/generate') {
         if (wallets.load().ready) return back(res, 'wallets already set', true);
