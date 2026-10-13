@@ -1067,7 +1067,7 @@ function arrive(c, p) {
     const want = c.cold > 0.9 ? 15 : c.cold > 0.75 ? 10 : c.cold > 0.5 ? 5 : 3; const ok = WARM_SESSIONS.filter(m => m <= want && c.sol >= warmCost(m, c) + costOf(FOOD, c) * 2); const min = ok.length ? ok[ok.length - 1] : 3; // never the last of its money: it keeps two meals back
     c.warmMin = min; c.actDur = min * 60; spend(c, warmCost(min, c), 'vent', `${min} minutes at the heater`); c.doing = `${min} minutes at the heater`; placeStats.vent.sessions = (placeStats.vent.sessions || 0) + 1; placeStats.vent.minutes = (placeStats.vent.minutes || 0) + min;
   }
-  if (c.act === 'sleep') { c.actDur = c.fainted ? rand(120, 200) : rand(1080, 1320); c.fainted = false; placeStats.loft.visits++; (placeDay.loft || (placeDay.loft = { visits: 0, spent: 0 })).visits++; if (BUNK > 0) spend(c, costOf(BUNK, c), 'loft', 'a bunk for the night'); if (Math.random() < 0.5) log(`${c.name} climbed into the bunks to sleep`, 'info', 'loft'); }
+  if (c.act === 'sleep') { c.actDur = c.fainted ? rand(120, 200) : clamp(420 + 480 * clamp(c.tired) + rand(-30, 30), 420, 900); /* 7 to 15 minutes: the more tired, the longer */ c.fainted = false; placeStats.loft.visits++; (placeDay.loft || (placeDay.loft = { visits: 0, spent: 0 })).visits++; if (BUNK > 0) spend(c, costOf(BUNK, c), 'loft', 'a bunk for the night'); if (Math.random() < 0.5) log(`${c.name} climbed into the bunks to sleep`, 'info', 'loft'); }
   if (c.act === 'idle' && wx.rain + wx.snow > 0.3) c.doing = `sheltering in a box from the ${wx.snow > wx.rain ? 'snow' : 'rain'}`;
   if ((c.act === 'warm' || c.act === 'eat') && Math.random() < 0.2) {
     const o = cats.find(o => o !== c && o.state === 'act' && o.act === c.act);
