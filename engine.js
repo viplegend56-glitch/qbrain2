@@ -755,7 +755,8 @@ function sellTok(c) { // what a selling cat parts with: a forced choice (testing
   const starving = c.sol < costOf(FOOD, c) && c.hunger > 0.9; if (c.trait === 'loyal' && !starving) return QI;
   return Math.random() < (SELL_QI[c.trait] || 0.5) ? QI : TK;
 }
-function buyTok(c) { if (c.forceTok) return c.forceTok === 'qi' ? QI : TK; if (liveTx() && !qcatLive()) return QI; /* for real, with no CA yet, there is no $QCATS to buy */ if (c.trait === 'loyal') return TK; return Math.random() < ({ degen: 0.5, greedy: 0.5, patient: 0.4 }[c.trait] || 0.4) ? QI : TK; }
+function buyTok(c) { return TK; } // cats only ever buy $QCATS; $QI is earned in the lab and only ever sold
+const canBuy = () => !(liveTx() && !qcatLive()); // for real, with no CA yet, there is nothing to buy
 const shortOfSol = c => c.sol < costOf(FOOD, c) * 4;
 // what an act costs to start, so a cat never sets off for something it cannot pay for (forced trips from the admin puppet are let through)
 function canAfford(c, act) {
@@ -845,7 +846,7 @@ const PLACES = {
   crates:   { title: 'The diner',     kind: 'food · paid to the treasury',          pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'], desc: '' },
   vent:     { title: 'The heater',    kind: 'warmth · by the minute',               pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'], desc: '' },
   trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x + TRAYS.w / 2, TRAYS.y + TRAYS.d / 2], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up here. A cat takes a job off the bench, strips it for parts, and the treasury pays it in ' + TK + ' the moment it is done.' },
-  exchange: { title: 'The exchange', kind: 'where cats sell $QI or ' + TK + ' for SOL, and buy', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'visits'], desc: '' },
+  exchange: { title: 'The exchange', kind: 'where cats sell $QI or ' + TK + ' for SOL, and buy ' + TK + ',', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'visits'], desc: '' },
   casino:   { title: 'The casino',    kind: 'the house is the treasury',            pt: [CASINO.x + 0.5, CASINO.y], stats: ['here', 'wagered', 'spent'], desc: '' },
   arena:    { title: 'The arena',     kind: 'wagers in SOL · entry ' + fmtSol(ARENA_FEE) + ' SOL', pt: [ARENA.x, ARENA.y], stats: ['spent', 'here', 'wagered'], desc: '' },
   loft:     { title: 'The bunks',     kind: 'free',                                 pt: [LOFT.x + 1.0, LOFT.y + 0.55], stats: ['here', 'visits', 'stolen'], desc: '' },
@@ -965,6 +966,7 @@ function decide(c) {
     if (o.act === 'scrap' || o.act === 'entangle' || o.act === 'wager') { partner = findPartner(c, o.act); if (!partner) continue; }
     if (isPaused() && !PAUSE_OK.has(o.act)) continue; // paused: nothing that moves money or earns it
     if (paced(c, o.act)) continue;
+    if (o.act === 'buy' && !canBuy()) continue;
     if (o.act === 'buy' && c.forced !== 'buy' && spare(c) < (testFlat() || 0.006)) continue;
     if (!canAfford(c, o.act)) continue; // it knows what things cost: no trips to the diner, the heater, the beacon, the yard or the casino with an empty wallet
     if (o.act === 'shop' && !itemsFor(c).length) continue;
@@ -1242,10 +1244,8 @@ function finish(c, p) {
   } else if (a === 'warm') {
     c.cold = 0; gainXp(c, 1 + Math.round((c.warmMin || 3) / 5)); did(c, `${c.warmMin || 3} minutes at the heater`);
     if (Math.random() < 0.25) log(`${c.name} finished ${c.warmMin || 3} minutes at the heater`, 'info', 'vent');
-  } else if (a === 'buy' && buyTok(c) === QI) {
-    // this one buys $QI: a quarter, half, three quarters or all of its spare SOL, by feeling; it knows what that is worth
-    const frac = buyFrac(c); let amt = spare(c) * frac; if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt); c.forced = null; c.forceTok = null; c.lastBuyT = T;
-    if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', QI, amt, Math.round(amt / qiSol() * 0.99), `(${BUY_WORD[frac]})`); } else log(`${c.name} looked at the ${QI} price and kept its SOL`, 'info', 'exchange');
+  } else if (a === 'buy' && !canBuy()) {
+    c.forced = null; c.forceTok = null; c.buyCool = T + 600; log(`${c.name} went to buy and there is no ${TK} to buy yet`, 'info', 'exchange');
   } else if (a === 'buy') {
     const frac = buyFrac(c); let amt = spare(c) * frac; if (testFlat()) amt = Math.min(c.sol, testFlat()); amt = r6(amt); c.forced = null; c.forceTok = null; c.lastBuyT = T; // a quarter, half, three quarters or all of the spare SOL, by feeling
     if (amt >= (testFlat() || 0.005)) { spendGas(c); c.buyCool = T + rand(2700, 4500); trade(c, 'buy', TK, amt, amt / mkt.price * 0.99, `(${BUY_WORD[frac]})`); } else log(`${c.name} looked at the ${TK} price and kept its SOL`, 'info', 'exchange');

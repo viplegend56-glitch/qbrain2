@@ -229,6 +229,7 @@ async function runIntent(i) {
     const mint = i.tok === 'qi' ? config.QI_MINT : config.CA; if (!mint) throw new Error(`no ${i.tok === 'qi' ? '$QI' : config.TICKER} CA set`);
     const dec = i.tok === 'qi' ? (balances.treasury && balances.treasury.qiDec) : (balances.treasury && balances.treasury.decimals);
     const decimals = dec != null ? dec : (await wallets.mintInfo(RPC_URL, mint)).decimals;
+    if (i.dir === 'buy' && i.tok === 'qi') throw new Error('cats do not buy $QI: it is earned in the lab and only ever sold');
     if (i.dir === 'buy' && i.sol > (ch.maxPaySol || 1)) throw new Error('buy over the cap');
     // a swap costs the cat more than it trades: the fee, a deposit for the temporary wrapped-SOL account (refunded), and on a first buy the token account (not). Short of that, the treasury tops it up first.
     const b = balances.cats[i.cat] || {}, hasAcct = i.tok === 'qi' ? (b.qiRaw > 0) : (b.qcatRaw > 0);
