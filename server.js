@@ -52,7 +52,7 @@ if (config.FUND_GOAL === 5 && !config.fundGoalSet) config.FUND_GOAL = 2.5; // th
 config.NAME = DEFAULTS.NAME; config.TICKER = DEFAULTS.TICKER; config.gas = { ...DEFAULTS.gas }; config.chain.maxPaySol = DEFAULTS.chain.maxPaySol; config.chain.dayCapSol = DEFAULTS.chain.dayCapSol; config.chain.testFlat = DEFAULTS.chain.testFlat; // the safety caps are code, not settings: an old saved value must never shrink them if (!(config.slippageBps >= 500)) config.slippageBps = 500; // the name, ticker and gas rule come from the code, not from an old saved config
 const QI = () => config.QI_TICKER || '$QUBT'; // the lab's stock, by ticker
 const fq = v => { const a = Math.abs(v || 0); if (a >= 1000) return Math.round(v).toLocaleString('en-US'); if (!(a > 0)) return '0'; let d = 2; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return v.toFixed(d); }; // two decimals, more only when they would show a bare zero
-const qiUsdOf = q => (mktQi && mktQi.priceUsd > 0 ? '$' + (q * mktQi.priceUsd).toFixed(2) + ' ' + QI() + ' (' + fq(q) + ')' : fq(q) + ' ' + QI()); // dollars first when the chart is read
+const qiUsdOf = q => fq(q) + ' ' + QI() + (mktQi && mktQi.priceUsd > 0 ? ' ($' + (q * mktQi.priceUsd).toFixed(2) + ')' : ''); // the shares, with the dollar value after when the chart is read
 const saveConfig = () => { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); } catch (e) { console.error('config save failed', e); } };
 // simulated fee drops only while there is no coin yet; the moment a CA is set, the only SOL the cats get is what you distribute
 const simulateFees = () => false; // the brain never invents money: no pretend fees, no pretend gas top-ups; every SOL row is a real transaction
