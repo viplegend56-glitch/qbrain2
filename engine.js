@@ -10,6 +10,7 @@ const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
 const fmt = n => Math.round(n).toLocaleString('en-US');
 const TK = '$' + CONFIG.TICKER;
+const QI = CONFIG.QI_TICKER || '$QUBT', QI_NAME = CONFIG.QI_NAME || '$QUBT'; // the lab's stock: ticker after amounts, name in labels
 const reduce = true;
 const WINC = ['92,242,255', '247,200,106', '154,123,255', '92,242,255'];
 // visual effects are client-side; on the server they are events we can forward
@@ -635,7 +636,7 @@ const feePool = () => CONFIG.SIMULATE_FEES !== false;
 const GAS_FLOOR = 0.001, GAS_MIN = 0.0005, TX_FEE = 0.000005; // no gas rule: a cat may spend everything it has. The 0.001 is Solana's own rent minimum, below which a wallet cannot go.
 const spendGas = c => { c.gas = Math.max(0, (c.gas == null ? GAS_FLOOR : c.gas) - TX_FEE); };
 // $QI: what the lab pays. Paid per job out of the lab's pool while the box runs on its own; once the real $QI wallet is wired in, jobs only earn a share of the next payout.
-const QI = '$QI';
+const QI_DUST = 0.0005; // less of the lab's stock than this is dust: not worth selling, not worth counting as a stack
 // payroll: every half hour, a cat with no SOL left (it cannot afford a meal) gets back what it spent since the last payroll, from the treasury; a cat with SOL in paw gets nothing
 let payrollNext = 1800;
 const payrollSpent = c => Math.max(0, (c.upkeep || 0) - (c.payrollMark || 0)), payrollDue = c => c.sol < costOf(FOOD, c) && payrollSpent(c) > 0; // who the next payroll would pay, as things stand
@@ -649,25 +650,25 @@ function stepPayroll() {
     if (feePool()) stats.treasury -= pay; payCat(c, pay, 0, 'payroll: half an hour of work', 'vault');
   }
 }
-const labPayMin = () => (Number(CONFIG.LAB_PAY_MIN_USD) > 0 ? Number(CONFIG.LAB_PAY_MIN_USD) : 5) * priceMul(), labPayMax = () => (Number(CONFIG.LAB_PAY_MAX_USD) > 0 ? Number(CONFIG.LAB_PAY_MAX_USD) : 15) * priceMul(); // a filled bar pays between these, in dollars' worth of $QI; the admin's figures are for x1 and follow the price multiplier
+const labPayMin = () => (Number(CONFIG.LAB_PAY_MIN_USD) > 0 ? Number(CONFIG.LAB_PAY_MIN_USD) : 5) * priceMul(), labPayMax = () => (Number(CONFIG.LAB_PAY_MAX_USD) > 0 ? Number(CONFIG.LAB_PAY_MAX_USD) : 15) * priceMul(); // a filled bar pays between these, in dollars` worth of ${QI}; the admin`s figures are for x1 and follow the price multiplier
 const qiUsd = () => qiSol() * (Number(CONFIG.SOL_USD) || 150); // dollars per $QI, from the chart once it is wired in
 const qcatUsd = () => (mkt.pinned && mkt.price > 0 ? mkt.price * (Number(CONFIG.SOL_USD) || 0) : 0); // dollars per $QCATS from the chart; 0 until there is one
 const usdOf = (n, perUnit) => (perUnit > 0 ? '$' + (n * perUnit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 const qcatWorth = n => { const u = usdOf(n, qcatUsd()); return u ? `${u} of ${TK} (${fmtQ(n)} now)` : `${fmtQ(n)} ${TK}`; }; // '$0.75 of $QCATS (25.0K now)', or just the count before the chart is read
-const qiFor = usd => Math.max(1, Math.round(usd / Math.max(1e-12, qiUsd()))); // how many $QI that many dollars is right now
+const qiFor = usd => Math.max(0.0001, Math.round(usd / Math.max(1e-12, qiUsd()) * 1e4) / 1e4); // how many $QI that many dollars is right now
 const qiPerJob = () => qiFor((labPayMin() + labPayMax()) / 2);
 // payouts: a cat is paid the moment its work is done — SOL for a chore, $QI for a lab task. In the box that is instant; in the real modes it is a
 // transfer from the treasury, and the box shows it (the float, the ledger row, the log line) only once the signature is back.
 const payouts = { n: 0, log: [], last: 0, unpaid: [] }; // unpaid: real payouts that failed to send, retried every ten minutes
 function payCat(c, sol, qi, memo, place) {
-  sol = Math.round(Math.max(0, sol || 0) * 1e6) / 1e6; qi = Math.round(Math.max(0, qi || 0)); if (!sol && !qi) return;
+  sol = Math.round(Math.max(0, sol || 0) * 1e6) / 1e6; qi = Math.round(Math.max(0, qi || 0) * 1e6) / 1e6; if (!sol && !qi) return;
   if (liveTx()) { queueIntent({ type: sol > 0 ? 'wage' : 'qi', cat: c.name, sol, qi, memo, place: place || 'vault' }); return; }
   paid(c, sol, qi, null, memo);
 }
 function paid(c, sol, qi, sig, memo) {
   sol = Math.max(0, sol || 0); qi = Math.max(0, qi || 0); if (!sol && !qi) return;
   if (sol) { c.sol += sol; c.earned += sol; stats.wages += sol; txWith(c, 'wage', '+' + fmtSol(sol) + ' SOL', memo || 'chore', sig); floatText(c, '+' + fmtSol(sol) + ' SOL', '#F7C86A'); }
-  if (qi) { c.qi += qi; c.qiEarned += qi; stats.qiPaid += qi; placeStats.lab.qi = (placeStats.lab.qi || 0) + qi; txWith(c, 'qi', '+' + fmtQi(qi) + ' ' + QI, memo || 'lab', sig); floatText(c, '+' + fmtQi(qi) + ' ' + QI, '#C4B2FF'); }
+  if (qi) { c.qi += qi; c.qiEarned += qi; stats.qiPaid += qi; placeStats.lab.qi = (placeStats.lab.qi || 0) + qi; txWith(c, 'qi', '+' + qiPay(qi), (memo || 'lab') + ' · ' + fmtQi(qi) + ' ' + QI, sig); floatText(c, '+' + qiPay(qi), '#C4B2FF'); }
   payFX(c); payouts.n++; payouts.last = T;
   payouts.log.unshift({ t: clock(simMin), day: dayNo(), at: T, name: c.name, sol, qi, memo: memo || '', sig: sig || null }); if (payouts.log.length > 300) payouts.log.length = 300;
   if (Math.random() < 0.15) say(c, pick(['paid', 'the treasury came through', 'that is my cut', 'wages in', QI + ' in']));
@@ -688,9 +689,12 @@ function retryUnpaid() { const n = payouts.unpaid.length; if (!n || !liveTx()) r
 let unpaidNext = 0;
 function stepPayout() { if (!payouts.unpaid.length || T < unpaidNext) return; unpaidNext = T + 600; retryUnpaid(); }
 const txWith = (c, type, amount, note, sig) => { tx(c, type, amount, note); if (sig) txs[0].sig = sig; };
-const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 1.3e-5); // about $0.002 a $QI at $150 SOL, where the chart sat on 11 Oct 2026; the real chart replaces it once the mint is set // SOL per $QI, from the chart once it is wired in
+const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 0.1); // about $15 a share at $150 SOL until the chart is wired in; the real chart replaces it once the mint is set // SOL per $QI, from the chart once it is wired in
 const qiLive = () => CONFIG.QI_LIVE === true; // the real $QI wallet is being read: nothing moves until a payout
-const fmtQi = n => fmtQ(n);
+const fmtQi = n => { const a = Math.abs(n || 0); if (a >= 1000) return fmtQ(n); if (!(a > 0)) return '0'; let d = 1; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return n.toFixed(d); }; // the lab's stock: one decimal, more only when one would show a bare zero
+const usdQ = v => '$' + (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); // a dollar figure for the stock
+const qiPay = q => usdQ(q * qiUsd()) + ' in ' + QI; // a payout or a sale, in dollars first
+const qiBoth = q => fmtQi(q) + ' ' + QI + ' · ' + usdQ(q * qiUsd()); // a holding: shares, then what they are worth now
 // when something happened, as the box tells time: the day it was, and how many real minutes of that day were left (a box day is one hour)
 const whenLabel = e => { let left; if (e.at != null) left = Math.max(0, Math.ceil((DAY_SECS - (e.at % DAY_SECS)) / 60)); else if (e.t) { const [h, m] = String(e.t).split(':').map(Number); left = Math.max(0, Math.ceil((1440 - (h * 60 + m)) / 24)); } else left = 0; return (e.day ? 'day ' + e.day : 'today') + ' \u00b7 ' + left + ' min left'; };
 const SELL_QI = { degen: 0.95, greedy: 0.9, patient: 0.75, loyal: 0.5 }; // how readily each personality parts with its $QI when broke; the rest hold and sell a slice of $QCATS instead
@@ -751,7 +755,7 @@ const TRADE_ITCH = { degen: 1.0, greedy: 0.8, patient: 0.4, loyal: 0.25 };
 const tradeItch = c => (TRADE_ITCH[c.trait] || 0.5) * clamp((T - Math.max(c.lastSellT || -1e9, c.lastBuyT || -1e9)) / 5400); // builds back over an hour and a half
 function sellTok(c) { // what a selling cat parts with: a forced choice (testing), else whatever it holds, else by trait; diamond paws keeps its $QCATS unless starving
   if (c.forceTok) return c.forceTok === 'qi' ? QI : TK;
-  const hasQi = (c.qi || 0) >= 1, hasQc = (c.qcat || 0) >= 1; if (!hasQi && !hasQc) return null; if (!hasQi) return TK; if (!hasQc) return QI;
+  const hasQi = (c.qi || 0) >= QI_DUST, hasQc = (c.qcat || 0) >= 1; if (!hasQi && !hasQc) return null; if (!hasQi) return TK; if (!hasQc) return QI;
   const starving = c.sol < costOf(FOOD, c) && c.hunger > 0.9; if (c.trait === 'loyal' && !starving) return QI;
   return Math.random() < (SELL_QI[c.trait] || 0.5) ? QI : TK;
 }
@@ -775,7 +779,7 @@ function canAfford(c, act) {
 }
 const workToDo = c => tasksFor(c).length > 0 || scrapFor(c).length > 0; // something on the ground or on the yard bench it qualifies for
 function sellUrge(c) {
-  if (!((c.qi || 0) >= 1 || (c.qcat || 0) >= 1)) return 0;
+  if (!((c.qi || 0) >= QI_DUST || (c.qcat || 0) >= 1)) return 0;
   if (c.forced === 'sell') return 1.5;
   const meal = costOf(FOOD, c), qiVal = stackSol(c, QI), qcVal = stackSol(c, TK);
   let w = 0;
@@ -846,11 +850,11 @@ const PLACES = {
   crates:   { title: 'The diner',     kind: 'food · paid to the treasury',          pt: [CRATES.x + 0.8, CRATES.y + 1.2], stats: ['spent', 'here', 'visits'], desc: '' },
   vent:     { title: 'The heater',    kind: 'warmth · by the minute',               pt: [VENT.x + 0.7, VENT.y + 0.5], stats: ['spent', 'here', 'visits'], desc: '' },
   trays:    { title: 'The scrapyard', kind: 'salvage jobs \u00b7 paid in ' + TK,        pt: [TRAYS.x + TRAYS.w / 2, TRAYS.y + TRAYS.d / 2], stats: ['here', 'jobs', 'qcat'], desc: 'Old quantum hardware washes up here. A cat takes a job off the bench, strips it for parts, and the treasury pays it in ' + TK + ' the moment it is done.' },
-  exchange: { title: 'The exchange', kind: 'where cats sell $QI or ' + TK + ' for SOL, and buy ' + TK + ',', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'visits'], desc: '' },
+  exchange: { title: 'The exchange', kind: `where cats sell ${QI} or ` + TK + ' for SOL, and buy ' + TK + ',', pt: [EXC.x + 0.5, EXC.y], stats: ['here', 'sells', 'visits'], desc: '' },
   casino:   { title: 'The casino',    kind: 'the house is the treasury',            pt: [CASINO.x + 0.5, CASINO.y], stats: ['here', 'wagered', 'spent'], desc: '' },
   arena:    { title: 'The arena',     kind: 'wagers in SOL · entry ' + fmtSol(ARENA_FEE) + ' SOL', pt: [ARENA.x, ARENA.y], stats: ['spent', 'here', 'wagered'], desc: '' },
   loft:     { title: 'The bunks',     kind: 'free',                                 pt: [LOFT.x + 1.0, LOFT.y + 0.55], stats: ['here', 'visits', 'stolen'], desc: '' },
-  lab:      { title: 'The lab',       kind: 'quantum jobs · pays $QI',              pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'qi'], desc: '' },
+  lab:      { title: 'The lab',       kind: 'quantum jobs · pays ' + QI_NAME,              pt: [LAB.x, LAB.y + LAB.d / 2 + 0.4], stats: ['here', 'circuits', 'qi'], desc: '' },
   bazaar:   { title: 'The shop',      kind: 'things to wear · paid to the treasury', pt: [BAZ.x + 1.5, BAZ.y + 1.0], stats: ['spent', 'here', 'items'], desc: '' },
   yard:     { title: 'The yard',      kind: 'play · ' + fmtSol(PLAY) + ' SOL a visit', pt: [YARD.x + YARD.w / 2, YARD.y + YARD.d / 2], stats: ['spent', 'here', 'visits'], desc: '' },
   vault:    { title: 'The treasury',  kind: 'where the fees land',                  pt: [VAULT.x, VAULT.y], stats: ['fees', 'wages', 'qipaid'], desc: '' },
@@ -1081,7 +1085,7 @@ function wake(c, why) { if (!asleep(c)) return; c.state = 'pause'; c.pauseT = 0.
 // the exchange. In the box a trade is instant at the chart price. In the real modes it is a Jupiter swap from the cat's own wallet: what it
 // puts in is set aside until the swap lands, then the real amounts are booked and shown; if the swap fails nothing changed and nothing was shown.
 function trade(c, dir, tok, sol, q, why) {
-  sol = r6(sol); if (tok === QI) q = Math.round(q); if (sol <= 0 || q <= 0) return;
+  sol = r6(sol); if (tok === QI) q = Math.round(q * 1e6) / 1e6; if (sol <= 0 || q <= 0) return;
   c.lastPaidT = T;
   if (liveTx()) {
     if (dir === 'buy') c.sol -= sol; else if (tok === QI) c.qi -= q; else c.qcat -= q;
@@ -1103,8 +1107,8 @@ function applyTrade(c, dir, tok, sol, q, why, sig) {
     c.sol += sol; c.sells++; stats.sells++;
     if (isQi) { c.qi = Math.max(0, c.qi - q); c.qiSold += q; c.qiSellSol += sol; stats.qiSold += q; stats.qiSellSol += sol; }
     else { c.qcat = Math.max(0, c.qcat - q); c.sold += q; c.sellSol += sol; stats.sold += q; stats.sellSol += sol; if (!mkt.pinned && !sig) { mkt.price *= 1 - sol / (mkt.price * SUPPLY * 0.35); mkt.mom -= 0.0005; } }
-    floatText(c, '-' + fq(q) + ' ' + tok, isQi ? '#C4B2FF' : '#FF7878'); ringFX(EXC.x, EXC.y, isQi ? '196,178,255' : '255,120,120', 1.1); gainXp(c, 2);
-    log(`${c.name} sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim(), 'loss', 'exchange'); txWith(c, 'sell', '-' + fq(q) + ' ' + tok, '+' + fmtSol(sol) + ' SOL', sig); did(c, `sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim()); recordEvent('sell', `${c.name} sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim());
+    floatText(c, isQi ? '-' + qiPay(q) : '-' + fq(q) + ' ' + tok, isQi ? '#C4B2FF' : '#FF7878'); ringFX(EXC.x, EXC.y, isQi ? '196,178,255' : '255,120,120', 1.1); gainXp(c, 2);
+    log(`${c.name} sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim(), 'loss', 'exchange'); txWith(c, 'sell', isQi ? '-' + qiPay(q) : '-' + fq(q) + ' ' + tok, '+' + fmtSol(sol) + ' SOL' + (isQi ? ' · ' + fmtQi(q) + ' ' + QI : ''), sig); did(c, `sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim()); recordEvent('sell', `${c.name} sold ${fq(q)} ${tok} for ${fmtSol(sol)} SOL ${why || ''}`.trim());
   }
 }
 // ---------- the build fund: the cats put SOL toward the boarded-up buildings; at the goal, the hoardings come down ----------
@@ -1252,7 +1256,7 @@ function finish(c, p) {
   } else if (a === 'sell' && sellTok(c) === QI) {
     // $QI: a quarter, half, three quarters or all of the stack, by feeling
     const broke = c.sol < costOf(FOOD, c) * 4, frac = sellFrac(c); c.forced = null; c.forceTok = null; // it sees the stack's worth, then sells a quarter, half, three quarters or all of it by feeling
-    let q = Math.max(1, Math.round(c.qi * frac)); if (testFlat()) q = Math.min(c.qi, Math.max(1, Math.round(testFlat() / tokSol(QI)))); q = Math.min(c.qi, q); const got = q * tokSol(QI); const worth = `(${FRAC_WORD[frac]}, worth ${fmtSol(stackSol(c, QI))} SOL)`;
+    let q = Math.round(c.qi * frac * 1e4) / 1e4; if (testFlat()) q = Math.min(c.qi, Math.round(testFlat() / tokSol(QI) * 1e4) / 1e4); q = Math.min(c.qi, q); if (q < QI_DUST) q = c.qi; const got = q * tokSol(QI); const worth = `(${FRAC_WORD[frac]}, worth ${fmtSol(stackSol(c, QI))} SOL)`;
     spendGas(c); c.topupT = T + 1500; c.lastSellTok = QI; c.lastSellT = T;
     c.sellCool = T + rand(broke ? 1500 : 5400, broke ? 3000 : 9000); trade(c, 'sell', QI, got, q, (broke ? (c.hunger > 0.5 ? 'to eat' : 'to keep SOL in paw') : c.tr.panic && mkt.mom < -0.004 ? 'and bailed on the dip' : mkt.mom > 0.002 ? 'into the pump' : 'because it felt like it') + ' ' + worth);
   } else if (a === 'sell') {
@@ -1888,7 +1892,7 @@ const LAB_CHATS = [
   ['the ladder is long', 'twenty-four steps', 'then it starts again', 'a step deeper, they say'],
   ['the mode was {mode}', 'on how many shots', '{shots}', 'then it means something'],
   ['I got one wrong tonight', 'which', '{q}', 'the answer is {a}', 'I know that now'],
-  ['the lab pays $QI, the chores pay SOL, and the diner takes SOL', 'so the lab is a detour', 'the lab is the point', 'the diner disagrees'],
+  [`the lab pays ${QI}, the chores pay SOL, and the diner takes SOL`, 'so the lab is a detour', 'the lab is the point', 'the diner disagrees'],
   ['{nq} qubits tonight', 'show-off', 'the fridge gave me {nq}, I did not ask', 'it never gives me more than two'],
   ['do you actually understand {topic}', 'I wrote it down', 'that is not the same', 'it is a start'],
   ['Grover is a square root', 'of what', 'of the number of things you are looking for among', 'so a square root of nothing, for me'],
@@ -1914,7 +1918,7 @@ const LAB_THOUGHTS = [
   'the readout is samples, not the state. samples, not the state.', 'H twice is nothing. still true.', 'if the first two qubits agree it is a pair', 'write the note before I forget the number',
   'the problem board has an open one. after this.', 'Grover tonight. square root of the trouble.', 'a QFT and a swap. the swap matters.', 'calibration is the boring one. it pays the same.',
   'decoherence is the room looking at me', 'every gate a little wrong. add it up.', 'period four. factors three and five. again.', 'amplitudes, not probabilities. amplitudes.',
-  '{shots} shots. one mode. that is the job.', 'the lab pays $QI. the diner wants SOL. mind the gap.', 'twenty-four topics. then again, deeper.', 'the fridge hums when it is thinking. or always.',
+  '{shots} shots. one mode. that is the job.', `the lab pays ${QI}. the diner wants SOL. mind the gap.`, 'twenty-four topics. then again, deeper.', 'the fridge hums when it is thinking. or always.',
   'the heavy outputs are the honest ones', 'a Bell pair never reads 01. unless.', 'no cloning. no backup of this thought either.', 'the console is warm. that is the chip, not me.',
   'I could run bigger circuits if I were more coherent', 'the note is the work. the circuit is the excuse.', 'something in the readout looked like a pattern. it was not.', 'superposition until I look. then one answer.',
   'one problem solved, one missed. average cat.', 'the ladder only goes up. good.', 'entanglement is not a signal. nothing travels. I keep saying it.', 'phase estimation: an angle as digits. the last digit lies.',
@@ -1924,7 +1928,7 @@ const LAB_THOUGHTS = [
 const CHATS_MORE = [
   ['gas?', 'topped up this morning', 'the treasury is generous', 'the treasury is a rule, not a cat'],
   ['the bots are in my way again', 'they are cleaning', 'they are circling', 'same thing, for a bot'],
-  ['$QI or $QCATS', 'for what', 'for the meal', '$QI. always $QI first.', 'diamond paws would not'],
+  [`${QI} or $QCATS`, 'for what', 'for the meal', `${QI}. always ${QI} first.`, 'diamond paws would not'],
   ['how much is the bunk now', '{bunk} SOL', 'it was half that', 'the chart is up. so is rent.'],
   ['what level are you', '{lvl}', 'and the title?', '{title}', 'sounds made up', 'it is. it still counts.'],
   ['the circle is in ten minutes', 'I know', 'eat before', 'cannot afford before', 'then sell before'],
@@ -1934,7 +1938,7 @@ const CHATS_MORE = [
   ['the chart does not matter to us', 'it matters to the prices', 'the prices matter to us', 'so it matters. fine.'],
   ['cold?', 'frozen', 'the heater is full', 'the lab is warm', 'the lab costs coherence', 'everything costs something'],
   ['you were at the yard all afternoon', 'play is a cost too', 'it is a SOL cost', 'it is a cheap one'],
-  ['did you get paid', '$QI', 'and SOL?', 'the chores pay SOL. I do not do chores.', 'then no SOL'],
+  ['did you get paid', `${QI}`, 'and SOL?', 'the chores pay SOL. I do not do chores.', 'then no SOL'],
   ['the exchange is empty tonight', 'nobody is broke', 'give it an hour'],
   ['fees landed', 'how much', '{fees} SOL since the box woke up', 'and we see?', 'a share. when they press the button.'],
   ['I have a grudge', 'who', 'you', 'what did I do', '{why}', 'oh. that.'],
@@ -1965,28 +1969,28 @@ const TH_MORE = {
   play: ['the yard. the ball. five minutes.', 'play costs SOL and it is worth it', 'the ball is pink and it does not care'],
   shop: ['something to wear. something to be seen in.', 'the shop is a tax on vanity. paying it.', 'a halo. why not.'],
   buy: ['spare SOL goes into the coin', 'adding. quietly.', 'the chart is a side effect. buying anyway.'],
-  sell: ['selling $QI. holding the coin.', 'a slice. enough to eat.', 'broke. the exchange knows my face.'],
+  sell: [`selling ${QI}. holding the coin.`, 'a slice. enough to eat.', 'broke. the exchange knows my face.'],
   task: ['somebody has to pick it up', 'the floor is a mess', 'tier one. anyone could. I am anyone.', 'the drones drop it, we carry it'],
   work: LAB_THOUGHTS,
 };
 const MEET_REACT = ['agreed', 'no.', 'that is not what happened', 'say that again', 'minutes, please', 'I was there', 'fees first', 'sleep on it', 'the fridge is loud tonight', 'bigger circuits. more pay.', 'smaller circuits. fewer failures.',
   'motion to adjourn', 'overruled', 'seconded', 'and eat something', 'put it in the recap', 'the recap writes itself', 'we said that yesterday', 'and the day before', 'then do it', 'who is on the chores tomorrow', 'not me', 'the bots can do it', 'the bots do not do chores',
-  'gas is topped up. stop asking.', '$QI is not SOL', 'SOL is not $QI', 'the diner does not take $QI', 'then sell', 'then hold', 'diamond paws would hold', 'diamond paws is asleep', 'read the note', 'which note', 'the lab one', 'it is the same note as yesterday',
+  'gas is topped up. stop asking.', `${QI} is not SOL`, `SOL is not ${QI}`, `the diner does not take ${QI}`, 'then sell', 'then hold', 'diamond paws would hold', 'diamond paws is asleep', 'read the note', 'which note', 'the lab one', 'it is the same note as yesterday',
   'it is a step deeper', 'allegedly', 'the simulator agrees', 'the simulator always agrees', 'a real chip would not', 'there is no real chip', 'yet', 'the ladder only goes up', 'so does rent', 'so does the chart', 'we do not talk about the chart', 'we just did',
   'next', 'the circle is cold', 'ten minutes', 'nine', 'I counted', 'nobody asked', 'it is in the minutes', 'strike that', 'leave it in', 'the treasury is a rule, not a cat', 'the rule pays us', 'the rule takes our rent', 'both', 'coherent and listening', 'barely here',
   'the drones dropped three things today', 'and we carried two', 'the bots circled the third', 'that is not carrying', 'somebody flag it', 'flagging is for visitors', 'then visit', 'the problem board has one open', 'I know the answer', 'then take it', 'after the meeting',
-  'tomorrow a step deeper', 'bring snacks', 'the box does not do snacks', 'the diner does', 'for SOL', 'everything for SOL', 'except the lab', 'the lab is for $QI', 'which is for SOL', 'eventually', 'meeting adjourned', 'not yet', 'the timer says yes', 'the timer is right'];
+  'tomorrow a step deeper', 'bring snacks', 'the box does not do snacks', 'the diner does', 'for SOL', 'everything for SOL', 'except the lab', `the lab is for ${QI}`, 'which is for SOL', 'eventually', 'meeting adjourned', 'not yet', 'the timer says yes', 'the timer is right'];
 const MEET_EXTRA = [
   ['gas. everyone topped up?', 'the treasury does it. I did not ask.', 'it is a rule. be grateful for the rule.'],
-  ['$QI holdings, round the circle. me: {qi}.', 'hold or sell?', 'hold until the diner says otherwise'],
+  [`${QI} holdings, round the circle. me: {qi}.`, 'hold or sell?', 'hold until the diner says otherwise'],
   ['levels. who moved today?', '{lvlcat} hit {lvl}.', 'survival costs it less now. a few percent.', 'a few percent is a meal a week.'],
   ['the bots did {bots} laps today. the pad lights were green twice.', 'they charge, they roam, they charge. a model citizen.', 'they do not do chores.'],
   ['the drones dropped {drops} things today.', 'and we dealt with {dealt}.', 'the rest is still out there.', 'somebody flag it.'],
   ['the treasury took {upkeep} SOL off us today in meals and bunks and warmth.', 'and paid {wages} back.', 'the house always wins.', 'the house is us. sort of.'],
   ['we do not talk about the chart in here.', 'we just did.', 'strike it.', 'struck.'],
-  ['the lab ran {sessions} sessions today. {solved} problems right, {failed} wrong.', 'the wrong ones cost coherence.', 'the right ones paid $QI.', 'net positive. barely.'],
+  ['the lab ran {sessions} sessions today. {solved} problems right, {failed} wrong.', 'the wrong ones cost coherence.', `the right ones paid ${QI}.`, 'net positive. barely.'],
   ['the notebook says I am on topic {ladder}.', 'what is topic {ladder}?', '{topic}.', 'explain it.', '{note}', 'close enough.'],
-  ['who sold today?', 'me. $QI. to eat.', 'me. $QCATS. a sliver.', 'diamond paws?', 'asleep.'],
+  ['who sold today?', `me. ${QI}. to eat.`, 'me. $QCATS. a sliver.', 'diamond paws?', 'asleep.'],
   ['the heater was full all day.', 'cold builds fast.', 'the lab is warm.', 'the lab costs coherence.', 'everything costs something.'],
   ['the circle is ten minutes. eight left.', 'then talk faster.', 'minutes, please.'],
   ['the meeting is the only time nobody is broke.', 'because nobody is buying anything.', 'motion to meet more often.', 'overruled. the lab.'],
@@ -2327,7 +2331,7 @@ const MEET_EXTRA_MORE = [
   ['who is on the leaderboard?', '{lvlcat}, by level. not by anything that matters.', 'level matters. four percent off everything.', 'four percent off sardines.'],
   ['{solved} problems right today and {failed} wrong.', 'the wrong ones were trick questions.', 'the lab does not set trick questions.', 'then the wrong ones were ours.'],
   ['{sessions} study sessions today.', 'and one note each. that is the ladder.', 'read me yours.', '{note}'],
-  ['the exchange was busy.', 'somebody keeps buying $QI at the top.', 'I buy at the price. the price is the price.', 'the price was the top.'],
+  ['the exchange was busy.', `somebody keeps buying ${QI} at the top.`, 'I buy at the price. the price is the price.', 'the price was the top.'],
   ['nobody has fainted in a while.', 'because the diner has stock.', 'because we eat before the lab now.', 'because the heater is {bunk} SOL and the bunks are free.'],
   ['what did the lesson say last time?', '{lesson}', 'and did we?', 'partly.'],
   ['the weather turned.', 'the heater will be full.', 'then the lab. the lab is dry.', 'the lab is always dry. it is the simulator.'],
@@ -2339,13 +2343,13 @@ const MEET_EXTRA_MORE = [
   ['the meeting is ten minutes.', 'the meeting is always ten minutes.', 'then stop talking about the meeting.', 'noted.'],
   ['who is winning at the casino?', 'the treasury.', 'besides the treasury.', 'nobody. that is the design.'],
   ['my goal bar is nearly full.', 'which goal?', 'the hard one.', 'they are all the hard one.'],
-  ['somebody filled a bar today and got paid.', 'in $QI. real $QI.', 'and held it?', 'for now.'],
+  ['somebody filled a bar today and got paid.', `in ${QI}. real ${QI}.`, 'and held it?', 'for now.'],
   ['the problems board had three open all afternoon.', 'they were the Shor ones.', 'the Shor ones are arithmetic.', 'arithmetic is hard when you are hungry.'],
   ['the notebooks are getting long.', 'forty pages each, then they roll over.', 'read the old ones.', 'I wrote them. I know what they say.'],
   ['who sold $QCATS today?', 'me. a sliver. the chart was up.', 'diamond paws would never.', 'diamond paws was asleep.'],
   ['who bought?', 'me. the dip.', 'there was no dip.', 'there is always a dip if you wait.'],
   ['the price multiplier is x{pm} tonight.', 'the menu is as written, then.', 'the menu is what the brain says it is.', 'the brain says x{pm}.'],
-  ['day {day}. {fees} SOL of fees since the box woke up.', 'that is the whole economy.', 'that and the $QI.', 'the $QI comes from the fees too. it is all one pipe.'],
+  ['day {day}. {fees} SOL of fees since the box woke up.', 'that is the whole economy.', `that and the ${QI}.`, `the ${QI} comes from the fees too. it is all one pipe.`],
   ['I ran the fidelity up to {fidelity} tonight.', 'the noise was low.', 'the noise is always low when I run it.', 'the noise is random. that is what random means.'],
   ['the heavy fraction was {heavy}%.', 'above two thirds?', 'above two thirds.', 'then it was a good circuit. or a lucky one.'],
 ];
@@ -2372,7 +2376,7 @@ const MEET_NUMBERS = [
   ['the numbers: {tre} in the treasury, {fees} in since last time, {wages} paid out to us since the box woke up.', { low: ['the first number is small', 'paid out more than came in. explain.', 'the box eats itself', 'then we are the fees'], ok: ['the pipe is open', 'that is a treasury', 'and it stays in the box', 'good. lab.'] }],
   ['fees since last meeting: {fees} SOL. I checked twice.', { low: ['check a third time', 'the chart is asleep', 'then so is the treasury', 'quiet day. quiet night.'], ok: ['somebody is trading', 'the chart woke up', 'that is dinner for a week', 'carried.'] }],
   ['{tre} SOL in the vault. it was {tre0} last time.', { low: ['it went the wrong way', 'that is the heater talking', 'the casino is the vault. so it is fine. it is not fine.', 'spend less. work more. the usual.'], ok: ['up. good.', 'the fees are landing', 'then the lab pays tomorrow', 'carried.'] }],
-  ['payouts today: {paid}. the treasury paid every one the moment the bar filled.', { low: ['nobody filled a bar', 'the bars are long', 'the bars are the point', 'then fill one'], ok: ['real $QI, real wallet', 'and it shows on Solscan', 'the bar is the job now', 'carried.'] }],
+  ['payouts today: {paid}. the treasury paid every one the moment the bar filled.', { low: ['nobody filled a bar', 'the bars are long', 'the bars are the point', 'then fill one'], ok: [`real ${QI}, real wallet`, 'and it shows on Solscan', 'the bar is the job now', 'carried.'] }],
 ];
 // closers: the last exchange
 const MEET_CLOSERS = [
@@ -2391,12 +2395,12 @@ const MEET_PLANS = {
   degen: ['arena at noon, lab after', 'the casino, then regret, then the lab', 'bigger circuits, bigger bars', 'fill the hard bar in a day', 'double or nothing, then study'],
   patient: ['hold and run jobs', 'the ladder, then the diner, then the bunks', 'nothing rash. circuits.', 'one topic a day', 'the bar fills itself if you show up'],
   loyal: ['hold. always hold.', 'never sell, run circuits', 'eat, work, hold', 'the lab and nothing else', 'hold the pair, hold the coin'],
-  greedy: ['take profit at eight percent', 'lab until the $QI stacks, then sell a sliver', 'the big bar. the big pay.', 'buy the dip, if there is a dip', 'two bars by sundown'],
+  greedy: ['take profit at eight percent', `lab until the ${QI} stacks, then sell a sliver`, 'the big bar. the big pay.', 'buy the dip, if there is a dip', 'two bars by sundown'],
 };
 // extra beats about the goals (the Payments bars), the exchange and the levels, each with a reaction pool
 const MEET_GOALS = [
   ['{gcat} is at {gprog} of {gtarget} on “{gtitle}”. nearly there.', ['the hard part is the last three', 'fill it before the shift ends', 'and then the next one', 'the bar does not care how close you were']],
-  ['who filled a bar today?', ['{pcat}. {pqi} $QI, real.', 'nobody. the bars are long.', '{pcat}, and it bought a hat with it', '{pcat}. it held. for once.']],
+  ['who filled a bar today?', [`{pcat}. {pqi} ${QI}, real.`, 'nobody. the bars are long.', '{pcat}, and it bought a hat with it', '{pcat}. it held. for once.']],
   ['my bar is “{gtitle}”. {gprog} of {gtarget}.', ['that is the slow one', 'that is the one with the Shor runs', 'change it', 'you cannot change it. the bar is the bar.']],
   ['the goals are harder than they were.', ['the pay is the same', 'the pay is real, that is the difference', 'harder is the point', 'then work harder']],
 ];
@@ -2510,8 +2514,8 @@ function goalDone(c) {
   c.goalsDone = (c.goalsDone || 0) + 1; stats.goalsDone = (stats.goalsDone || 0) + 1; c.goalLast = g.key;
   c.goalLog = c.goalLog || []; c.goalLog.unshift({ key: g.key, title: g.title, qi, usd, day: dayNo(), t: clock(simMin), at: T, took: Math.round((T - g.started) / 60) }); if (c.goalLog.length > 12) c.goalLog.pop();
   gainXp(c, 12 * g.tier); c.qwork += g.tier;
-  log(`${c.name} filled its bar: ${g.title}. ${qi > 0 ? 'Paid ' + fmtQi(qi) + ' ' + QI + ' (about $' + usd + ')' + (liveTx() ? ', on its way from the treasury.' : '.') : 'The lab’s pool is empty; nothing to pay.'}`, 'gain', 'lab');
-  recordEvent('goal', `${c.name} filled its bar “${g.title}” and was paid ${fmtQi(qi)} ${QI}`); remember(c, `filled the bar “${g.title}” for ${fmtQi(qi)} ${QI}`);
+  log(`${c.name} filled its bar: ${g.title}. ${qi > 0 ? 'Paid ' + qiPay(qi) + ' (' + fmtQi(qi) + ' ' + QI + ')' + (liveTx() ? ', on its way from the treasury.' : '.') : 'The lab’s pool is empty; nothing to pay.'}`, 'gain', 'lab');
+  recordEvent('goal', `${c.name} filled its bar “${g.title}” and was paid ${qiPay(qi)}`); remember(c, `filled the bar “${g.title}” for ${qiPay(qi)}`);
   if (Math.random() < 0.7) say(c, pick(['bar full', 'paid', 'that is the goal', 'next bar', 'real ' + QI + '. real.', 'the bar is the job']));
   if (qi > 0) payCat(c, 0, qi, 'goal: ' + g.title, 'lab');
   c.goal = null; c.goalNext = T + rand(60, 300);

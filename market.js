@@ -11,8 +11,10 @@ async function fetchToken(ca) {
   const p = pairs[0];
   const priceUsd = Number(p.priceUsd), priceNative = Number(p.priceNative);
   const mcapUsd = Number(p.marketCap || p.fdv || 0);
-  const solUsd = priceUsd && priceNative ? priceUsd / priceNative : null;
-  return { mcapUsd, priceUsd, priceNative, solUsd, pair: p.pairAddress, dex: p.dexId, url: p.url, liquidityUsd: p.liquidity && p.liquidity.usd, vol24h: p.volume && p.volume.h24 };
+  // priceNative is in the pair's quote token: SOL for a memecoin pair, usually USDC for a tokenized stock. Only call it a SOL price when the quote is SOL.
+  const quote = (p.quoteToken && p.quoteToken.symbol || '').toUpperCase(), quoteIsSol = quote === 'SOL' || quote === 'WSOL';
+  const solUsd = quoteIsSol && priceUsd && priceNative ? priceUsd / priceNative : null;
+  return { mcapUsd, priceUsd, priceNative, quote, quoteIsSol, solUsd, pair: p.pairAddress, dex: p.dexId, url: p.url, liquidityUsd: p.liquidity && p.liquidity.usd, vol24h: p.volume && p.volume.h24 };
 }
 // If someone pastes a pair/pool address (the one in a DexScreener URL) instead of the token's mint, this finds the mint.
 async function mintFromPair(addr) {

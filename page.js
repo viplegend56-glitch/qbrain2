@@ -4,11 +4,13 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 const usd = v => v == null ? '—' : (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(1) + 'K' : '$' + Math.round(v));
 const sol = v => v == null ? '—' : v.toFixed(4) + ' SOL';
 const num = v => v == null ? '—' : Math.round(v).toLocaleString('en-US');
+const fq = v => { if (v == null) return '—'; const a = Math.abs(v); if (a >= 1000) return Math.round(v).toLocaleString('en-US'); if (!(a > 0)) return '0'; let d = 1; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return v.toFixed(d); };
 const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
 
 function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, adminJobs, wallets, balances, logs, flash, err, env, generated, busy }) {
+  const QI = config.QI_TICKER || '$QUBT', QI_NAME = config.QI_NAME || '$QUBT';
   marketQi = marketQi || {}; mintChecks = mintChecks || {}; adminJobs = adminJobs || []; const mc = k => mintChecks[k] ? ` · <span class="${mintChecks[k].ok ? 'ok' : 'bad'}">${esc(mintChecks[k].msg)}</span>` : ''; chainLog = chainLog || []; const ch = config.chain || { mode: 'off' };
   const snap = engine.snapshot();
   const inBox = new Set(snap.cats.map(c => c.name));
@@ -64,7 +66,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       <td>${(() => { const t = c ? c.trait : trait; return esc(engine.TRAITS[t] ? engine.TRAITS[t].label : t); })()}</td>
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
-      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}${(() => { const floor = config.gas && config.gas.floor || 0.01, sp = Math.max(0, b.sol - floor); return ch.mode === 'off' ? '' : sp < 0.001 ? ' <span class="bad">empty</span>' : ` <span class="mut">${sp.toFixed(4)} to spend</span>`; })()}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + num(b.qi) + ' $QI' : (config.QI_MINT ? '' : '<br><span class="mut">set the $QI mint</span>')}` : '<span class="mut">—</span>'}</td>
+      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}${(() => { const floor = config.gas && config.gas.floor || 0.01, sp = Math.max(0, b.sol - floor); return ch.mode === 'off' ? '' : sp < 0.001 ? ' <span class="bad">empty</span>' : ` <span class="mut">${sp.toFixed(4)} to spend</span>`; })()}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + fq(b.qi) + ' ${QI}' : (config.QI_MINT ? '' : '<br><span class="mut">set the ${QI} mint</span>')}` : '<span class="mut">—</span>'}</td>
 </tr>`;
   }).join('');
 
@@ -99,7 +101,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   <div class="grid">
     <div class="tile c"><small>market cap</small><b>${usd(snap.mkt.mcapUsd)}</b><small>${market.ok ? 'live · dexscreener · ' + ago(market.at) : 'simulated · ' + esc(market.err || '')}</small></div>
     <div class="tile"><small>treasury wallet</small><b>${tre != null ? sol(tre) : '—'}</b><small>${balances && balances.at ? 'read ' + ago(balances.at) : (wallets.ready ? (env.RPC_URL ? 'reading…' : 'set RPC_URL') : 'no wallets')}${balances && balances.err ? ' · <span class="bad">' + esc(balances.err.slice(0, 60)) + '</span>' : ''}</small></div>
-    <div class="tile g"><small>paid to the cats so far</small><b>${sol(snap.stats.wages)}</b><small>${num(snap.stats.qiPaid || 0)} $QI</small></div>
+    <div class="tile g"><small>paid to the cats so far</small><b>${sol(snap.stats.wages)}</b><small>${fq(snap.stats.qiPaid || 0)} ${QI}</small></div>
     <div class="tile"><small>economy</small><b>${config.paused ? '<span class="bad">paused</span>' : 'live'}</b><small>prices x${(snap.priceMul || 1).toFixed(1)} · SOL $${config.SOL_USD ? Number(config.SOL_USD).toFixed(0) : '—'}</small></div>
   </div>
 
@@ -107,12 +109,12 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   <div class="panel"><div class="ph"><span>Token</span><small class="mut">the site copies this CA from the top-right button and the $${esc(config.TICKER)} page</small></div><div class="pb">
     <label>Contract address (CA) — the token's mint, not the pool address; market cap, token balances and the site's CA button go live from this${mc('CA')}</label><input type="text" name="CA" value="${esc(config.CA)}" placeholder="not launched yet">
     <label>X link</label><input type="text" name="X_URL" value="${esc(config.X_URL)}" placeholder="https://x.com/…">
-    <label>$QI contract address (CA) — the token's mint, not the pool address; the treasury buys what it owes and hands it out${mc('QI_MINT')}${marketQi.ok ? ` · chart: ${marketQi.priceSol ? marketQi.priceSol.toExponential(2) + ' SOL per $QI' : '—'}` : marketQi.err && config.QI_MINT ? ` · <span class="bad">${esc(marketQi.err.slice(0, 50))}</span>` : ''}</label><input type="text" name="QI_MINT" value="${esc(config.QI_MINT || '')}" placeholder="$QI contract address">
+    <label>${QI} contract address — the stock token's mint; the treasury holds the supply and hands it out, and only buys if it runs short${mc('QI_MINT')}${marketQi.ok ? ` · chart: ${marketQi.priceUsd ? '$' + Number(marketQi.priceUsd).toFixed(2) + ' a share' + (marketQi.priceSol ? ' · ' + marketQi.priceSol.toFixed(4) + ' SOL' : '') : '—'}` : marketQi.err && config.QI_MINT ? ` · <span class="bad">${esc(marketQi.err.slice(0, 50))}</span>` : ''}</label><input type="text" name="QI_MINT" value="${esc(config.QI_MINT || '')}" placeholder="${QI} contract address">
     <button class="btn">Save</button>
   </div></div>
   </form>
 
-  <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' $QI' : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
+  <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' ${QI}' : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (Number(document.getElementById('dQcat').value) || 0).toLocaleString('en-US') + ' ${esc(config.TICKER)} per cat from the treasury to the ticked cats?')">
       <div class="dist">
@@ -132,12 +134,12 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
 
   <div class="panel"><div class="ph"><span>Payouts</span><small class="mut">per task, the moment it is done · ${esc(String(engine.payouts.n || 0))} so far</small></div><div class="pb">
     ${walletsReady ? (() => { const un = engine.payouts.unpaid || [], wait = engine.intents.filter(i => i.type === 'wage' || i.type === 'qi').length; return `
-    <p class="mut" style="margin:0 0 6px">All automatic, from the treasury, scaled by the multiplier. Chores pay SOL, the lab pays $QI (range below), the scrapyard pays ${esc(config.TICKER)} ($1.50 / $2.50 / $5 by tier), payroll every 30 min refunds a cat with no SOL what it spent. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ': ' + esc(due.join(', ')) : ''; })()}.</p>
+    <p class="mut" style="margin:0 0 6px">All automatic, from the treasury, scaled by the multiplier. Chores pay SOL, the lab pays ${QI} (range below), the scrapyard pays ${esc(config.TICKER)} ($1.50 / $2.50 / $5 by tier), payroll every 30 min refunds a cat with no SOL what it spent. Next payroll in ${esc(String(Math.max(0, Math.ceil(((snap.payrollNext || 0) - (snap.T || 0)) / 60))))} min${(() => { const due = engine.cats.filter(c => engine.payrollDue(c.name)).map(c => c.name); return due.length ? ': ' + esc(due.join(', ')) : ''; })()}.</p>
     <div class="dist">
       <form method="post" action="/admin/payouts">
         <div class="row">
-          <div><label>a small lab bar pays ($ of $QI, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
-          <div><label>a big lab bar pays ($ of $QI, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
+          <div><label>a small lab bar pays ($ of ${QI}, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MIN_USD" value="${esc(config.LAB_PAY_MIN_USD || 5)}"></div>
+          <div><label>a big lab bar pays ($ of ${QI}, at prices x1)</label><input type="number" step="0.5" min="0.5" name="LAB_PAY_MAX_USD" value="${esc(config.LAB_PAY_MAX_USD || 15)}"></div>
         </div>
         <button class="btn">Save</button>
       </form>
@@ -146,7 +148,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
         <button class="btn gold" ${busy || !un.length ? 'disabled' : ''}>Retry now</button>
       </form>
     </div>
-    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : u.qcat ? Math.round(u.qcat).toLocaleString('en-US') + ' ' + esc(config.TICKER) : Math.round(u.qi).toLocaleString('en-US') + ' $QI'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : u.qcat ? Math.round(u.qcat).toLocaleString('en-US') + ' ' + esc(config.TICKER) : fq(u.qi).toLocaleString('en-US') + ' ${QI}'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
@@ -166,7 +168,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
           <div class="chk" style="grid-template-columns:repeat(3,auto);justify-content:start;gap:18px;margin-bottom:8px">
             <label><input type="checkbox" name="colSol" checked> SOL</label>
             <label class="${config.CA ? '' : 'off'}"><input type="checkbox" name="colQcat" ${config.CA ? 'checked' : 'disabled'}> ${esc(config.TICKER)}${config.CA ? '' : ' <span class="mut">(no CA)</span>'}</label>
-            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> $QI${config.QI_MINT ? '' : ' <span class="mut">(no $QI CA)</span>'}</label>
+            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> ${QI}${config.QI_MINT ? '' : ' <span class="mut">(no ${QI} CA)</span>'}</label>
           </div>
           <div class="chk">${engine.ROSTER.map(([name]) => `<label><input type="checkbox" name="col_${esc(name)}" class="cchk" checked> ${esc(name)}</label>`).join('')}</div>${allNone('cchk')}
           <label style="margin-top:10px">how much of each cat's holdings comes back: <b id="colPctLbl">100%</b></label><input type="range" name="colPct" min="10" max="100" step="10" value="100" style="width:100%;max-width:420px" oninput="document.getElementById('colPctLbl').textContent=this.value+'%'">
@@ -182,7 +184,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     ${walletsReady ? `
     <form method="post" action="/admin/pause" class="inline" style="margin:0 0 12px;padding:10px 12px;border:1px solid ${config.paused ? '#ff7878' : 'var(--line)'};border-radius:8px;display:flex;gap:12px;align-items:center;justify-content:space-between"><div><b>${config.paused ? '<span class="bad">transactions paused</span>' : 'transactions on'}</b><div class="mut" style="font-size:12px">${config.paused ? 'nothing is sent and no money moves in the box; the cats hang about with their meters frozen. Your own jobs (Distribute, Pull back) still run.' : 'pause to stop every cat transaction and payout while you move SOL around; the box keeps running, nobody faints.'}</div></div><input type="hidden" name="on" value="${config.paused ? '0' : '1'}"><button class="btn ${config.paused ? '' : 'warn'}" style="margin-top:0;white-space:nowrap">${config.paused ? 'Resume transactions' : 'Pause transactions'}</button></form>
     <form method="post" action="/admin/chain">
-    <p class="mut" style="margin:0 0 10px">Every transaction is real, at the prices as set. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; chore wages, lab $QI, salvage $QCATS and casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
+    <p class="mut" style="margin:0 0 10px">Every transaction is real, at the prices as set. Meals, heater, yard, shop, arena entries and casino stakes go cat → treasury; gifts to the build fund cat → your fund wallet; chore wages, lab ${QI}, salvage $QCATS and casino wins treasury → cat; arena wagers cat → cat; each with a memo that shows on Solscan.</p>
     <div class="row3">
 
       <div><label>price multiplier — every price in the box and on the site times this (x1 = the menu as written; raise it by hand as the chart climbs)</label><input type="number" step="0.1" min="0.1" max="20" name="PRICE_MUL" value="${esc(config.PRICE_MUL || 1)}"></div>
@@ -193,7 +195,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)"><label style="margin-top:0">puppet: send a cat somewhere and watch what it does (ignores pacing and its own urges; a buy or sell swaps for real in testing and default)</label>
       <form method="post" action="/admin/puppet" class="inline"><div class="row3" style="align-items:end">
         <div><select name="name" style="width:100%;padding:8px 10px;font-size:13px">${engine.ROSTER.map(([n]) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
-        <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell $QI'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['donate', 'the build fund — put some SOL in'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
+        <div><select name="act" style="width:100%;padding:8px 10px;font-size:13px">${[['eat', 'the diner — eat'], ['warm', 'the heater — warm up'], ['recohere', 'cryo — recohere'], ['play', 'the yard — play'], ['shop', 'the shop — buy something'], ['gamble', 'the casino — one spin'], ['wager', 'the arena — call somebody out'], ['buyqcats', 'the exchange — buy ' + config.TICKER], ['sellqi', 'the exchange — sell ${QI}'], ['sellqcats', 'the exchange — sell ' + config.TICKER], ['work', 'the lab — run a job'], ['salvage', 'the scrapyard — take a job off the bench'], ['donate', 'the build fund — put some SOL in'], ['task', 'the ground — deal with the nearest chore'], ['entangle', 'find somebody to talk to'], ['steal', 'the bunks — a paw in a stash'], ['sleep', 'the bunks — sleep'], ['wake', 'wake up']].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></div>
         <div><button class="btn ghost" style="margin-top:0">Go</button></div>
       </div></form>
     </div>
@@ -210,7 +212,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       return `<div class="row">
         <div><label>your jobs</label>${q.length ? `<table>${q.map(j => `<tr><td>${j.state === 'running' ? '<span class="ok">running</span>' : 'queued'}</td><td>${esc(j.label)}</td><td class="mut">${ago(j.at)}</td></tr>`).join('')}</table>` : '<div class="mut">nothing queued</div>'}
           ${done.length ? `<label>last results</label><table>${done.map(j => `<tr><td>${j.state === 'done' ? '<span class="ok">done</span>' : '<span class="bad">failed</span>'}</td><td style="word-break:break-word">${esc(j.label)} — ${esc(String(j.result || '').slice(0, 220))}</td></tr>`).join('')}</table>` : ''}</div>
-        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? Math.round(i.qi).toLocaleString('en-US') + ' $QI' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
+        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? fq(i.qi).toLocaleString('en-US') + ' ${QI}' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
       </div>`; })()}
   </div></div>
 
