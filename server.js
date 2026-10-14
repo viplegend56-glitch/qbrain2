@@ -22,7 +22,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 // ---------- config (editable from /admin, saved to disk) ----------
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const DEFAULTS = {
-  NAME: 'Quantum Cats', TICKER: 'QCATS',
+  NAME: 'Quantum Cats', TICKER: 'CATS',
   CA: process.env.CA || '', X_URL: process.env.X_URL || '',
   QI_MINT: process.env.QI_MINT || '',   // what the lab pays: a tokenized stock. The treasury wallet holds the supply.
   QI_TICKER: '$QUBT', QI_NAME: '$QUBT', // how it is named on the site and here (the article says it is a stock)
@@ -351,7 +351,7 @@ async function distribute(b) {
   const ws = wallets.load(); if (!ws.ready) throw new Error('wallets not loaded');
   if (!RPC_URL) throw new Error('RPC_URL not set');
   const total = Number(b.sol) || 0, totalQi = Number(b.qi) || 0, qcatEach = Math.floor(Number(b.qcatEach) || 0);
-  if (!(total > 0) && !(totalQi > 0) && !(qcatEach > 0)) throw new Error('enter an amount of SOL or $QCATS');
+  if (!(total > 0) && !(totalQi > 0) && !(qcatEach > 0)) throw new Error('enter an amount of SOL or $' + config.TICKER);
   const released = new Set(engine.cats.map(c => c.name));
   const names = ws.cats.map(c => c.name).filter(n => released.has(n) && b['dist_' + n]);
   if (!names.length) throw new Error('no released cat is ticked');
