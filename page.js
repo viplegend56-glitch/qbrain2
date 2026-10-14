@@ -4,7 +4,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 const usd = v => v == null ? '—' : (v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(1) + 'K' : '$' + Math.round(v));
 const sol = v => v == null ? '—' : v.toFixed(4) + ' SOL';
 const num = v => v == null ? '—' : Math.round(v).toLocaleString('en-US');
-const fq = v => { if (v == null) return '—'; const a = Math.abs(v); if (a >= 1000) return Math.round(v).toLocaleString('en-US'); if (!(a > 0)) return '0'; let d = 1; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return v.toFixed(d); };
+const fq = v => { if (v == null) return '—'; const a = Math.abs(v); if (a >= 1000) return Math.round(v).toLocaleString('en-US'); if (!(a > 0)) return '0'; let d = 2; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return v.toFixed(d); };
 const ago = ms => ms ? Math.round((Date.now() - ms) / 1000) + 's ago' : 'never';
 const short = pub => pub ? pub.slice(0, 4) + '…' + pub.slice(-4) : '';
 const addr = pub => pub ? `<span class="addr" data-copy="${esc(pub)}" title="click to copy"><code>${short(pub)}</code></span> <a class="sc" href="https://solscan.io/account/${esc(pub)}" target="_blank" rel="noopener" title="solscan">↗</a>` : '<span class="mut">no wallet</span>';
@@ -66,7 +66,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       <td>${(() => { const t = c ? c.trait : trait; return esc(engine.TRAITS[t] ? engine.TRAITS[t].label : t); })()}</td>
       <td>${c ? sol(c.earned) : '—'}</td>
       <td>${addr(w && w.pub)}</td>
-      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}${(() => { const floor = config.gas && config.gas.floor || 0.01, sp = Math.max(0, b.sol - floor); return ch.mode === 'off' ? '' : sp < 0.001 ? ' <span class="bad">empty</span>' : ` <span class="mut">${sp.toFixed(4)} to spend</span>`; })()}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + fq(b.qi) + ' ${QI}' : (config.QI_MINT ? '' : '<br><span class="mut">set the ${QI} mint</span>')}` : '<span class="mut">—</span>'}</td>
+      <td>${b ? `<b>${sol(b.sol)}</b>${b.sol < (config.gas && config.gas.min || 0.002) ? ' <span class="bad">needs SOL</span>' : ''}${(() => { const floor = config.gas && config.gas.floor || 0.01, sp = Math.max(0, b.sol - floor); return ch.mode === 'off' ? '' : sp < 0.001 ? ' <span class="bad">empty</span>' : ` <span class="mut">${sp.toFixed(4)} to spend</span>`; })()}<br>${b.qcat == null ? '<span class="mut">set CA for tokens</span>' : num(b.qcat) + ' ' + esc(config.TICKER)}${b.qi != null ? '<br>' + fq(b.qi) + ' ' + QI : (config.QI_MINT ? '' : '<br><span class="mut">set the ' + QI + ' mint</span>')}` : '<span class="mut">—</span>'}</td>
 </tr>`;
   }).join('');
 
@@ -114,7 +114,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
   </div></div>
   </form>
 
-  <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' ${QI}' : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
+  <div class="panel"><div class="ph"><span>Distribute</span><small>${wallets.ready ? `treasury ${addr(wallets.treasury.pub)} · ${tre != null ? sol(tre) : '—'}${treQi != null ? ' · ' + num(treQi) + ' ' + QI : ''}` : '<span class="bad">no wallets loaded</span>'}</small></div><div class="pb">
     ${walletsReady ? `
     <form method="post" action="/admin/distribute" onsubmit="return confirm('Send ' + document.getElementById('dAmt').textContent + ' SOL and ' + (Number(document.getElementById('dQcat').value) || 0).toLocaleString('en-US') + ' ${esc(config.TICKER)} per cat from the treasury to the ticked cats?')">
       <div class="dist">
@@ -148,7 +148,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
         <button class="btn gold" ${busy || !un.length ? 'disabled' : ''}>Retry now</button>
       </form>
     </div>
-    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : u.qcat ? Math.round(u.qcat).toLocaleString('en-US') + ' ' + esc(config.TICKER) : fq(u.qi).toLocaleString('en-US') + ' ${QI}'}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
+    ${un.length ? `<table style="margin-top:10px"><tr><th>cat</th><th>pay</th><th>for</th><th>why it failed</th></tr>${un.slice(0, 10).map(u => `<tr><td>${esc(u.cat)}</td><td>${u.sol ? sol(u.sol) : u.qcat ? Math.round(u.qcat).toLocaleString('en-US') + ' ' + esc(config.TICKER) : fq(u.qi) + ' ' + QI}</td><td>${esc(u.memo)}</td><td class="bad">${esc(u.err)}</td></tr>`).join('')}</table>` : ''}`; })() : '<p class="mut">Needs wallets + RPC_URL.</p>'}
   </div></div>
 
   <div class="panel"><div class="ph"><span>Cats &amp; wallets</span>
@@ -168,7 +168,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
           <div class="chk" style="grid-template-columns:repeat(3,auto);justify-content:start;gap:18px;margin-bottom:8px">
             <label><input type="checkbox" name="colSol" checked> SOL</label>
             <label class="${config.CA ? '' : 'off'}"><input type="checkbox" name="colQcat" ${config.CA ? 'checked' : 'disabled'}> ${esc(config.TICKER)}${config.CA ? '' : ' <span class="mut">(no CA)</span>'}</label>
-            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> ${QI}${config.QI_MINT ? '' : ' <span class="mut">(no ${QI} CA)</span>'}</label>
+            <label class="${config.QI_MINT ? '' : 'off'}"><input type="checkbox" name="colQi" ${config.QI_MINT ? 'checked' : 'disabled'}> ${QI}${config.QI_MINT ? '' : ' <span class="mut">(no ' + QI + ' CA)</span>'}</label>
           </div>
           <div class="chk">${engine.ROSTER.map(([name]) => `<label><input type="checkbox" name="col_${esc(name)}" class="cchk" checked> ${esc(name)}</label>`).join('')}</div>${allNone('cchk')}
           <label style="margin-top:10px">how much of each cat's holdings comes back: <b id="colPctLbl">100%</b></label><input type="range" name="colPct" min="10" max="100" step="10" value="100" style="width:100%;max-width:420px" oninput="document.getElementById('colPctLbl').textContent=this.value+'%'">
@@ -212,7 +212,7 @@ function renderAdmin({ config, engine, market, marketQi, mintChecks, chainLog, a
       return `<div class="row">
         <div><label>your jobs</label>${q.length ? `<table>${q.map(j => `<tr><td>${j.state === 'running' ? '<span class="ok">running</span>' : 'queued'}</td><td>${esc(j.label)}</td><td class="mut">${ago(j.at)}</td></tr>`).join('')}</table>` : '<div class="mut">nothing queued</div>'}
           ${done.length ? `<label>last results</label><table>${done.map(j => `<tr><td>${j.state === 'done' ? '<span class="ok">done</span>' : '<span class="bad">failed</span>'}</td><td style="word-break:break-word">${esc(j.label)} — ${esc(String(j.result || '').slice(0, 220))}</td></tr>`).join('')}</table>` : ''}</div>
-        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type === 'qi' ? 'lab' : i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? fq(i.qi).toLocaleString('en-US') + ' ${QI}' : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
+        <div><label>the cats' transactions waiting (${engine.intents.length})</label>${cats.length ? `<table>${cats.map(i => `<tr><td>${esc(i.type === 'qi' ? 'lab' : i.type)}</td><td>${esc(i.cat)}${i.to ? ' → ' + esc(i.to) : i.type === 'donate' ? ' → build fund' : ''}</td><td>${i.type === 'qcat' ? Math.round(i.q).toLocaleString('en-US') + ' ' + esc(config.TICKER) : i.sol != null && i.type !== 'qi' ? sol(i.sol) : i.qi ? fq(i.qi) + ' ' + QI : ''}</td><td class="mut">${esc(i.memo || '')}</td></tr>`).join('')}</table>` : '<div class="mut">none</div>'}</div>
       </div>`; })()}
   </div></div>
 

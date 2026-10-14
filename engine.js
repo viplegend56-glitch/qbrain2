@@ -691,9 +691,9 @@ function stepPayout() { if (!payouts.unpaid.length || T < unpaidNext) return; un
 const txWith = (c, type, amount, note, sig) => { tx(c, type, amount, note); if (sig) txs[0].sig = sig; };
 const qiSol = () => (mkt.qiSol > 0 ? mkt.qiSol : Number(CONFIG.QI_SOL) > 0 ? Number(CONFIG.QI_SOL) : 0.1); // about $15 a share at $150 SOL until the chart is wired in; the real chart replaces it once the mint is set // SOL per $QI, from the chart once it is wired in
 const qiLive = () => CONFIG.QI_LIVE === true; // the real $QI wallet is being read: nothing moves until a payout
-const fmtQi = n => { const a = Math.abs(n || 0); if (a >= 1000) return fmtQ(n); if (!(a > 0)) return '0'; let d = 1; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return n.toFixed(d); }; // the lab's stock: one decimal, more only when one would show a bare zero
+const fmtQi = n => { const a = Math.abs(n || 0); if (a >= 1000) return fmtQ(n); if (!(a > 0)) return '0'; let d = 2; while (d < 4 && Number(a.toFixed(d)) === 0) d++; return n.toFixed(d); }; // the lab's stock: two decimals, more only when they would show a bare zero
 const usdQ = v => '$' + (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); // a dollar figure for the stock
-const qiPay = q => usdQ(q * qiUsd()) + ' in ' + QI; // a payout or a sale, in dollars first
+const qiPay = q => usdQ(q * qiUsd()) + ' ' + QI; // a payout or a sale, in dollars first: '$5.00 $QUBT'
 const qiBoth = q => fmtQi(q) + ' ' + QI + ' · ' + usdQ(q * qiUsd()); // a holding: shares, then what they are worth now
 // when something happened, as the box tells time: the day it was, and how many real minutes of that day were left (a box day is one hour)
 const whenLabel = e => { let left; if (e.at != null) left = Math.max(0, Math.ceil((DAY_SECS - (e.at % DAY_SECS)) / 60)); else if (e.t) { const [h, m] = String(e.t).split(':').map(Number); left = Math.max(0, Math.ceil((1440 - (h * 60 + m)) / 24)); } else left = 0; return (e.day ? 'day ' + e.day : 'today') + ' \u00b7 ' + left + ' min left'; };
